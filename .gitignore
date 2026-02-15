@@ -1,0 +1,25 @@
+node_modules/
+dist/
+store/
+target/
+src/artifacts/
+web-ext-artifacts/
+
+# Sensitive keys and deploy info
+.celari-keys.json
+.celari-passkey-account.json
+.celari-token.json
+.zkpay-keys.json
+.zkpay-passkey-account.json
+.env
+.env.*
+
+# Build artifacts
+contracts/*/target/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
