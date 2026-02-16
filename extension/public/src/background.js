@@ -286,5 +286,10 @@ chrome.runtime.onInstalled.addListener(async () => {
   await checkConnection();
 });
 
-// Keep alive every 25 seconds
-setInterval(() => checkConnection(), 25000);
+// Replace setInterval with chrome.alarms for MV3 reliability
+chrome.alarms.create("keepAlive", { periodInMinutes: 0.5 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "keepAlive") {
+    checkConnection();
+  }
+});

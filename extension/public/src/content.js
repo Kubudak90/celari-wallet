@@ -33,13 +33,13 @@ window.addEventListener("message", async (event) => {
       target: "celari-inpage",
       requestId,
       response,
-    }, "*");
+    }, window.location.origin);
   } catch (error) {
     window.postMessage({
       target: "celari-inpage",
       requestId,
       response: { success: false, error: error.message },
-    }, "*");
+    }, window.location.origin);
   }
 });
 
@@ -49,7 +49,7 @@ chrome.runtime.onMessage.addListener((message) => {
     window.postMessage({
       target: "celari-inpage",
       ...message,
-    }, "*");
+    }, window.location.origin);
   }
 });
 

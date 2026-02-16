@@ -268,6 +268,7 @@ describe("Celari Wallet Faz 1 — Passkey Account E2E", () => {
   // ─── Test 8: Auth Witness Layout ──────────────────────
 
   it("should pack auth witness in correct layout for Noir", () => {
+    // Auth witness layout: 64 Fields for signature (r[32]+s[32]). Contract reads first 64 Fields.
     // Auth witness layout for CelariPasskeyAccount:
     // [0..64]   → P256 signature (r: 32 bytes, s: 32 bytes)
     // [64..96]  → authenticatorData hash

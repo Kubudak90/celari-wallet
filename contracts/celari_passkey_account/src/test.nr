@@ -18,6 +18,7 @@ fn test_passkey_account_deployment() {
 
     // Example P256 public key coordinates (test values)
     // In production these come from WebAuthn navigator.credentials.create()
+    // Note: Field to [u8;32] conversion handled by TXE deploy framework
     let pub_key_x: Field = 0x0102030405060708091011121314151617181920212223242526272829303132;
     let pub_key_y: Field = 0x3132333435363738394041424344454647484950515253545556575859606162;
 
@@ -35,6 +36,7 @@ fn test_passkey_account_deployment() {
 fn test_public_key_storage() {
     let mut env = TestEnvironment::new();
 
+    // Note: Field to [u8;32] conversion handled by TXE deploy framework
     let pub_key_x: Field = 0xaabbccdd11223344556677889900aabbccdd11223344556677889900aabbccdd;
     let pub_key_y: Field = 0x1122334455667788990011223344556677889900112233445566778899001122;
 

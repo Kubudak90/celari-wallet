@@ -13,5 +13,5 @@ export default {
     ],
   },
   testMatch: ["**/test/**/*.test.ts"],
-  testTimeout: 600_000,
+  testTimeout: 300_000,
 };

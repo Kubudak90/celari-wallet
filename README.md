@@ -53,16 +53,15 @@ Celari is a privacy-first smart wallet built on [Aztec Network](https://aztec.ne
 
 ### Prerequisites
 - [Aztec Sandbox](https://docs.aztec.network) running locally
-- Node.js 18+
+- Node.js 22+
 - Chrome browser
 
 ### Install & Build
 ```bash
-git clone https://github.com/celari-wallet/celari.git
+git clone https://github.com/Kubudak90/celari-wallet.git
 cd celari
 yarn install
-yarn compile
-yarn codegen
+yarn build
 ```
 
 ### Load Extension

@@ -138,14 +138,39 @@ async function deployAccount(): Promise<Record<string, string>> {
 
 // --- HTTP Server ---------------------------------------------------------
 
-function cors(res: ServerResponse) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+// --- CORS whitelist --------------------------------------------------------
+
+const CORS_ALLOWED_PATTERNS: RegExp[] = [
+  /^chrome-extension:\/\/.+$/,
+  /^http:\/\/localhost(:\d+)?$/,
+];
+
+function getAllowedOrigins(): string[] {
+  const envOrigins = process.env.CORS_ORIGIN;
+  if (envOrigins) {
+    return envOrigins.split(",").map((o) => o.trim());
+  }
+  return [];
+}
+
+function isOriginAllowed(origin: string): boolean {
+  // Check explicit whitelist from env var
+  if (getAllowedOrigins().includes(origin)) return true;
+  // Check built-in patterns
+  return CORS_ALLOWED_PATTERNS.some((pattern) => pattern.test(origin));
+}
+
+function cors(req: IncomingMessage, res: ServerResponse) {
+  const origin = req.headers.origin;
+  if (origin && isOriginAllowed(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
-function json(res: ServerResponse, status: number, data: unknown) {
-  cors(res);
+function json(req: IncomingMessage, res: ServerResponse, status: number, data: unknown) {
+  cors(req, res);
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(data));
 }
@@ -163,7 +188,7 @@ const server = createServer(async (req, res) => {
 
   // CORS preflight
   if (req.method === "OPTIONS") {
-    cors(res);
+    cors(req, res);
     res.writeHead(204);
     res.end();
     return;
@@ -171,7 +196,7 @@ const server = createServer(async (req, res) => {
 
   // Health check
   if (url === "/api/health" && req.method === "GET") {
-    json(res, 200, {
+    json(req, res, 200, {
       status: walletReady ? "ready" : initError ? "error" : "connecting",
       nodeUrl: NODE_URL,
       error: initError,
@@ -182,22 +207,22 @@ const server = createServer(async (req, res) => {
   // Deploy endpoint
   if (url === "/api/deploy" && req.method === "POST") {
     if (!walletReady) {
-      json(res, 503, { error: "Server starting, try again in a few seconds" });
+      json(req, res, 503, { error: "Server starting, try again in a few seconds" });
       return;
     }
 
     try {
       console.log("\n--- Deploy request received ---");
       const result = await deployAccount();
-      json(res, 200, result);
+      json(req, res, 200, result);
     } catch (e: any) {
       console.error("Deploy failed:", e.message || e);
-      json(res, 500, { error: e.message || "Deploy failed" });
+      json(req, res, 500, { error: e.message || "Deploy failed" });
     }
     return;
   }
 
-  json(res, 404, { error: "Not found" });
+  json(req, res, 404, { error: "Not found" });
 });
 
 server.listen(PORT, () => {

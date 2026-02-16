@@ -17,7 +17,7 @@
  *   AZTEC_NODE_URL - Node endpoint (default: https://devnet-6.aztec-labs.com/)
  */
 
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, chmodSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -82,6 +82,8 @@ async function main() {
       publicKeyY: pubKeyY,
       privateKeyPkcs8: Buffer.from(privateKeyPkcs8).toString("base64"),
     }, null, 2));
+    chmodSync(keyPath, 0o600);
+    console.warn("⚠️  WARNING: .celari-keys.json contains private keys. Never commit this file.");
     console.log(`Keys saved to ${keyPath}`);
   }
 
@@ -175,6 +177,8 @@ async function main() {
 
   const outputPath = join(__dirname, "..", ".celari-passkey-account.json");
   writeFileSync(outputPath, JSON.stringify(deployInfo, null, 2));
+  chmodSync(outputPath, 0o600);
+  console.warn("⚠️  WARNING: .celari-keys.json contains private keys. Never commit this file.");
   console.log(`\nDeployment info saved to ${outputPath}`);
   console.log(`\nAccount deployed successfully!`);
   console.log(`Address: ${address.toString()}`);
