@@ -22,6 +22,17 @@ window.addEventListener("message", async (event) => {
   if (event.source !== window) return;
   if (event.data?.target !== "celari-content") return;
 
+  // Only allow known dApp message types
+  const ALLOWED_DAPP_TYPES = [
+    "DAPP_CONNECT",
+    "DAPP_SIGN",
+    "GET_ADDRESS",
+    "GET_COMPLETE_ADDRESS",
+    "GET_STATE",
+    "CREATE_AUTHWIT",
+  ];
+  if (!ALLOWED_DAPP_TYPES.includes(event.data.type)) return;
+
   const { type, payload, requestId } = event.data;
 
   try {
@@ -33,13 +44,13 @@ window.addEventListener("message", async (event) => {
       target: "celari-inpage",
       requestId,
       response,
-    }, "*");
+    }, window.location.origin);
   } catch (error) {
     window.postMessage({
       target: "celari-inpage",
       requestId,
       response: { success: false, error: error.message },
-    }, "*");
+    }, window.location.origin);
   }
 });
 
@@ -49,7 +60,7 @@ chrome.runtime.onMessage.addListener((message) => {
     window.postMessage({
       target: "celari-inpage",
       ...message,
-    }, "*");
+    }, window.location.origin);
   }
 });
 

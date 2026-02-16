@@ -40,6 +40,12 @@ let state = {
 // --- Message Handler -------------------------------------------------
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Only accept messages from our own extension
+  if (sender.id !== chrome.runtime.id) {
+    sendResponse({ success: false, error: "Unauthorized sender" });
+    return;
+  }
+
   switch (message.type) {
     case "GET_STATE":
       sendResponse({ success: true, state });
@@ -286,5 +292,10 @@ chrome.runtime.onInstalled.addListener(async () => {
   await checkConnection();
 });
 
-// Keep alive every 25 seconds
-setInterval(() => checkConnection(), 25000);
+// Replace setInterval with chrome.alarms for MV3 reliability
+chrome.alarms.create("keepAlive", { periodInMinutes: 0.5 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "keepAlive") {
+    checkConnection();
+  }
+});

@@ -40,7 +40,7 @@
         type,
         payload,
         requestId,
-      }, "*");
+      }, window.location.origin);
 
       // Timeout after 5 minutes
       setTimeout(() => {
@@ -56,7 +56,7 @@
 
   window.celari = {
     isCelari: true,
-    version: "0.2.0",
+    version: "0.3.0",
 
     /** Request wallet connection */
     async connect() {

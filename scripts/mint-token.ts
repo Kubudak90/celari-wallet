@@ -3,22 +3,33 @@
  * Mint CLR tokens to our deployed account using the existing Token contract.
  */
 
-import { readFileSync } from "fs";
-import { join, dirname } from "path";
+import { readFileSync, existsSync } from "fs";
+import { join, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
-import { getContractInstanceFromInstantiationParams } from "@aztec/stdlib/contract";
 import { TestWallet } from "@aztec/test-wallet/server";
+
+import { setupSponsoredFPC } from "./lib/aztec-helpers.js";
 
 import { CelariPasskeyAccountContract } from "../src/utils/passkey_account.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const NODE_URL = "https://rpc.testnet.aztec-labs.com/";
-const TOKEN_ADDRESS = "0x11d3dcb0190a88a1520d4241a97e67f495cb246f12a0a26a2e977e2237820fe6";
+
+function getTokenAddress(): string {
+  const tokenPath = resolve(__dirname, '../.celari-token.json');
+  if (existsSync(tokenPath)) {
+    const data = JSON.parse(readFileSync(tokenPath, 'utf-8'));
+    return data.tokenAddress;
+  }
+  if (process.env.TOKEN_ADDRESS) {
+    return process.env.TOKEN_ADDRESS;
+  }
+  throw new Error('Token address not found. Deploy token first or set TOKEN_ADDRESS env var.');
+}
 
 async function main() {
   console.log("Celari -- Mint CLR Tokens\n");
@@ -48,16 +59,11 @@ async function main() {
   console.log(`Account: ${accountAddress.toString().slice(0, 22)}...`);
 
   // Register SponsoredFPC
-  const { SponsoredFPCContract } = await import("@aztec/noir-contracts.js/SponsoredFPC");
-  const fpcInstance = await getContractInstanceFromInstantiationParams(
-    SponsoredFPCContract.artifact, { salt: new Fr(0) },
-  );
-  await wallet.registerContract(fpcInstance, SponsoredFPCContract.artifact);
-  const paymentMethod = new SponsoredFeePaymentMethod(fpcInstance.address);
+  const { paymentMethod } = await setupSponsoredFPC(wallet);
 
   // Load Token contract at existing address
   const { TokenContract } = await import("@aztec/noir-contracts.js/Token");
-  const tokenAddress = AztecAddress.fromString(TOKEN_ADDRESS);
+  const tokenAddress = AztecAddress.fromString(getTokenAddress());
   const token = await TokenContract.at(tokenAddress, wallet);
   console.log(`Token: ${tokenAddress.toString().slice(0, 22)}...`);
 

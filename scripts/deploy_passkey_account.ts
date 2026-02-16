@@ -17,16 +17,16 @@
  *   AZTEC_NODE_URL - Node endpoint (default: https://devnet-6.aztec-labs.com/)
  */
 
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, chmodSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
-import { getContractInstanceFromInstantiationParams } from "@aztec/stdlib/contract";
 import { TestWallet } from "@aztec/test-wallet/server";
+
+import { setupSponsoredFPC, generateP256KeyPair } from "./lib/aztec-helpers.js";
 
 import { CelariPasskeyAccountContract } from "../src/utils/passkey_account.js";
 
@@ -44,7 +44,6 @@ async function main() {
   // 1. Generate or load P256 key pair
   // Deploy requires a private key for signing. We either load from .celari-keys.json
   // or generate a fresh key pair.
-  const { subtle } = (await import("crypto")).webcrypto as any;
   let pubKeyX: string;
   let pubKeyY: string;
   let privateKeyPkcs8: Uint8Array;
@@ -66,15 +65,10 @@ async function main() {
   if (!loaded) {
     // Generate a fresh P256 key pair
     console.log("Generating fresh P256 key pair...");
-    const keyPair = await subtle.generateKey(
-      { name: "ECDSA", namedCurve: "P-256" },
-      true,
-      ["sign", "verify"],
-    );
-    const pubRaw = new Uint8Array(await subtle.exportKey("raw", keyPair.publicKey));
-    pubKeyX = "0x" + Buffer.from(pubRaw.slice(1, 33)).toString("hex");
-    pubKeyY = "0x" + Buffer.from(pubRaw.slice(33, 65)).toString("hex");
-    privateKeyPkcs8 = new Uint8Array(await subtle.exportKey("pkcs8", keyPair.privateKey));
+    const generated = await generateP256KeyPair();
+    pubKeyX = generated.pubKeyX;
+    pubKeyY = generated.pubKeyY;
+    privateKeyPkcs8 = generated.privateKeyPkcs8;
 
     // Save keys for future use
     writeFileSync(keyPath, JSON.stringify({
@@ -82,6 +76,8 @@ async function main() {
       publicKeyY: pubKeyY,
       privateKeyPkcs8: Buffer.from(privateKeyPkcs8).toString("base64"),
     }, null, 2));
+    chmodSync(keyPath, 0o600);
+    console.warn("⚠️  WARNING: .celari-keys.json contains private keys. Never commit this file.");
     console.log(`Keys saved to ${keyPath}`);
   }
 
@@ -129,14 +125,7 @@ async function main() {
   // 4. Set up SponsoredFPC for fee payment
   console.log("\nRegistering SponsoredFPC contract...");
 
-  const { SponsoredFPCContract } = await import("@aztec/noir-contracts.js/SponsoredFPC");
-  const sponsoredFPCInstance = await getContractInstanceFromInstantiationParams(
-    SponsoredFPCContract.artifact,
-    { salt: new Fr(0) },
-  );
-  await wallet.registerContract(sponsoredFPCInstance, SponsoredFPCContract.artifact);
-
-  const sponsoredPaymentMethod = new SponsoredFeePaymentMethod(sponsoredFPCInstance.address);
+  const { instance: sponsoredFPCInstance, paymentMethod: sponsoredPaymentMethod } = await setupSponsoredFPC(wallet);
   console.log(`SponsoredFPC: ${sponsoredFPCInstance.address.toString().slice(0, 22)}...`);
 
   // 5. Deploy account contract
@@ -175,6 +164,8 @@ async function main() {
 
   const outputPath = join(__dirname, "..", ".celari-passkey-account.json");
   writeFileSync(outputPath, JSON.stringify(deployInfo, null, 2));
+  chmodSync(outputPath, 0o600);
+  console.warn("⚠️  WARNING: .celari-keys.json contains private keys. Never commit this file.");
   console.log(`\nDeployment info saved to ${outputPath}`);
   console.log(`\nAccount deployed successfully!`);
   console.log(`Address: ${address.toString()}`);

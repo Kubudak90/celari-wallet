@@ -21,9 +21,10 @@ import { createServer, IncomingMessage, ServerResponse } from "http";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
-import { getContractInstanceFromInstantiationParams } from "@aztec/stdlib/contract";
 import { TestWallet } from "@aztec/test-wallet/server";
+
+import { setupSponsoredFPC, generateP256KeyPair } from "./lib/aztec-helpers.js";
+import { isOriginAllowed } from "./lib/cors.js";
 
 import { CelariPasskeyAccountContract } from "../src/utils/passkey_account.js";
 
@@ -45,12 +46,7 @@ async function getWallet() {
   console.log(`Connected — Chain ${info.chainId}, Protocol v${info.version}`);
 
   // Pre-register SponsoredFPC
-  const { SponsoredFPCContract } = await import("@aztec/noir-contracts.js/SponsoredFPC");
-  const fpcInstance = await getContractInstanceFromInstantiationParams(
-    SponsoredFPCContract.artifact,
-    { salt: new Fr(0) },
-  );
-  await wallet.registerContract(fpcInstance, SponsoredFPCContract.artifact);
+  const { instance: fpcInstance } = await setupSponsoredFPC(wallet);
   console.log(`SponsoredFPC registered: ${fpcInstance.address.toString().slice(0, 22)}...`);
 
   walletReady = true;
@@ -67,18 +63,9 @@ getWallet().catch((e) => {
 
 async function deployAccount(): Promise<Record<string, string>> {
   const w = await getWallet();
-  const { subtle } = (await import("crypto")).webcrypto as any;
 
   // 1. Generate fresh P256 key pair
-  const keyPair = await subtle.generateKey(
-    { name: "ECDSA", namedCurve: "P-256" },
-    true,
-    ["sign", "verify"],
-  );
-  const pubRaw = new Uint8Array(await subtle.exportKey("raw", keyPair.publicKey));
-  const pubKeyX = "0x" + Buffer.from(pubRaw.slice(1, 33)).toString("hex");
-  const pubKeyY = "0x" + Buffer.from(pubRaw.slice(33, 65)).toString("hex");
-  const privateKeyPkcs8 = new Uint8Array(await subtle.exportKey("pkcs8", keyPair.privateKey));
+  const { pubKeyX, pubKeyY, privateKeyPkcs8 } = await generateP256KeyPair();
 
   // 2. Create account contract
   const pubKeyXBuf = Buffer.from(pubKeyX.replace("0x", ""), "hex");
@@ -99,12 +86,7 @@ async function deployAccount(): Promise<Record<string, string>> {
   console.log(`Deploying ${address.toString().slice(0, 22)}...`);
 
   // 3. Deploy with SponsoredFPC
-  const { SponsoredFPCContract } = await import("@aztec/noir-contracts.js/SponsoredFPC");
-  const fpcInstance = await getContractInstanceFromInstantiationParams(
-    SponsoredFPCContract.artifact,
-    { salt: new Fr(0) },
-  );
-  const paymentMethod = new SponsoredFeePaymentMethod(fpcInstance.address);
+  const { paymentMethod } = await setupSponsoredFPC(w);
 
   const deployMethod = await accountManager.getDeployMethod();
   const sentTx = await deployMethod.send({
@@ -124,7 +106,6 @@ async function deployAccount(): Promise<Record<string, string>> {
     address: address.toString(),
     publicKeyX: pubKeyX,
     publicKeyY: pubKeyY,
-    secretKey: secretKey.toString(),
     salt: salt.toString(),
     type: "passkey-p256",
     network: NODE_URL.includes("testnet") ? "testnet" : NODE_URL.includes("devnet") ? "devnet" : "local",
@@ -138,14 +119,19 @@ async function deployAccount(): Promise<Record<string, string>> {
 
 // --- HTTP Server ---------------------------------------------------------
 
-function cors(res: ServerResponse) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+// --- CORS whitelist --------------------------------------------------------
+
+function cors(req: IncomingMessage, res: ServerResponse) {
+  const origin = req.headers.origin;
+  if (origin && isOriginAllowed(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
-function json(res: ServerResponse, status: number, data: unknown) {
-  cors(res);
+function json(req: IncomingMessage, res: ServerResponse, status: number, data: unknown) {
+  cors(req, res);
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(data));
 }
@@ -163,7 +149,7 @@ const server = createServer(async (req, res) => {
 
   // CORS preflight
   if (req.method === "OPTIONS") {
-    cors(res);
+    cors(req, res);
     res.writeHead(204);
     res.end();
     return;
@@ -171,7 +157,7 @@ const server = createServer(async (req, res) => {
 
   // Health check
   if (url === "/api/health" && req.method === "GET") {
-    json(res, 200, {
+    json(req, res, 200, {
       status: walletReady ? "ready" : initError ? "error" : "connecting",
       nodeUrl: NODE_URL,
       error: initError,
@@ -182,22 +168,22 @@ const server = createServer(async (req, res) => {
   // Deploy endpoint
   if (url === "/api/deploy" && req.method === "POST") {
     if (!walletReady) {
-      json(res, 503, { error: "Server starting, try again in a few seconds" });
+      json(req, res, 503, { error: "Server starting, try again in a few seconds" });
       return;
     }
 
     try {
       console.log("\n--- Deploy request received ---");
       const result = await deployAccount();
-      json(res, 200, result);
+      json(req, res, 200, result);
     } catch (e: any) {
       console.error("Deploy failed:", e.message || e);
-      json(res, 500, { error: e.message || "Deploy failed" });
+      json(req, res, 500, { error: e.message || "Deploy failed" });
     }
     return;
   }
 
-  json(res, 404, { error: "Not found" });
+  json(req, res, 404, { error: "Not found" });
 });
 
 server.listen(PORT, () => {

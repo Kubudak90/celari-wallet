@@ -1,10 +1,12 @@
 node_modules/
+codegenCache.json
 dist/
 store/
 target/
 src/artifacts/
 web-ext-artifacts/
 
+# CRITICAL: Files below contain private keys - NEVER remove from .gitignore
 # Sensitive keys and deploy info
 .celari-keys.json
 .celari-passkey-account.json
@@ -15,6 +17,7 @@ web-ext-artifacts/
 .env.*
 
 # Build artifacts
+extension/dist/
 contracts/*/target/
 *.log
 

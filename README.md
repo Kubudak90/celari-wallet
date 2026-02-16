@@ -53,16 +53,15 @@ Celari is a privacy-first smart wallet built on [Aztec Network](https://aztec.ne
 
 ### Prerequisites
 - [Aztec Sandbox](https://docs.aztec.network) running locally
-- Node.js 18+
+- Node.js 22+
 - Chrome browser
 
 ### Install & Build
 ```bash
-git clone https://github.com/celari-wallet/celari.git
-cd celari
+git clone https://github.com/Kubudak90/celari-wallet.git
+cd celari-wallet
 yarn install
-yarn compile
-yarn codegen
+yarn build
 ```
 
 ### Load Extension
@@ -73,19 +72,22 @@ yarn codegen
 
 ### Deploy Account
 ```bash
-export CELARI_PUB_KEY_X="0x..."
-export CELARI_PUB_KEY_Y="0x..."
+# Keys are auto-generated if not provided
 yarn deploy:passkey
+
+# Or specify your own:
+PUB_KEY_X="0x..." PUB_KEY_Y="0x..." yarn deploy:passkey
 ```
 
 ## 📂 Project Structure
 
 ```
-celari/
+celari-wallet/
 ├── contracts/celari_passkey_account/   # P256 Noir contract + tests
-├── extension/                          # Chrome extension (MV3)
-│   ├── public/                         # Manifest, HTML, CSS, icons
-│   └── src/                            # popup, background, content, inpage
+├── extension/public/                   # Chrome extension (MV3)
+│   ├── src/                            # popup, background, content, inpage
+│   ├── styles/                         # CSS styles
+│   └── icons/                          # Extension icons
 ├── src/utils/                          # Passkey SDK (TS)
 ├── src/test/e2e/                       # Integration tests
 ├── scripts/                            # Deploy scripts

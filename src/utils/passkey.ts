@@ -222,7 +222,7 @@ function extractP256PublicKey(
  *
  * We need raw (r || s) with exactly 32 bytes each for Noir.
  */
-function normalizeP256Signature(derSig: Uint8Array): Uint8Array {
+export function normalizeP256Signature(derSig: Uint8Array): Uint8Array {
   const result = new Uint8Array(64);
 
   // Parse DER structure
@@ -257,7 +257,7 @@ function normalizeP256Signature(derSig: Uint8Array): Uint8Array {
   return result;
 }
 
-function padTo32Bytes(src: Uint8Array, dest: Uint8Array, destOffset: number) {
+export function padTo32Bytes(src: Uint8Array, dest: Uint8Array, destOffset: number) {
   if (src.length === 32) {
     dest.set(src, destOffset);
   } else if (src.length === 33 && src[0] === 0x00) {

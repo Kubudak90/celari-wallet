@@ -9,9 +9,9 @@ export default {
   transform: {
     "^.+\\.tsx?$": [
       "ts-jest",
-      { useESM: true, tsconfig: "tsconfig.json" },
+      { useESM: true, tsconfig: "tsconfig.json", diagnostics: false },
     ],
   },
   testMatch: ["**/test/**/*.test.ts"],
-  testTimeout: 600_000,
+  testTimeout: 300_000,
 };

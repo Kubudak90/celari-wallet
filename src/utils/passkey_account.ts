@@ -69,6 +69,9 @@ export class PasskeyAuthWitnessProvider implements AuthWitnessProvider {
 }
 
 /**
+ * @beta This function is part of the SDK public API but not yet used internally.
+ */
+/**
  * Create a deployment configuration for a new passkey-based account.
  *
  * Returns the init args needed to deploy CelariPasskeyAccount contract.
