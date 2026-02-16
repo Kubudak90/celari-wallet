@@ -24,6 +24,7 @@ import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { TestWallet } from "@aztec/test-wallet/server";
 
 import { setupSponsoredFPC, generateP256KeyPair } from "./lib/aztec-helpers.js";
+import { isOriginAllowed } from "./lib/cors.js";
 
 import { CelariPasskeyAccountContract } from "../src/utils/passkey_account.js";
 
@@ -119,26 +120,6 @@ async function deployAccount(): Promise<Record<string, string>> {
 // --- HTTP Server ---------------------------------------------------------
 
 // --- CORS whitelist --------------------------------------------------------
-
-const CORS_ALLOWED_PATTERNS: RegExp[] = [
-  /^chrome-extension:\/\/.+$/,
-  /^http:\/\/localhost(:\d+)?$/,
-];
-
-function getAllowedOrigins(): string[] {
-  const envOrigins = process.env.CORS_ORIGIN;
-  if (envOrigins) {
-    return envOrigins.split(",").map((o) => o.trim());
-  }
-  return [];
-}
-
-function isOriginAllowed(origin: string): boolean {
-  // Check explicit whitelist from env var
-  if (getAllowedOrigins().includes(origin)) return true;
-  // Check built-in patterns
-  return CORS_ALLOWED_PATTERNS.some((pattern) => pattern.test(origin));
-}
 
 function cors(req: IncomingMessage, res: ServerResponse) {
   const origin = req.headers.origin;
