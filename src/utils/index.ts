@@ -12,6 +12,8 @@ export {
   bytesToHex,
   hexToBytes,
   bytesToBase64Url,
+  normalizeP256Signature,
+  padTo32Bytes,
   saveCredential,
   getStoredCredentials,
   clearStoredCredentials,

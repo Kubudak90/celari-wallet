@@ -17,6 +17,7 @@ web-ext-artifacts/
 .env.*
 
 # Build artifacts
+extension/dist/
 contracts/*/target/
 *.log
 
