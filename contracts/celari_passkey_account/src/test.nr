@@ -47,3 +47,25 @@ fn test_public_key_storage() {
     // If deployment succeeds, the immutable storage was set correctly
     // (PublicImmutable.initialize would panic on re-initialization)
 }
+
+/// TODO: Test is_valid_impl (P256 signature verification)
+///
+/// The core signature verification function `is_valid_impl` is not directly
+/// testable via TXE because it requires:
+///   1. An initialized account with stored PublicKeyNote
+///   2. An auth witness injected into the oracle (get_auth_witness)
+///   3. A valid P256 signature over sha256(outer_hash)
+///
+/// Current coverage strategy:
+///   - Deployment tests above verify the contract initializes correctly
+///   - The Noir stdlib `ecdsa_secp256r1::verify_signature` is tested upstream
+///   - E2E tests in src/test/e2e/ verify the full signing flow via Schnorr stand-in
+///
+/// Future: When TXE supports auth witness injection, add:
+///   #[test]
+///   fn test_is_valid_impl_with_real_p256_signature() {
+///       // 1. Deploy contract with known P256 pub key
+///       // 2. Sign outer_hash with corresponding private key
+///       // 3. Inject signature as auth witness
+///       // 4. Call entrypoint and verify success
+///   }

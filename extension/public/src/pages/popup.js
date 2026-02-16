@@ -734,6 +734,34 @@ function bindReceive() {
   });
 }
 
+// ─── Screen: Activity ─────────────────────────────────
+
+function renderActivity() {
+  return `
+    ${renderSubHeader("İşlem Geçmişi", "dashboard")}
+
+    <div style="padding:12px 16px">
+      ${store.activities.length === 0
+        ? `<div style="text-align:center;padding:40px 0;color:var(--text-muted)">
+            <p style="font-size:13px">Henüz işlem yok</p>
+          </div>`
+        : store.activities.map(a => `
+          <div class="activity-item">
+            <div class="activity-icon ${a.type}">${a.type === "send" ? "↗" : "↙"}</div>
+            <div class="activity-info">
+              <div class="activity-type">${a.label} ${a.private ? '<span style="color:var(--green);font-size:10px">🔒</span>' : ''}</div>
+              <div class="activity-detail">${a.time}</div>
+            </div>
+            <div class="activity-amount ${a.type === "send" ? "negative" : "positive"}">${a.amount}</div>
+          </div>
+        `).join("")}
+    </div>`;
+}
+
+function bindActivity() {
+  document.getElementById("btn-back")?.addEventListener("click", () => setState({ screen: "dashboard" }));
+}
+
 // ─── Screen: Settings ─────────────────────────────────
 
 function renderSettings() {

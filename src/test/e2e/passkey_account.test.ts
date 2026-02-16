@@ -54,6 +54,11 @@ describe("Celari Wallet Faz 1 — Passkey Account E2E", () => {
     // the compiled contract artifact. For these tests, we verify the flow
     // using Schnorr accounts as stand-ins. The Noir contract tests (TXE)
     // verify the actual P256 signature logic.
+    //
+    // TODO: Add CelariPasskeyAccount E2E tests when the following are available:
+    //   1. Node.js P256 signing compatible with contract's sha256(outer_hash) format
+    //   2. TestWallet support for custom AccountContract implementations
+    //   3. WebAuthn assertion simulation for auth witness generation
 
     logger.info("Creating Alice account (simulated passkey)...");
     const aliceSecret = Fr.random();

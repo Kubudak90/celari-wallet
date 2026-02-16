@@ -10,9 +10,9 @@ import { fileURLToPath } from "url";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
-import { getContractInstanceFromInstantiationParams } from "@aztec/stdlib/contract";
 import { TestWallet } from "@aztec/test-wallet/server";
+
+import { setupSponsoredFPC } from "./lib/aztec-helpers.js";
 
 import { CelariPasskeyAccountContract } from "../src/utils/passkey_account.js";
 
@@ -59,12 +59,7 @@ async function main() {
   console.log(`Account: ${accountAddress.toString().slice(0, 22)}...`);
 
   // Register SponsoredFPC
-  const { SponsoredFPCContract } = await import("@aztec/noir-contracts.js/SponsoredFPC");
-  const fpcInstance = await getContractInstanceFromInstantiationParams(
-    SponsoredFPCContract.artifact, { salt: new Fr(0) },
-  );
-  await wallet.registerContract(fpcInstance, SponsoredFPCContract.artifact);
-  const paymentMethod = new SponsoredFeePaymentMethod(fpcInstance.address);
+  const { paymentMethod } = await setupSponsoredFPC(wallet);
 
   // Load Token contract at existing address
   const { TokenContract } = await import("@aztec/noir-contracts.js/Token");

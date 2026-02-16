@@ -40,6 +40,12 @@ let state = {
 // --- Message Handler -------------------------------------------------
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Only accept messages from our own extension
+  if (sender.id !== chrome.runtime.id) {
+    sendResponse({ success: false, error: "Unauthorized sender" });
+    return;
+  }
+
   switch (message.type) {
     case "GET_STATE":
       sendResponse({ success: true, state });

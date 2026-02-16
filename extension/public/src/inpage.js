@@ -40,7 +40,7 @@
         type,
         payload,
         requestId,
-      }, "*");
+      }, window.location.origin);
 
       // Timeout after 5 minutes
       setTimeout(() => {

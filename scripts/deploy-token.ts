@@ -11,9 +11,9 @@ import { fileURLToPath } from "url";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
-import { getContractInstanceFromInstantiationParams } from "@aztec/stdlib/contract";
 import { TestWallet } from "@aztec/test-wallet/server";
+
+import { setupSponsoredFPC } from "./lib/aztec-helpers.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const NODE_URL = "https://rpc.testnet.aztec-labs.com/";
@@ -37,12 +37,7 @@ async function main() {
 
   // Deploy admin account first
   console.log("\nDeploying admin account...");
-  const { SponsoredFPCContract } = await import("@aztec/noir-contracts.js/SponsoredFPC");
-  const fpcInstance = await getContractInstanceFromInstantiationParams(
-    SponsoredFPCContract.artifact, { salt: new Fr(0) },
-  );
-  await wallet.registerContract(fpcInstance, SponsoredFPCContract.artifact);
-  const paymentMethod = new SponsoredFeePaymentMethod(fpcInstance.address);
+  const { paymentMethod } = await setupSponsoredFPC(wallet);
 
   const adminDeployMethod = await adminManager.getDeployMethod();
   const adminTx = await adminDeployMethod.send({

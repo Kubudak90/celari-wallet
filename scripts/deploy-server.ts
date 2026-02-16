@@ -21,9 +21,9 @@ import { createServer, IncomingMessage, ServerResponse } from "http";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
-import { getContractInstanceFromInstantiationParams } from "@aztec/stdlib/contract";
 import { TestWallet } from "@aztec/test-wallet/server";
+
+import { setupSponsoredFPC, generateP256KeyPair } from "./lib/aztec-helpers.js";
 
 import { CelariPasskeyAccountContract } from "../src/utils/passkey_account.js";
 
@@ -45,12 +45,7 @@ async function getWallet() {
   console.log(`Connected — Chain ${info.chainId}, Protocol v${info.version}`);
 
   // Pre-register SponsoredFPC
-  const { SponsoredFPCContract } = await import("@aztec/noir-contracts.js/SponsoredFPC");
-  const fpcInstance = await getContractInstanceFromInstantiationParams(
-    SponsoredFPCContract.artifact,
-    { salt: new Fr(0) },
-  );
-  await wallet.registerContract(fpcInstance, SponsoredFPCContract.artifact);
+  const { instance: fpcInstance } = await setupSponsoredFPC(wallet);
   console.log(`SponsoredFPC registered: ${fpcInstance.address.toString().slice(0, 22)}...`);
 
   walletReady = true;
@@ -67,18 +62,9 @@ getWallet().catch((e) => {
 
 async function deployAccount(): Promise<Record<string, string>> {
   const w = await getWallet();
-  const { subtle } = (await import("crypto")).webcrypto as any;
 
   // 1. Generate fresh P256 key pair
-  const keyPair = await subtle.generateKey(
-    { name: "ECDSA", namedCurve: "P-256" },
-    true,
-    ["sign", "verify"],
-  );
-  const pubRaw = new Uint8Array(await subtle.exportKey("raw", keyPair.publicKey));
-  const pubKeyX = "0x" + Buffer.from(pubRaw.slice(1, 33)).toString("hex");
-  const pubKeyY = "0x" + Buffer.from(pubRaw.slice(33, 65)).toString("hex");
-  const privateKeyPkcs8 = new Uint8Array(await subtle.exportKey("pkcs8", keyPair.privateKey));
+  const { pubKeyX, pubKeyY, privateKeyPkcs8 } = await generateP256KeyPair();
 
   // 2. Create account contract
   const pubKeyXBuf = Buffer.from(pubKeyX.replace("0x", ""), "hex");
@@ -99,12 +85,7 @@ async function deployAccount(): Promise<Record<string, string>> {
   console.log(`Deploying ${address.toString().slice(0, 22)}...`);
 
   // 3. Deploy with SponsoredFPC
-  const { SponsoredFPCContract } = await import("@aztec/noir-contracts.js/SponsoredFPC");
-  const fpcInstance = await getContractInstanceFromInstantiationParams(
-    SponsoredFPCContract.artifact,
-    { salt: new Fr(0) },
-  );
-  const paymentMethod = new SponsoredFeePaymentMethod(fpcInstance.address);
+  const { paymentMethod } = await setupSponsoredFPC(w);
 
   const deployMethod = await accountManager.getDeployMethod();
   const sentTx = await deployMethod.send({
@@ -124,7 +105,6 @@ async function deployAccount(): Promise<Record<string, string>> {
     address: address.toString(),
     publicKeyX: pubKeyX,
     publicKeyY: pubKeyY,
-    secretKey: secretKey.toString(),
     salt: salt.toString(),
     type: "passkey-p256",
     network: NODE_URL.includes("testnet") ? "testnet" : NODE_URL.includes("devnet") ? "devnet" : "local",
