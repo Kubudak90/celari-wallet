@@ -31,21 +31,26 @@ const NETWORKS = {
 let offscreenReady = false;
 
 async function ensureOffscreen() {
-  if (offscreenReady) return;
+  // Always verify the offscreen document actually exists (Chrome may close it when idle)
   try {
     const contexts = await chrome.runtime.getContexts({
       contextTypes: ["OFFSCREEN_DOCUMENT"],
     });
-    if (contexts.length === 0) {
-      await chrome.offscreen.createDocument({
-        url: "offscreen.html",
-        reasons: ["WORKERS"],
-        justification: "Aztec PXE WASM proving engine for zero-knowledge proofs",
-      });
+    if (contexts.length > 0) {
+      offscreenReady = true;
+      return;
     }
+    // Document doesn't exist — reset flag and recreate
+    offscreenReady = false;
+    await chrome.offscreen.createDocument({
+      url: "offscreen.html",
+      reasons: ["WORKERS"],
+      justification: "Aztec PXE WASM proving engine for zero-knowledge proofs",
+    });
     offscreenReady = true;
     console.log("Offscreen document ready");
   } catch (e) {
+    offscreenReady = false;
     console.error("Offscreen creation failed:", e.message);
   }
 }
@@ -55,9 +60,13 @@ async function ensureOffscreen() {
  */
 async function sendToPXE(msg) {
   await ensureOffscreen();
+  // Tag message with target so the background's own onMessage handler can skip it
+  const taggedMsg = { ...msg, _target: "offscreen" };
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(msg, (response) => {
+    chrome.runtime.sendMessage(taggedMsg, (response) => {
       if (chrome.runtime.lastError) {
+        // Offscreen may have been closed — reset flag so it's recreated on next call
+        offscreenReady = false;
         reject(new Error(chrome.runtime.lastError.message));
       } else if (response?.error) {
         reject(new Error(response.error));
@@ -86,6 +95,9 @@ let state = {
 // --- Message Handler -------------------------------------------------
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Skip messages tagged for offscreen document (prevents routing loop)
+  if (message._target === "offscreen") return false;
+
   // Only accept messages from our own extension
   if (sender.id !== chrome.runtime.id) {
     sendResponse({ success: false, error: "Unauthorized sender" });
@@ -196,6 +208,94 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       break;
     }
 
+    case "RENAME_ACCOUNT": {
+      const idx = message.index ?? state.activeAccountIndex;
+      if (state.accounts[idx] && message.label) {
+        state.accounts[idx].label = message.label.slice(0, 24);
+        chrome.storage.local.set({ celari_accounts: state.accounts });
+        sendResponse({ success: true, account: state.accounts[idx] });
+      } else {
+        sendResponse({ success: false, error: "Account not found or missing label" });
+      }
+      break;
+    }
+
+    case "DELETE_ACCOUNT": {
+      const idx = message.index;
+      if (idx >= 0 && idx < state.accounts.length && state.accounts.length > 1) {
+        const deleted = state.accounts.splice(idx, 1)[0];
+        if (state.activeAccountIndex >= state.accounts.length) {
+          state.activeAccountIndex = state.accounts.length - 1;
+        }
+        chrome.storage.local.set({ celari_accounts: state.accounts });
+        // Tell PXE to remove the account from its registry
+        if (deleted.address) {
+          sendToPXE({ type: "PXE_DELETE_ACCOUNT", data: { address: deleted.address } }).catch(() => {});
+        }
+        sendResponse({ success: true, accounts: state.accounts, activeAccountIndex: state.activeAccountIndex });
+      } else {
+        sendResponse({ success: false, error: "Cannot delete: invalid index or last account" });
+      }
+      break;
+    }
+
+    case "GET_BACKUP_DATA": {
+      // Collect sensitive key data from session storage for encrypted backup
+      chrome.storage.session.get(["celari_keys", "celari_secret", "celari_private_key"], (session) => {
+        const backupData = {
+          accounts: state.accounts,
+          keys: session.celari_keys || null,
+          secret: session.celari_secret || null,
+          privateKey: session.celari_private_key || null,
+          network: state.network,
+          nodeUrl: state.nodeUrl,
+          exportedAt: new Date().toISOString(),
+          version: 1,
+        };
+        sendResponse({ success: true, data: backupData });
+      });
+      return true;
+    }
+
+    case "IMPORT_BACKUP": {
+      // Import decrypted backup data: merge accounts and keys
+      const imported = message.data;
+      if (!imported?.accounts?.length) {
+        sendResponse({ success: false, error: "No accounts in backup" });
+        break;
+      }
+      for (const acc of imported.accounts) {
+        const exists = state.accounts.some(a => a.address && a.address === acc.address);
+        if (!exists) {
+          state.accounts.push(acc);
+        }
+      }
+      chrome.storage.local.set({ celari_accounts: state.accounts });
+      // Restore session keys if present
+      const sessionData = {};
+      if (imported.keys) sessionData.celari_keys = imported.keys;
+      if (imported.secret) sessionData.celari_secret = imported.secret;
+      if (imported.privateKey) sessionData.celari_private_key = imported.privateKey;
+      if (Object.keys(sessionData).length) chrome.storage.session.set(sessionData);
+      // Register imported accounts with PXE
+      for (const acc of imported.accounts) {
+        if (acc.deployed && acc.secretKey && acc.salt) {
+          sendToPXE({
+            type: "PXE_REGISTER_ACCOUNT",
+            data: {
+              publicKeyX: acc.publicKeyX || "",
+              publicKeyY: acc.publicKeyY || "",
+              secretKey: acc.secretKey,
+              salt: acc.salt,
+              privateKeyPkcs8: acc.privateKeyPkcs8 || "",
+            },
+          }).catch(() => {});
+        }
+      }
+      sendResponse({ success: true, accounts: state.accounts });
+      break;
+    }
+
     case "GET_DEPLOY_INFO": {
       // Check if a .celari-passkey-account.json was saved by CLI deploy
       chrome.storage.local.get("celari_deploy_info", (result) => {
@@ -230,6 +330,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: false, error: e.message });
       });
       return true;
+    }
+
+    case "FAUCET_REQUEST": {
+      sendToPXE({ type: "PXE_FAUCET", data: { address: message.address } })
+        .then((result) => sendResponse({ success: true, ...result }))
+        .catch((e) => sendResponse({ success: false, error: e.message }));
+      return true;
+    }
+
+    // WalletConnect relay: offscreen → popup
+    case "WC_SESSION_PROPOSAL": {
+      // Relay WalletConnect session proposal to popup for user approval
+      chrome.runtime.sendMessage({
+        type: "WC_SESSION_PROPOSAL",
+        proposal: message.proposal,
+      }).catch(() => {});
+      sendResponse({ success: true });
+      break;
+    }
+
+    case "WC_SESSION_REQUEST": {
+      // Relay WalletConnect session request to popup for user confirmation
+      chrome.runtime.sendMessage({
+        type: "WC_SESSION_REQUEST",
+        request: message.request,
+        topic: message.topic,
+      }).catch(() => {});
+      sendResponse({ success: true });
+      break;
     }
 
     // dApp requests (forwarded from content script)
@@ -292,6 +421,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           });
         }
         pending.sendResponse({ success: true, approved: true });
+        // Also respond to the popup that sent SIGN_APPROVE
+        sendResponse({ success: true });
       } else {
         sendResponse({ success: false, error: "Request not found or expired" });
       }
@@ -410,10 +541,10 @@ async function verifyAccount(address) {
     }
   } catch {}
 
-  // Fallback: check if block number is > deploy block (account was mined)
+  // Fallback: node responded but contract query unavailable — cannot confirm deployment
   try {
     const blockNum = await getBlockNumber();
-    return { verified: blockNum > 0, blockNumber: blockNum, note: "Node responded but contract query unavailable" };
+    return { verified: false, blockNumber: blockNum, note: "Node responded but contract query unavailable — cannot confirm deployment" };
   } catch {}
 
   return { verified: false };
@@ -438,32 +569,26 @@ async function getBlockNumber() {
 
 // --- Initialization --------------------------------------------------
 
-chrome.runtime.onInstalled.addListener(async () => {
-  console.log("Celari Wallet installed");
-
-  // Load saved accounts
+// Restore state on every service worker wake-up (not just onInstalled)
+async function restoreState() {
   const stored = await chrome.storage.local.get("celari_accounts");
   if (stored.celari_accounts) {
     state.accounts = stored.celari_accounts;
   }
 
-  // Load saved network config
   const config = await chrome.storage.local.get("celari_config");
   if (config.celari_config) {
     state.nodeUrl = config.celari_config.nodeUrl || state.nodeUrl;
     state.network = config.celari_config.network || state.network;
   }
+}
 
-  // Check connection
-  await checkConnection();
-
-  // Start offscreen PXE engine
+async function initPXEAndAccounts() {
   await ensureOffscreen();
   if (state.connected) {
     sendToPXE({ type: "PXE_INIT", nodeUrl: state.nodeUrl })
       .then(async (res) => {
         console.log("PXE initialized:", res);
-        // Register all deployed accounts with PXE
         for (const account of state.accounts) {
           if (account.deployed && account.secretKey && account.salt) {
             try {
@@ -486,12 +611,32 @@ chrome.runtime.onInstalled.addListener(async () => {
       })
       .catch((e) => console.warn("PXE init deferred:", e.message));
   }
+}
+
+// Run on every SW startup (module top-level IIFE)
+(async () => {
+  try {
+    await restoreState();
+    await checkConnection();
+    await initPXEAndAccounts();
+  } catch (e) {
+    console.error("Celari: initialization failed —", e.message || e);
+  }
+})();
+
+chrome.runtime.onInstalled.addListener(() => {
+  console.log("Celari Wallet installed");
 });
 
 // Replace setInterval with chrome.alarms for MV3 reliability
 chrome.alarms.create("keepAlive", { periodInMinutes: 0.5 });
-chrome.alarms.onAlarm.addListener((alarm) => {
+chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === "keepAlive") {
-    checkConnection();
+    try {
+      await checkConnection();
+      await ensureOffscreen();
+    } catch (e) {
+      console.warn("Celari: keep-alive cycle failed —", e.message || e);
+    }
   }
 });

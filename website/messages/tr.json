@@ -1,0 +1,147 @@
+{
+  "meta": {
+    "title": "Celari — Gizlilik Odaklı Tasarım | Aztec Üzerinde Özel Cüzdan",
+    "description": "Aztec Ağı üzerindeki ilk WebAuthn/Passkey destekli akıllı cüzdan. Seed phrase yok. Metadata yok. Taviz yok.",
+    "ogTitle": "Celari — Aztec Üzerinde Gizlilik Odaklı Cüzdan",
+    "ogDescription": "Seed phrase'leri Face ID ile değiştirin. Sıfır bilgi kanıtlarıyla özel işlem yapın."
+  },
+  "nav": {
+    "features": "Özellikler",
+    "howItWorks": "Nasıl Çalışır",
+    "aztec": "Aztec",
+    "roadmap": "Yol Haritası",
+    "docs": "Dokümanlar",
+    "earlyAccess": "Erken Erişim"
+  },
+  "hero": {
+    "title": "CELARI",
+    "subtitle": "Gizlilik bir özellik değil. Mimaridir.",
+    "tags": {
+      "seedPhrases": "Seed Phrase Yok",
+      "metadata": "Metadata Yok",
+      "passkey": "Passkey Kimlik Doğrulama",
+      "aztec": "Aztec Ağı"
+    },
+    "joinWaitlist": "Bekleme Listesi",
+    "readDocs": "Dokümanlar",
+    "scroll": "Kaydır"
+  },
+  "features": {
+    "eyebrow": "Mimari",
+    "title": "Görünmez Olmak İçin Tasarlandı",
+    "cards": {
+      "private": {
+        "title": "Varsayılan Gizlilik",
+        "description": "Aztec'in şifreli rollup'ı üzerine inşa edildi. Her işlem korumalı. Bakiyenizi, geçmişinizi veya kimliğinizi kimse göremez."
+      },
+      "passkey": {
+        "title": "Passkey Kimlik Doğrulama",
+        "description": "Face ID. Parmak izi. Donanım anahtarı. Zaten güvendiğiniz şekilde giriş yapın. 24 kelimelik seed phrase'lere veda edin."
+      },
+      "metadata": {
+        "title": "Sıfır Metadata",
+        "description": "IP takibi yapmıyoruz. İstekleri kaydetmiyoruz. Biz bile kim olduğunuzu veya ne yaptığınızı göremiyoruz."
+      },
+      "abstraction": {
+        "title": "Hesap Soyutlama",
+        "description": "Sosyal kurtarma, gas sponsorluğu ve toplu işlem desteği olan akıllı kontrat cüzdanları."
+      },
+      "openSource": {
+        "title": "Açık Kaynak",
+        "description": "Her satır kod denetlenebilir. Güven varsayılmaz, doğrulanır. MIT lisanslı."
+      },
+      "ux": {
+        "title": "Özenli Kullanıcı Deneyimi",
+        "description": "Gizlilik araçları terminal pencereleri gibi hissettirmemeli. Celari insanlar için tasarlandı."
+      }
+    }
+  },
+  "howItWorks": {
+    "eyebrow": "Protokol",
+    "title": "Egemenliğe Üç Adım",
+    "steps": {
+      "authenticate": {
+        "title": "Passkey ile Kimlik Doğrulama",
+        "description": "Face ID, parmak izi veya donanım güvenlik anahtarınızı kullanın. Güvenli alan özel anahtarınızı oluşturur — cihazınızdan asla ayrılmaz."
+      },
+      "deploy": {
+        "title": "Cüzdanınız Gizlice Dağıtılır",
+        "description": "Aztec ağında bir akıllı kontrat cüzdanı dağıtılır. Varsayılan olarak şifreli. Var olduğunu sadece siz bilirsiniz."
+      },
+      "transact": {
+        "title": "Gölgelerde İşlem Yapın",
+        "description": "Gönderin, alın ve DeFi protokolleriyle etkileşime geçin. Her eylem sıfır bilgi kanıtlarıyla korunur."
+      }
+    }
+  },
+  "aztec": {
+    "badge": "Aztec Üzerine İnşa Edildi",
+    "title": "İlk Şifreli Rollup, İlk Özel Cüzdanı Hak Ediyor",
+    "description": "Aztec, Ethereum'a programlanabilir gizlilik getiriyor. Celari bunu erişilebilir kılıyor. Birlikte, gizliliğin opsiyonel olmadığı bir finansal sistem inşa ediyoruz.",
+    "stats": {
+      "encrypted": { "value": "100%", "label": "Şifreli İşlem" },
+      "metadata": { "value": "0", "label": "Sızan Metadata" },
+      "proof": { "value": "<2s", "label": "Kanıt Üretimi" }
+    }
+  },
+  "roadmap": {
+    "eyebrow": "Zaman Çizelgesi",
+    "title": "İleriye Giden Yol",
+    "phases": {
+      "phase0": {
+        "name": "Faz 0",
+        "title": "Schnorr Prototipi",
+        "status": "completed",
+        "description": "Aztec üzerinde Schnorr imza şeması ile ilk kavram kanıtı."
+      },
+      "phase1": {
+        "name": "Faz 1",
+        "title": "Passkey + Uzantı",
+        "status": "completed",
+        "description": "WebAuthn/P256 entegrasyonu, Chrome MV3 uzantısı, tam dağıtım hattı, 95 test."
+      },
+      "phase2": {
+        "name": "Faz 2",
+        "title": "L1–L2 Köprü",
+        "status": "current",
+        "description": "Ethereum köprü entegrasyonu, özel token/RPC, faucet, SDK yayını."
+      },
+      "phase3": {
+        "name": "Faz 3",
+        "title": "Toplu Maaş",
+        "status": "upcoming",
+        "description": "Özel batch_pay kontratı. Tek bir ZK işlemiyle 100 çalışana ödeme yapın."
+      },
+      "phase4": {
+        "name": "Faz 4",
+        "title": "Kripto Kart",
+        "status": "upcoming",
+        "description": "Özel cüzdanınıza bağlı sanal ve fiziksel kart. Her yerde harcayın."
+      },
+      "phase5": {
+        "name": "Faz 5",
+        "title": "Mobil + Çapraz Zincir",
+        "status": "upcoming",
+        "description": "Yerel iOS/Android uygulaması. Köprü birleştirme ile çapraz zincir özel transferler."
+      }
+    }
+  },
+  "waitlist": {
+    "title": "celāre — gizlemek, saklamak",
+    "subtitle": "Gizliliğinizi geri alan ilk kişilerden olun",
+    "placeholder": "email@adresiniz.com",
+    "button": "Katıl",
+    "success": "Listedesiniz. Sizinle iletişime geçeceğiz.",
+    "error": "Bir şeyler ters gitti. Lütfen tekrar deneyin."
+  },
+  "footer": {
+    "brand": "Celari",
+    "links": {
+      "github": "Github",
+      "docs": "Dokümanlar",
+      "twitter": "Twitter",
+      "discord": "Discord"
+    },
+    "copyright": "© {year} Celari"
+  }
+}

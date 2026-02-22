@@ -71,10 +71,22 @@ const store = {
   pendingSignRequest: null,
   tokenAddresses: {},
   customNetworks: [],
+  deployServerUrl: "",
+  // Phase 3: NFT
+  nfts: [],
+  customNftContracts: [],
+  nftDetail: null,
+  // Phase 4: WalletConnect
+  wcSessions: [],
+  wcProposal: null,
 };
 
 function setState(updates) {
   Object.assign(store, updates);
+  // Clear sync polling when leaving dashboard
+  if (updates.screen && updates.screen !== "dashboard") {
+    clearSyncInterval();
+  }
   render();
 }
 
@@ -174,6 +186,22 @@ async function init() {
     }
   } catch (e) {}
 
+  // Load deploy server URL from storage
+  try {
+    const dsData = await chrome.storage.local.get("celari_deploy_server");
+    if (dsData.celari_deploy_server) {
+      store.deployServerUrl = dsData.celari_deploy_server;
+    }
+  } catch (e) {}
+
+  // Load custom NFT contracts from storage
+  try {
+    const nftData = await chrome.storage.local.get("celari_custom_nft_contracts");
+    if (nftData.celari_custom_nft_contracts?.length) {
+      store.customNftContracts = nftData.celari_custom_nft_contracts;
+    }
+  } catch (e) {}
+
   store.screen = store.accounts.length > 0 ? "dashboard" : "onboarding";
 
   if (store.accounts.length > 0) {
@@ -225,7 +253,7 @@ async function fetchRealBalances() {
   if (!account || !account.deployed || !account.address) return;
 
   try {
-    const res = await fetch(DEPLOY_SERVER + "/api/balances", {
+    const res = await fetch(getDeployServer() + "/api/balances", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ address: account.address }),
@@ -286,23 +314,31 @@ async function handleFaucet() {
     btn.style.pointerEvents = "none";
   }
 
-  showToast("Requesting tokens...", "success");
+  showToast("Requesting tokens... This may take a few minutes on first use.", "success");
 
   try {
-    const res = await fetch(DEPLOY_SERVER + "/api/faucet", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address: account.address }),
-      signal: AbortSignal.timeout(180000),
+    const data = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        { type: "FAUCET_REQUEST", address: account.address },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else if (!response?.success) {
+            reject(new Error(response?.error || "Faucet request failed"));
+          } else {
+            resolve(response);
+          }
+        },
+      );
     });
 
-    const data = await res.json();
-    if (!res.ok) {
-      showToast(data.error || "Faucet request failed", "error");
-      return;
+    showToast(`Received ${data.amount} ${data.symbol}!`, "success");
+
+    // Auto-add faucet token to custom tokens if not already known
+    if (data.tokenAddress && !store.tokenAddresses?.CLR) {
+      store.tokenAddresses.CLR = data.tokenAddress;
     }
 
-    showToast(`Received ${data.amount} ${data.symbol}!`, "success");
     fetchRealBalances();
   } catch (e) {
     showToast("Faucet: " + sanitizeError(e), "error");
@@ -387,6 +423,34 @@ function render() {
     case "confirm-tx":
       root.innerHTML = renderConfirmTx();
       bindConfirmTx();
+      break;
+    case "add-account":
+      root.innerHTML = renderAddAccount();
+      bindAddAccount();
+      break;
+    case "backup":
+      root.innerHTML = renderBackup();
+      bindBackup();
+      break;
+    case "restore":
+      root.innerHTML = renderRestore();
+      bindRestore();
+      break;
+    case "nft-detail":
+      root.innerHTML = renderNftDetail();
+      bindNftDetail();
+      break;
+    case "add-nft-contract":
+      root.innerHTML = renderAddNftContract();
+      bindAddNftContract();
+      break;
+    case "walletconnect":
+      root.innerHTML = renderWalletConnect();
+      bindWalletConnect();
+      break;
+    case "wc-approve":
+      root.innerHTML = renderWcApprove();
+      bindWcApprove();
       break;
     default:
       root.innerHTML = renderDashboard();
@@ -492,9 +556,8 @@ async function handleCreatePasskey() {
     const pubKeyX = Array.from(spki.slice(offset + 1, offset + 33)).map(b => b.toString(16).padStart(2, "0")).join("");
     const pubKeyY = Array.from(spki.slice(offset + 33, offset + 65)).map(b => b.toString(16).padStart(2, "0")).join("");
 
-    const addressBytes = new Uint8Array(20);
-    crypto.getRandomValues(addressBytes);
-    const address = "0x" + Array.from(addressBytes).map(b => b.toString(16).padStart(2, "0")).join("");
+    // Address will be determined on deployment — show placeholder until then
+    const address = "0x" + "0".repeat(40) + "_pending";
 
     const accountNum = store.accounts.length + 1;
     const account = {
@@ -556,7 +619,9 @@ function handleDemoMode() {
 
 // ─── Deploy Banner ────────────────────────────────────
 
-const DEPLOY_SERVER = "http://139.99.149.238:3456";
+function getDeployServer() {
+  return store.deployServerUrl.replace(/\/$/, "");
+}
 
 function validateDeployResponse(info) {
   if (!info || typeof info !== "object") return false;
@@ -588,7 +653,7 @@ function applyDeployInfo(info) {
     chrome.storage.session.set({ celari_secret: info.secretKey });
   }
   if (info.privateKeyPkcs8) {
-    chrome.storage.session.set({ celari_keys: info.privateKeyPkcs8 });
+    chrome.storage.session.set({ celari_private_key: info.privateKeyPkcs8 });
   }
   // Register account with client-side PXE (offscreen document)
   if (info.secretKey && info.salt && info.publicKeyX && info.publicKeyY && info.privateKeyPkcs8) {
@@ -688,12 +753,12 @@ function renderAccountSelector() {
         const isActive = i === store.activeAccountIndex;
         const short = acc.address ? acc.address.slice(0, 6) + "..." + acc.address.slice(-4) : "New";
         const label = escapeHtml(acc.label || `Account ${i + 1}`);
-        return `<button class="account-chip ${isActive ? 'active' : ''}" data-index="${i}" style="
+        return `<button class="account-chip ${isActive ? 'active' : ''}" data-index="${i}" title="Double-click to rename" style="
           padding:6px 10px;border:1px solid ${isActive ? 'rgba(200,121,65,0.4)' : 'var(--border)'};
           background:${isActive ? 'rgba(200,121,65,0.08)' : 'var(--bg-elevated)'};
           color:${isActive ? 'var(--copper)' : 'var(--text-dim)'};
           font-family:IBM Plex Mono,monospace;font-size:8px;cursor:pointer;white-space:nowrap;letter-spacing:0.5px
-        ">${label} <span style="opacity:0.6">${escapeHtml(short)}</span></button>`;
+        "><span class="chip-label">${label}</span> <span style="opacity:0.6">${escapeHtml(short)}</span></button>`;
       }).join("")}
       <button id="btn-add-account" style="padding:6px 10px;border:1px dashed var(--border);background:none;color:var(--text-faint);font-family:IBM Plex Mono,monospace;font-size:10px;cursor:pointer">+</button>
     </div>`;
@@ -717,8 +782,8 @@ function renderDashboard() {
       <div class="balance-label">Total Balance</div>
       <div class="balance-amount">${escapeHtml(totalValue)}</div>
       <div class="balance-address">
-        <code>${escapeHtml(shortAddr)}</code>
-        <button class="copy-btn" id="btn-copy-addr" title="Copy address">${icons.copy}</button>
+        ${isDeployed || !isPasskey ? `<code>${escapeHtml(shortAddr)}</code>
+        <button class="copy-btn" id="btn-copy-addr" title="Copy address">${icons.copy}</button>` : `<code style="color:var(--text-faint)">Deploy to get address</code>`}
         <span style="margin-left:4px;font-family:IBM Plex Mono,monospace;font-size:8px;letter-spacing:2px;color:${isDeployed ? 'var(--green)' : isPasskey ? 'var(--copper)' : 'var(--text-dim)'}">${isDeployed ? 'DEPLOYED' : isPasskey ? 'PENDING' : 'DEMO'}</span>
       </div>
     </div>
@@ -726,7 +791,7 @@ function renderDashboard() {
     ${needsDeploy ? renderDeployBanner() : ''}
     ${!needsDeploy && isDeployed ? renderSyncBar() : ''}
 
-    ${store.accounts.length > 1 ? renderAccountSelector() : ''}
+    ${renderAccountSelector()}
 
     <div class="actions">
       <button class="action-btn" id="btn-send">
@@ -754,6 +819,7 @@ function renderDashboard() {
 
     <div class="tabs">
       <div class="tab active" id="tab-tokens">Tokens</div>
+      <div class="tab" id="tab-nfts">NFTs</div>
       <div class="tab" id="tab-activity">Activity</div>
       <button id="btn-add-token" title="Add custom token" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:4px 8px;font-size:16px;font-family:IBM Plex Mono,monospace;transition:color 0.2s;margin-left:auto">+</button>
     </div>
@@ -815,11 +881,18 @@ function renderActivityList() {
 
 let syncInterval = null;
 
+function clearSyncInterval() {
+  if (syncInterval) {
+    clearInterval(syncInterval);
+    syncInterval = null;
+  }
+}
+
 function bindDashboard() {
   // Start sync polling if deployed
   const account = getActiveAccount();
+  clearSyncInterval();
   if (account?.deployed) {
-    if (syncInterval) clearInterval(syncInterval);
     syncInterval = startSyncPolling();
   }
 
@@ -918,7 +991,7 @@ function bindDashboard() {
       // --- Fallback: server-side deploy ---
       if (!deployed) {
         statusEl.textContent = "Connecting to deploy server...";
-        const health = await fetch(DEPLOY_SERVER + "/api/health", {
+        const health = await fetch(getDeployServer() + "/api/health", {
           signal: AbortSignal.timeout(10000),
         }).catch(() => null);
 
@@ -933,7 +1006,7 @@ function bindDashboard() {
         }
 
         statusEl.textContent = "Deploying via server... (30-120s)";
-        const res = await fetch(DEPLOY_SERVER + "/api/deploy", {
+        const res = await fetch(getDeployServer() + "/api/deploy", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: "{}",
@@ -958,14 +1031,13 @@ function bindDashboard() {
     }
   });
 
-  // Account selector chips
+  // Account selector chips — click to switch, dblclick to rename
   document.querySelectorAll(".account-chip").forEach(chip => {
     chip.addEventListener("click", () => {
       const idx = parseInt(chip.dataset.index);
       if (idx !== store.activeAccountIndex) {
         store.activeAccountIndex = idx;
         chrome.runtime.sendMessage({ type: "SET_ACTIVE_ACCOUNT", index: idx });
-        // Tell PXE to switch active account
         const acct = store.accounts[idx];
         if (acct?.address) {
           chrome.runtime.sendMessage({ type: "PXE_SET_ACTIVE_ACCOUNT", data: { address: acct.address } });
@@ -974,12 +1046,45 @@ function bindDashboard() {
         setState({});
       }
     });
+
+    chip.addEventListener("dblclick", (e) => {
+      e.preventDefault();
+      const idx = parseInt(chip.dataset.index);
+      const labelSpan = chip.querySelector(".chip-label");
+      if (!labelSpan) return;
+
+      const currentLabel = store.accounts[idx]?.label || `Account ${idx + 1}`;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = currentLabel;
+      input.maxLength = 24;
+      input.className = "account-chip-edit";
+      input.style.cssText = "width:60px;padding:2px 4px;border:1px solid var(--copper);background:var(--bg);color:var(--copper);font-family:IBM Plex Mono,monospace;font-size:8px;outline:none";
+
+      const finishRename = () => {
+        const newLabel = input.value.trim();
+        if (newLabel && newLabel !== currentLabel) {
+          store.accounts[idx].label = newLabel;
+          chrome.runtime.sendMessage({ type: "RENAME_ACCOUNT", index: idx, label: newLabel });
+        }
+        render();
+      };
+
+      input.addEventListener("blur", finishRename);
+      input.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") input.blur();
+        if (ev.key === "Escape") { input.value = currentLabel; input.blur(); }
+      });
+
+      labelSpan.replaceWith(input);
+      input.focus();
+      input.select();
+    });
   });
 
   // Add account button
   document.getElementById("btn-add-account")?.addEventListener("click", () => {
-    showToast("Creating new account...", "success");
-    handleCreatePasskey();
+    setState({ screen: "add-account" });
   });
 
   // JSON import
@@ -1014,11 +1119,22 @@ function bindDashboard() {
     bindTokenRemoveButtons();
   });
 
+  document.getElementById("tab-nfts")?.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    document.getElementById("tab-nfts").classList.add("active");
+    document.getElementById("content-area").innerHTML = renderNftList();
+    bindNftItems();
+    fetchNftBalances();
+  });
+
   document.getElementById("tab-activity")?.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
     document.getElementById("tab-activity").classList.add("active");
     document.getElementById("content-area").innerHTML = renderActivityList();
   });
+
+  // WalletConnect header icon
+  document.getElementById("btn-walletconnect")?.addEventListener("click", () => setState({ screen: "walletconnect" }));
 
   bindTokenRemoveButtons();
 }
@@ -1091,7 +1207,11 @@ function renderSend() {
 function bindSend() {
   document.getElementById("btn-back")?.addEventListener("click", () => setState({ screen: "dashboard" }));
   document.getElementById("btn-max")?.addEventListener("click", () => {
-    document.getElementById("send-amount").value = "1,250.00";
+    // Read actual balance of selected token
+    const selectedSymbol = document.getElementById("send-token")?.value;
+    const token = store.tokens.find(t => t.symbol === selectedSymbol);
+    const balance = token?.balance?.replace(/,/g, "") || "0";
+    document.getElementById("send-amount").value = balance;
   });
   document.getElementById("btn-confirm-send")?.addEventListener("click", handleSendConfirm);
 
@@ -1169,17 +1289,24 @@ async function handleSendConfirm() {
       if (!assertion) throw new Error("Passkey verification cancelled");
     }
 
-    // Find token address from store
-    const tokenInfo = store.tokenAddresses?.[tokenSymbol];
+    // Find token address from store or custom tokens
+    let tokenInfo = store.tokenAddresses?.[tokenSymbol];
     if (!tokenInfo) {
-      throw new Error("Token address not found. Please refresh.");
+      // Try custom tokens
+      const customToken = store.customTokens.find(t => t.symbol === tokenSymbol);
+      if (customToken?.contractAddress) {
+        tokenInfo = customToken.contractAddress;
+      }
+    }
+    if (!tokenInfo) {
+      throw new Error("Token address not found. Deploy your account and wait for balances to load.");
     }
 
     // Try client-side PXE first (WASM proving), fall back to deploy server
     let result;
     const hasPxeKeys = await new Promise((resolve) => {
-      chrome.storage.session.get(["celari_keys", "celari_secret"], (data) => {
-        resolve(!!(data.celari_keys && data.celari_secret));
+      chrome.storage.session.get(["celari_private_key", "celari_secret"], (data) => {
+        resolve(!!(data.celari_private_key && data.celari_secret));
       });
     });
 
@@ -1209,7 +1336,7 @@ async function handleSendConfirm() {
     // Fallback: deploy server mint-based transfer
     if (!result) {
       btn.textContent = "Sending to network...";
-      const res = await fetch(DEPLOY_SERVER + "/api/transfer", {
+      const res = await fetch(getDeployServer() + "/api/transfer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1262,12 +1389,13 @@ function renderReceive() {
     ${renderSubHeader("My Address", "dashboard")}
 
     <div style="padding:20px 16px;text-align:center">
-      <div style="width:200px;height:200px;margin:0 auto 16px;background:#E8D8CC;display:flex;align-items:center;justify-content:center;position:relative">
+      <div style="width:200px;height:200px;margin:0 auto 8px;background:#E8D8CC;display:flex;align-items:center;justify-content:center;position:relative">
         ${renderSimpleQR(address)}
         <div style="position:absolute;background:#1C1616;width:36px;height:36px;display:flex;align-items:center;justify-content:center;">
           <span style="font-family:Poiret One,cursive;font-size:18px;color:#C87941">C</span>
         </div>
       </div>
+      <div style="font-family:IBM Plex Mono,monospace;font-size:7px;color:var(--text-faint);margin-bottom:12px;letter-spacing:1px;opacity:0.6">DECORATIVE ONLY — USE COPY BUTTON BELOW</div>
 
       <div style="font-family:IBM Plex Mono,monospace;font-size:8px;letter-spacing:4px;color:var(--text-faint);margin-bottom:8px;text-transform:uppercase">My Address on Aztec</div>
 
@@ -1482,7 +1610,11 @@ function renderSettings() {
         ${renderNetworkRow("local", "Local Sandbox", "localhost:8080")}
         ${renderNetworkRow("devnet", "Aztec Devnet", "devnet-6.aztec-labs.com")}
         ${renderNetworkRow("testnet", "Aztec Testnet", "rpc.testnet.aztec-labs.com")}
-        ${store.customNetworks.map(n => renderNetworkRow(n.id, n.name, new URL(n.url).host, true)).join("")}
+        ${store.customNetworks.map(n => {
+          let host;
+          try { host = new URL(n.url).host; } catch { host = n.url; }
+          return renderNetworkRow(n.id, n.name, host, true);
+        }).join("")}
       </div>
 
       <div id="custom-rpc-section" style="margin-bottom:16px">
@@ -1509,6 +1641,15 @@ function renderSettings() {
         <div style="display:flex;justify-content:space-between"><span>Chain ID</span><span style="color:var(--text-muted)">${escapeHtml(String(store.nodeInfo?.l1ChainId || '-'))}</span></div>
       </div>` : ''}
 
+      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Deploy Server</div>
+      <div style="background:var(--bg-card);border:1px solid var(--border);margin-bottom:16px;padding:12px">
+        <div class="form-group" style="margin-bottom:8px">
+          <label class="form-label" style="font-size:9px;color:var(--text-dim)">Server URL</label>
+          <input type="text" class="form-input" id="deploy-server-url" value="${escapeHtml(store.deployServerUrl)}" placeholder="http://localhost:3456" autocomplete="off" style="padding:8px 10px;font-size:11px;font-family:IBM Plex Mono,monospace" />
+        </div>
+        <button id="btn-save-deploy-server" class="btn btn-secondary" style="width:100%;padding:8px;font-size:8px">SAVE</button>
+      </div>
+
       <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Security</div>
       <div style="background:var(--bg-card);border:1px solid var(--border);margin-bottom:16px;overflow:hidden">
         <div style="padding:12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)">
@@ -1527,9 +1668,35 @@ function renderSettings() {
         </div>
       </div>
 
+      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Backup & Recovery</div>
+      <div style="background:var(--bg-card);border:1px solid var(--border);margin-bottom:16px;overflow:hidden">
+        <div id="btn-backup-export" class="settings-row" style="padding:12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);cursor:pointer">
+          <span style="color:var(--copper)">${icons.shield}</span>
+          <div style="flex:1">
+            <div style="font-weight:400;font-size:12px;color:var(--text-warm)">Export Backup</div>
+            <div style="font-size:10px;color:var(--text-dim)">Encrypted JSON file</div>
+          </div>
+        </div>
+        <div id="btn-backup-import" class="settings-row" style="padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer">
+          <span style="color:var(--copper)">${icons.download}</span>
+          <div style="flex:1">
+            <div style="font-weight:400;font-size:12px;color:var(--text-warm)">Import Backup</div>
+            <div style="font-size:10px;color:var(--text-dim)">Restore from encrypted file</div>
+          </div>
+        </div>
+      </div>
+
       <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Actions</div>
       <div style="background:var(--bg-card);border:1px solid var(--border);margin-bottom:16px;overflow:hidden">
-        <div id="btn-logout" style="padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer">
+        ${store.accounts.length > 1 ? `
+        <div id="btn-delete-account" class="settings-row" style="padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer;border-bottom:1px solid var(--border)">
+          <span style="color:var(--red)">&times;</span>
+          <div style="flex:1">
+            <div style="font-weight:400;font-size:12px;color:var(--red)">Delete Account</div>
+            <div style="font-size:10px;color:var(--text-dim)">Remove "${escapeHtml(account?.label || 'this account')}" permanently</div>
+          </div>
+        </div>` : ''}
+        <div id="btn-logout" class="settings-row" style="padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer">
           <span style="color:var(--red)">${icons.back}</span>
           <div style="flex:1">
             <div style="font-weight:400;font-size:12px;color:var(--red)">Log Out</div>
@@ -1689,15 +1856,50 @@ function bindSettings() {
     });
   });
 
+  // Save deploy server URL
+  document.getElementById("btn-save-deploy-server")?.addEventListener("click", () => {
+    const urlInput = document.getElementById("deploy-server-url");
+    const url = urlInput?.value?.trim();
+    if (!url) { showToast("Enter a server URL", "error"); return; }
+    try { new URL(url); } catch { showToast("Invalid URL format", "error"); return; }
+    store.deployServerUrl = url;
+    chrome.storage.local.set({ celari_deploy_server: url });
+    showToast("Deploy server saved", "success");
+  });
+
+  // Delete current account
+  document.getElementById("btn-delete-account")?.addEventListener("click", () => {
+    const account = getActiveAccount();
+    if (!confirm(`Delete "${account?.label || 'this account'}"? This cannot be undone.`)) return;
+    chrome.runtime.sendMessage({ type: "DELETE_ACCOUNT", index: store.activeAccountIndex }, (resp) => {
+      if (resp?.success) {
+        store.accounts = resp.accounts;
+        store.activeAccountIndex = resp.activeAccountIndex;
+        store.tokens = getTokenList();
+        fetchRealBalances();
+        setState({ screen: "dashboard" });
+        showToast("Account deleted", "success");
+      } else {
+        showToast(resp?.error || "Delete failed", "error");
+      }
+    });
+  });
+
+  // Backup & Recovery
+  document.getElementById("btn-backup-export")?.addEventListener("click", () => setState({ screen: "backup" }));
+  document.getElementById("btn-backup-import")?.addEventListener("click", () => setState({ screen: "restore" }));
+
   document.getElementById("btn-logout")?.addEventListener("click", async () => {
     if (!confirm("Are you sure you want to reset the wallet? All data will be deleted.")) return;
-    await chrome.storage.local.remove(["celari_accounts", "celari_deploy_info", "celari_custom_tokens", "celari_custom_networks"]);
-    await chrome.storage.session.remove(["celari_keys", "celari_secret"]);
+    await chrome.storage.local.remove(["celari_accounts", "celari_deploy_info", "celari_custom_tokens", "celari_custom_networks", "celari_deploy_server", "celari_custom_nft_contracts"]);
+    await chrome.storage.session.remove(["celari_keys", "celari_secret", "celari_private_key"]);
     store.accounts = [];
     store.tokens = [];
     store.customTokens = [];
     store.customNetworks = [];
     store.activities = [];
+    store.nfts = [];
+    store.customNftContracts = [];
     store.activeAccountIndex = 0;
     setState({ screen: "onboarding" });
     showToast("Wallet reset", "success");
@@ -1718,6 +1920,7 @@ function renderHeader() {
           <div class="network-dot ${store.connected ? '' : 'disconnected'}"></div>
           ${store.network === "devnet" ? "Devnet" : store.network === "testnet" ? "Testnet" : store.network === "local" ? "Sandbox" : escapeHtml(store.customNetworks.find(n => n.id === store.network)?.name || "Custom")}
         </div>
+        <button id="btn-walletconnect" title="WalletConnect" style="background:none;border:none;color:${store.wcSessions.length ? 'var(--green)' : 'var(--text-dim)'};cursor:pointer;padding:4px;display:flex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5.5 8.5c3.6-3.6 9.4-3.6 13 0"/><path d="M8 11c2.2-2.2 5.8-2.2 8 0"/><path d="M10.5 13.5c.8-.8 2.2-.8 3 0"/></svg></button>
         <button id="btn-settings" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:4px;display:flex">${icons.settings}</button>
       </div>
     </div>`;
@@ -1864,6 +2067,762 @@ function bindConfirmTx() {
     window.close();
   });
 }
+
+// ─── Screen: Add Account (Phase 1) ────────────────────
+
+function renderAddAccount() {
+  return `
+    ${renderSubHeader("Add Account", "dashboard")}
+    <div class="onboarding" style="padding:24px">
+      <div style="width:100%;margin-bottom:16px">
+        <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:12px">Choose Method</div>
+
+        <div id="btn-new-passkey-account" class="settings-row" style="background:var(--bg-card);border:1px solid var(--border);padding:16px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;gap:12px">
+          <div style="width:36px;height:36px;border:1px solid var(--border);transform:rotate(45deg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <span style="transform:rotate(-45deg);color:var(--copper)">${icons.lock}</span>
+          </div>
+          <div>
+            <div style="font-weight:400;font-size:13px;color:var(--text-warm);margin-bottom:2px">New Passkey Account</div>
+            <div style="font-size:10px;color:var(--text-dim)">Create with Face ID / fingerprint</div>
+          </div>
+        </div>
+
+        <div id="btn-import-backup-account" class="settings-row" style="background:var(--bg-card);border:1px solid var(--border);padding:16px;cursor:pointer;display:flex;align-items:center;gap:12px">
+          <div style="width:36px;height:36px;border:1px solid var(--border);transform:rotate(45deg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <span style="transform:rotate(-45deg);color:var(--copper)">${icons.download}</span>
+          </div>
+          <div>
+            <div style="font-weight:400;font-size:13px;color:var(--text-warm);margin-bottom:2px">Import from Backup</div>
+            <div style="font-size:10px;color:var(--text-dim)">Restore encrypted JSON backup</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function bindAddAccount() {
+  document.getElementById("btn-back")?.addEventListener("click", () => setState({ screen: "dashboard" }));
+  document.getElementById("btn-new-passkey-account")?.addEventListener("click", () => {
+    showToast("Creating new account...", "success");
+    handleCreatePasskey();
+  });
+  document.getElementById("btn-import-backup-account")?.addEventListener("click", () => {
+    setState({ screen: "restore" });
+  });
+}
+
+// ─── Screen: Backup Export (Phase 2) ──────────────────
+
+async function encryptBackup(data, password) {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: 600000, hash: "SHA-256" },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt"],
+  );
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(JSON.stringify(data)));
+  return { v: 1, salt: Array.from(salt), iv: Array.from(iv), data: Array.from(new Uint8Array(encrypted)) };
+}
+
+async function decryptBackup(blob, password) {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt: new Uint8Array(blob.salt), iterations: 600000, hash: "SHA-256" },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["decrypt"],
+  );
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: new Uint8Array(blob.iv) },
+    key,
+    new Uint8Array(blob.data),
+  );
+  return JSON.parse(new TextDecoder().decode(decrypted));
+}
+
+function renderBackup() {
+  const account = getActiveAccount();
+  return `
+    ${renderSubHeader("Export Backup", "settings")}
+    <div style="padding:16px">
+      <div style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);padding:12px;margin-bottom:16px">
+        <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--red);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Warning</div>
+        <div style="font-size:10px;color:var(--text-dim);line-height:1.5">This backup contains your private keys. Store it securely and never share it.</div>
+      </div>
+
+      <div style="background:var(--bg-card);border:1px solid var(--border);padding:12px;margin-bottom:16px">
+        <div style="font-size:11px;color:var(--text-warm);margin-bottom:4px">${escapeHtml(account?.label || "Account")}</div>
+        <div style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--text-dim);word-break:break-all">${escapeHtml(account?.address || "")}</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Encryption Password</label>
+        <input type="password" class="form-input" id="backup-password" placeholder="Enter a strong password" autocomplete="new-password" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirm Password</label>
+        <input type="password" class="form-input" id="backup-password-confirm" placeholder="Repeat password" autocomplete="new-password" />
+      </div>
+
+      <div id="backup-status" style="display:none;padding:10px;margin-bottom:14px;font-family:IBM Plex Mono,monospace;font-size:9px"></div>
+
+      <button id="btn-do-backup" class="btn btn-primary">Export Encrypted Backup</button>
+    </div>`;
+}
+
+function bindBackup() {
+  document.getElementById("btn-back")?.addEventListener("click", () => setState({ screen: "settings" }));
+
+  document.getElementById("btn-do-backup")?.addEventListener("click", async () => {
+    const pw = document.getElementById("backup-password")?.value;
+    const pw2 = document.getElementById("backup-password-confirm")?.value;
+    const statusEl = document.getElementById("backup-status");
+
+    if (!pw || pw.length < 8) {
+      showBackupStatus(statusEl, "Password must be at least 8 characters", true);
+      return;
+    }
+    if (pw !== pw2) {
+      showBackupStatus(statusEl, "Passwords do not match", true);
+      return;
+    }
+
+    const btn = document.getElementById("btn-do-backup");
+    btn.disabled = true;
+    btn.textContent = "ENCRYPTING...";
+    showBackupStatus(statusEl, "Collecting account data...", false);
+
+    try {
+      const account = getActiveAccount();
+      // Collect sensitive keys from session storage
+      const sessionData = await chrome.storage.session.get(["celari_secret", "celari_private_key"]);
+
+      const backupData = {
+        version: 1,
+        timestamp: new Date().toISOString(),
+        label: account.label,
+        address: account.address,
+        publicKeyX: account.publicKeyX,
+        publicKeyY: account.publicKeyY,
+        secretKey: sessionData.celari_secret || account.secretKey,
+        salt: account.salt,
+        privateKeyPkcs8: sessionData.celari_private_key || account.privateKeyPkcs8,
+        network: store.network,
+        credentialId: account.credentialId,
+      };
+
+      if (!backupData.secretKey || !backupData.salt) {
+        throw new Error("Account keys not available. Deploy your account first or ensure you have an active session.");
+      }
+
+      showBackupStatus(statusEl, "Encrypting with AES-256-GCM...", false);
+      const encrypted = await encryptBackup(backupData, pw);
+
+      // Download as file
+      const blob = new Blob([JSON.stringify(encrypted)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `celari-backup-${account.label?.replace(/\s+/g, "-") || "account"}-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showBackupStatus(statusEl, "Backup exported successfully!", false);
+      showToast("Backup saved", "success");
+    } catch (e) {
+      showBackupStatus(statusEl, sanitizeError(e), true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "EXPORT ENCRYPTED BACKUP";
+    }
+  });
+}
+
+function showBackupStatus(el, msg, isError) {
+  if (!el) return;
+  el.style.display = "block";
+  el.style.background = isError ? "rgba(239,68,68,0.05)" : "var(--green-glow)";
+  el.style.border = isError ? "1px solid rgba(239,68,68,0.2)" : "1px solid rgba(74,222,128,0.15)";
+  el.style.color = isError ? "var(--red)" : "var(--green)";
+  el.textContent = msg;
+}
+
+// ─── Screen: Restore from Backup (Phase 2) ────────────
+
+function renderRestore() {
+  return `
+    ${renderSubHeader("Import Backup", store.accounts.length > 0 ? "settings" : "onboarding")}
+    <div style="padding:16px">
+      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:12px">Encrypted Backup</div>
+
+      <div id="restore-drop-zone" style="background:var(--bg-card);border:2px dashed var(--border);padding:24px;text-align:center;margin-bottom:16px;cursor:pointer;transition:border-color 0.3s">
+        <div style="font-size:24px;margin-bottom:8px;opacity:0.3;color:var(--copper)">&#9671;</div>
+        <div style="font-size:10px;color:var(--text-dim);letter-spacing:1px">Click or drop .celari-backup.json file</div>
+        <input type="file" id="restore-file" accept=".json" style="display:none" />
+      </div>
+
+      <div id="restore-file-info" style="display:none;background:var(--bg-card);border:1px solid var(--border);padding:12px;margin-bottom:16px">
+        <div style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--copper)" id="restore-filename"></div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Decryption Password</label>
+        <input type="password" class="form-input" id="restore-password" placeholder="Enter backup password" autocomplete="off" />
+      </div>
+
+      <div id="restore-status" style="display:none;padding:10px;margin-bottom:14px;font-family:IBM Plex Mono,monospace;font-size:9px"></div>
+
+      <button id="btn-do-restore" class="btn btn-primary" disabled>Decrypt & Import</button>
+    </div>`;
+}
+
+let restoreFileData = null;
+
+function bindRestore() {
+  const backScreen = store.accounts.length > 0 ? "settings" : "onboarding";
+  document.getElementById("btn-back")?.addEventListener("click", () => setState({ screen: backScreen }));
+
+  const dropZone = document.getElementById("restore-drop-zone");
+  const fileInput = document.getElementById("restore-file");
+
+  dropZone?.addEventListener("click", () => fileInput?.click());
+  dropZone?.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.style.borderColor = "var(--copper)"; });
+  dropZone?.addEventListener("dragleave", () => { dropZone.style.borderColor = "var(--border)"; });
+  dropZone?.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = "var(--border)";
+    const file = e.dataTransfer.files[0];
+    if (file) handleRestoreFile(file);
+  });
+
+  fileInput?.addEventListener("change", (e) => {
+    if (e.target.files[0]) handleRestoreFile(e.target.files[0]);
+  });
+
+  document.getElementById("btn-do-restore")?.addEventListener("click", handleRestoreDecrypt);
+}
+
+function handleRestoreFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      restoreFileData = JSON.parse(reader.result);
+      if (!restoreFileData.v || !restoreFileData.salt || !restoreFileData.iv || !restoreFileData.data) {
+        throw new Error("Invalid backup format");
+      }
+      document.getElementById("restore-file-info").style.display = "block";
+      document.getElementById("restore-filename").textContent = file.name;
+      document.getElementById("btn-do-restore").disabled = false;
+    } catch {
+      showBackupStatus(document.getElementById("restore-status"), "Invalid backup file format", true);
+      restoreFileData = null;
+    }
+  };
+  reader.readAsText(file);
+}
+
+async function handleRestoreDecrypt() {
+  if (!restoreFileData) return;
+  const pw = document.getElementById("restore-password")?.value;
+  const statusEl = document.getElementById("restore-status");
+
+  if (!pw) {
+    showBackupStatus(statusEl, "Enter the decryption password", true);
+    return;
+  }
+
+  const btn = document.getElementById("btn-do-restore");
+  btn.disabled = true;
+  btn.textContent = "DECRYPTING...";
+  showBackupStatus(statusEl, "Decrypting backup...", false);
+
+  try {
+    const data = await decryptBackup(restoreFileData, pw);
+
+    if (!data.address || !data.publicKeyX || !data.publicKeyY) {
+      throw new Error("Backup data is incomplete");
+    }
+
+    showBackupStatus(statusEl, "Registering account...", false);
+
+    // Check for duplicate
+    const exists = store.accounts.find(a => a.address === data.address);
+    if (exists) {
+      throw new Error("This account is already imported");
+    }
+
+    // Create account entry
+    const accountNum = store.accounts.length + 1;
+    const account = {
+      address: data.address,
+      credentialId: data.credentialId || "",
+      publicKeyX: data.publicKeyX,
+      publicKeyY: data.publicKeyY,
+      type: "passkey",
+      label: data.label || `Restored ${accountNum}`,
+      deployed: true,
+      salt: data.salt,
+      secretKey: data.secretKey,
+      privateKeyPkcs8: data.privateKeyPkcs8,
+      createdAt: data.timestamp || new Date().toISOString(),
+    };
+
+    store.accounts.push(account);
+    store.activeAccountIndex = store.accounts.length - 1;
+    await chrome.storage.local.set({ celari_accounts: store.accounts });
+    chrome.runtime.sendMessage({ type: "SAVE_ACCOUNT", account });
+
+    // Store sensitive keys in session storage
+    if (data.secretKey) await chrome.storage.session.set({ celari_secret: data.secretKey });
+    if (data.privateKeyPkcs8) await chrome.storage.session.set({ celari_private_key: data.privateKeyPkcs8 });
+
+    // Register with PXE
+    if (data.secretKey && data.salt && data.privateKeyPkcs8) {
+      chrome.runtime.sendMessage({
+        type: "PXE_REGISTER_ACCOUNT",
+        data: {
+          publicKeyX: data.publicKeyX,
+          publicKeyY: data.publicKeyY,
+          secretKey: data.secretKey,
+          salt: data.salt,
+          privateKeyPkcs8: data.privateKeyPkcs8,
+        },
+      });
+    }
+
+    store.tokens = getTokenList();
+    setState({ screen: "dashboard" });
+    showToast("Account restored successfully!", "success");
+  } catch (e) {
+    const msg = e.message?.includes("decrypt") ? "Wrong password or corrupted backup" : sanitizeError(e);
+    showBackupStatus(statusEl, msg, true);
+    btn.disabled = false;
+    btn.textContent = "DECRYPT & IMPORT";
+  }
+}
+
+// ─── Screen: NFT Detail (Phase 3) ────────────────────
+
+function renderNftList() {
+  if (store.nfts.length === 0) {
+    return `<div style="text-align:center;padding:32px 16px;color:var(--text-dim)">
+      <div style="font-size:24px;margin-bottom:8px;opacity:0.3">&#9671;</div>
+      <p style="font-size:10px;letter-spacing:2px;text-transform:uppercase;margin:0">No NFTs found</p>
+      <button id="btn-add-nft-contract" class="btn btn-secondary" style="margin-top:12px;padding:8px 16px;font-size:8px">ADD NFT CONTRACT</button>
+    </div>`;
+  }
+  return store.nfts.map(nft => `
+    <div class="token-item nft-item" data-contract="${escapeHtml(nft.contractAddress)}" data-token-id="${escapeHtml(nft.tokenId)}" style="cursor:pointer">
+      <div class="token-icon" style="border-color:#9A7B5B">
+        <span style="transform:rotate(-45deg);color:#9A7B5B;font-family:Poiret One,cursive;font-size:10px">NFT</span>
+      </div>
+      <div class="token-info">
+        <div class="token-name">${escapeHtml(nft.contractSymbol || "NFT")} #${escapeHtml(nft.tokenId)}</div>
+        <div class="token-symbol">${escapeHtml(nft.contractName || "Unknown")}${nft.isPrivate ? ' <span style="color:var(--green);font-size:7px">SHIELDED</span>' : ''}</div>
+      </div>
+      <div style="font-size:8px;color:var(--text-faint);font-family:IBM Plex Mono,monospace">
+        ${nft.isPrivate ? 'Private' : 'Public'}
+      </div>
+    </div>`).join("") + `
+    <div style="padding:8px 0;text-align:center">
+      <button id="btn-add-nft-contract" style="background:none;border:1px dashed var(--border);color:var(--text-faint);cursor:pointer;padding:6px 12px;font-family:IBM Plex Mono,monospace;font-size:8px;letter-spacing:1px">+ ADD NFT CONTRACT</button>
+    </div>`;
+}
+
+function bindNftItems() {
+  document.querySelectorAll(".nft-item").forEach(item => {
+    item.addEventListener("click", () => {
+      store.nftDetail = {
+        contractAddress: item.dataset.contract,
+        tokenId: item.dataset.tokenId,
+      };
+      setState({ screen: "nft-detail" });
+    });
+  });
+  document.getElementById("btn-add-nft-contract")?.addEventListener("click", () => setState({ screen: "add-nft-contract" }));
+}
+
+function renderNftDetail() {
+  const nft = store.nfts.find(n =>
+    n.contractAddress === store.nftDetail?.contractAddress && n.tokenId === store.nftDetail?.tokenId
+  );
+  if (!nft) {
+    return `${renderSubHeader("NFT Detail", "dashboard")}
+    <div style="padding:32px 16px;text-align:center;color:var(--text-dim)">NFT not found</div>`;
+  }
+  return `
+    ${renderSubHeader("NFT Detail", "dashboard")}
+    <div style="padding:16px">
+      <div style="background:var(--bg-card);border:1px solid var(--border);padding:20px;text-align:center;margin-bottom:16px">
+        <div style="width:80px;height:80px;margin:0 auto 12px;border:2px solid var(--bronze);transform:rotate(45deg);display:flex;align-items:center;justify-content:center">
+          <span style="transform:rotate(-45deg);font-family:Poiret One,cursive;font-size:24px;color:var(--bronze)">NFT</span>
+        </div>
+        <div style="font-family:Poiret One,cursive;font-size:20px;color:var(--text-warm);letter-spacing:2px">${escapeHtml(nft.contractSymbol)} #${escapeHtml(nft.tokenId)}</div>
+        <div style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--text-dim);margin-top:4px">${escapeHtml(nft.contractName)}</div>
+        <div style="margin-top:8px;font-size:8px;padding:3px 10px;display:inline-block;font-family:IBM Plex Mono,monospace;letter-spacing:2px;
+          background:${nft.isPrivate ? 'var(--green-glow)' : 'rgba(200,121,65,0.08)'};
+          border:1px solid ${nft.isPrivate ? 'rgba(74,222,128,0.15)' : 'rgba(200,121,65,0.2)'};
+          color:${nft.isPrivate ? 'var(--green)' : 'var(--copper)'}">
+          ${nft.isPrivate ? 'PRIVATE' : 'PUBLIC'}
+        </div>
+      </div>
+
+      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Contract</div>
+      <div style="background:var(--bg-card);border:1px solid var(--border);padding:10px 12px;margin-bottom:16px;font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--text-dim);word-break:break-all">${escapeHtml(nft.contractAddress)}</div>
+
+      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Transfer</div>
+      <div class="form-group">
+        <label class="form-label">Recipient Address</label>
+        <input type="text" class="form-input" id="nft-transfer-to" placeholder="0x..." autocomplete="off" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Transfer Type</label>
+        <div style="display:flex;gap:6px" id="nft-transfer-type-group">
+          <button class="transfer-type-btn active" data-type="private" style="flex:1;padding:8px 4px;border:1px solid rgba(74,222,128,0.3);background:rgba(74,222,128,0.08);color:var(--green);font-family:IBM Plex Mono,monospace;font-size:8px;cursor:pointer;letter-spacing:1px">PRIVATE</button>
+          <button class="transfer-type-btn" data-type="public" style="flex:1;padding:8px 4px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-dim);font-family:IBM Plex Mono,monospace;font-size:8px;cursor:pointer;letter-spacing:1px">PUBLIC</button>
+        </div>
+      </div>
+      <button id="btn-nft-transfer" class="btn btn-primary">Transfer NFT</button>
+    </div>`;
+}
+
+function bindNftDetail() {
+  document.getElementById("btn-back")?.addEventListener("click", () => setState({ screen: "dashboard" }));
+
+  let nftTransferType = "private";
+  document.querySelectorAll("#nft-transfer-type-group .transfer-type-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#nft-transfer-type-group .transfer-type-btn").forEach(b => {
+        b.classList.remove("active");
+        b.style.borderColor = "var(--border)";
+        b.style.background = "var(--bg-elevated)";
+        b.style.color = "var(--text-dim)";
+      });
+      btn.classList.add("active");
+      nftTransferType = btn.dataset.type;
+      if (nftTransferType === "private") {
+        btn.style.borderColor = "rgba(74,222,128,0.3)";
+        btn.style.background = "rgba(74,222,128,0.08)";
+        btn.style.color = "var(--green)";
+      } else {
+        btn.style.borderColor = "rgba(200,121,65,0.3)";
+        btn.style.background = "rgba(200,121,65,0.08)";
+        btn.style.color = "var(--copper)";
+      }
+    });
+  });
+
+  document.getElementById("btn-nft-transfer")?.addEventListener("click", async () => {
+    const to = document.getElementById("nft-transfer-to")?.value?.trim();
+    if (!to || !isValidAddress(to)) {
+      showToast("Enter a valid address", "error");
+      return;
+    }
+
+    const btn = document.getElementById("btn-nft-transfer");
+    btn.disabled = true;
+    btn.textContent = "TRANSFERRING...";
+
+    try {
+      const result = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+          type: "PXE_NFT_TRANSFER",
+          data: {
+            contractAddress: store.nftDetail.contractAddress,
+            tokenId: store.nftDetail.tokenId,
+            to,
+            transferType: nftTransferType,
+          },
+        }, (res) => {
+          if (res?.success && res.txHash) resolve(res);
+          else reject(new Error(res?.error || "NFT transfer failed"));
+        });
+      });
+
+      showToast(`NFT transferred! Block ${result.blockNumber}`, "success");
+      fetchNftBalances();
+      setState({ screen: "dashboard" });
+    } catch (e) {
+      showToast(sanitizeError(e), "error");
+      btn.disabled = false;
+      btn.textContent = "TRANSFER NFT";
+    }
+  });
+}
+
+// ─── Screen: Add NFT Contract (Phase 3) ──────────────
+
+function renderAddNftContract() {
+  return `
+    ${renderSubHeader("Add NFT Contract", "dashboard")}
+    <div style="padding:16px">
+      <div class="form-group">
+        <label class="form-label">NFT Contract Address</label>
+        <input type="text" class="form-input" id="nft-contract-address" placeholder="0x..." autocomplete="off" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Name</label>
+        <input type="text" class="form-input" id="nft-contract-name" placeholder="e.g. Aztec Punks" autocomplete="off" maxlength="32" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Symbol</label>
+        <input type="text" class="form-input" id="nft-contract-symbol" placeholder="e.g. APUNK" autocomplete="off" maxlength="10" />
+      </div>
+      <button id="btn-save-nft-contract" class="btn btn-primary" style="margin-bottom:16px">Add NFT Contract</button>
+
+      ${store.customNftContracts.length > 0 ? `
+      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Tracked NFT Contracts (${store.customNftContracts.length})</div>
+      <div style="background:var(--bg-card);border:1px solid var(--border);overflow:hidden">
+        ${store.customNftContracts.map(c => `
+        <div style="padding:10px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:11px;color:var(--text-warm)">${escapeHtml(c.name)} (${escapeHtml(c.symbol)})</div>
+            <div style="font-size:8px;color:var(--text-dim);font-family:IBM Plex Mono,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(c.address)}</div>
+          </div>
+          <button class="btn-remove-nft-contract" data-address="${escapeHtml(c.address)}" style="background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:14px;padding:2px 4px;transition:color 0.2s">&times;</button>
+        </div>`).join("")}
+      </div>` : ''}
+    </div>`;
+}
+
+function bindAddNftContract() {
+  document.getElementById("btn-back")?.addEventListener("click", () => setState({ screen: "dashboard" }));
+
+  document.getElementById("btn-save-nft-contract")?.addEventListener("click", () => {
+    const address = document.getElementById("nft-contract-address")?.value?.trim();
+    const name = document.getElementById("nft-contract-name")?.value?.trim();
+    const symbol = document.getElementById("nft-contract-symbol")?.value?.trim().toUpperCase();
+
+    if (!address || !isValidAddress(address)) { showToast("Enter a valid contract address", "error"); return; }
+    if (!name) { showToast("Enter a name", "error"); return; }
+    if (!symbol) { showToast("Enter a symbol", "error"); return; }
+
+    if (store.customNftContracts.find(c => c.address.toLowerCase() === address.toLowerCase())) {
+      showToast("Contract already added", "error");
+      return;
+    }
+
+    store.customNftContracts.push({ address, name, symbol });
+    chrome.storage.local.set({ celari_custom_nft_contracts: store.customNftContracts });
+    showToast(`${symbol} NFT contract added`, "success");
+    fetchNftBalances();
+    setState({ screen: "dashboard" });
+  });
+
+  document.querySelectorAll(".btn-remove-nft-contract").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const addr = btn.dataset.address;
+      store.customNftContracts = store.customNftContracts.filter(c => c.address !== addr);
+      chrome.storage.local.set({ celari_custom_nft_contracts: store.customNftContracts });
+      store.nfts = store.nfts.filter(n => n.contractAddress !== addr);
+      render();
+      showToast("Contract removed", "success");
+    });
+  });
+}
+
+async function fetchNftBalances() {
+  const account = getActiveAccount();
+  if (!account?.deployed || !account?.address || store.customNftContracts.length === 0) return;
+
+  try {
+    const res = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        type: "PXE_NFT_BALANCES",
+        data: { address: account.address, nftContracts: store.customNftContracts },
+      }, (r) => {
+        if (r?.success) resolve(r);
+        else reject(new Error(r?.error || "NFT query failed"));
+      });
+    });
+    if (Array.isArray(res.nfts)) {
+      store.nfts = res.nfts;
+    }
+  } catch (e) {
+    console.warn("NFT balance fetch:", e.message);
+  }
+}
+
+// ─── Screen: WalletConnect (Phase 4) ──────────────────
+
+function renderWalletConnect() {
+  return `
+    ${renderSubHeader("WalletConnect", "dashboard")}
+    <div style="padding:16px">
+      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:12px">New Connection</div>
+
+      <div class="form-group">
+        <label class="form-label">WalletConnect URI</label>
+        <input type="text" class="form-input" id="wc-uri" placeholder="wc:..." autocomplete="off" style="font-size:10px" />
+      </div>
+      <button id="btn-wc-pair" class="btn btn-primary" style="margin-bottom:20px">Connect</button>
+
+      <div id="wc-pair-status" style="display:none;padding:10px;margin-bottom:14px;font-family:IBM Plex Mono,monospace;font-size:9px"></div>
+
+      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Active Sessions (${store.wcSessions.length})</div>
+      ${store.wcSessions.length === 0
+        ? `<div style="text-align:center;padding:20px;color:var(--text-dim);font-size:10px">No active sessions</div>`
+        : `<div style="background:var(--bg-card);border:1px solid var(--border);overflow:hidden">
+          ${store.wcSessions.map(s => `
+          <div style="padding:12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:11px;color:var(--text-warm)">${escapeHtml(s.peerName || "Unknown dApp")}</div>
+              <div style="font-size:8px;color:var(--text-dim);font-family:IBM Plex Mono,monospace">${escapeHtml(s.peerUrl || "")}</div>
+            </div>
+            <button class="btn-wc-disconnect" data-topic="${escapeHtml(s.topic)}" style="background:none;border:1px solid rgba(239,68,68,0.3);color:var(--red);cursor:pointer;padding:4px 8px;font-family:IBM Plex Mono,monospace;font-size:7px;letter-spacing:1px">DISCONNECT</button>
+          </div>`).join("")}
+        </div>`}
+    </div>`;
+}
+
+function bindWalletConnect() {
+  document.getElementById("btn-back")?.addEventListener("click", () => setState({ screen: "dashboard" }));
+
+  document.getElementById("btn-wc-pair")?.addEventListener("click", async () => {
+    const uri = document.getElementById("wc-uri")?.value?.trim();
+    const statusEl = document.getElementById("wc-pair-status");
+    if (!uri || !uri.startsWith("wc:")) {
+      showBackupStatus(statusEl, "Enter a valid WalletConnect URI (wc:...)", true);
+      return;
+    }
+
+    const btn = document.getElementById("btn-wc-pair");
+    btn.disabled = true;
+    btn.textContent = "CONNECTING...";
+    showBackupStatus(statusEl, "Pairing with dApp...", false);
+
+    try {
+      const result = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ type: "PXE_WC_PAIR", data: { uri } }, (res) => {
+          if (res?.success) resolve(res);
+          else reject(new Error(res?.error || "Pairing failed"));
+        });
+      });
+      showBackupStatus(statusEl, "Connected!", false);
+      showToast("WalletConnect paired", "success");
+      refreshWcSessions();
+    } catch (e) {
+      showBackupStatus(statusEl, sanitizeError(e), true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "CONNECT";
+    }
+  });
+
+  document.querySelectorAll(".btn-wc-disconnect").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const topic = btn.dataset.topic;
+      try {
+        await new Promise((resolve, reject) => {
+          chrome.runtime.sendMessage({ type: "PXE_WC_DISCONNECT", data: { topic } }, (res) => {
+            if (res?.success) resolve(res);
+            else reject(new Error(res?.error || "Disconnect failed"));
+          });
+        });
+        showToast("Session disconnected", "success");
+        refreshWcSessions();
+      } catch (e) {
+        showToast(sanitizeError(e), "error");
+      }
+    });
+  });
+}
+
+async function refreshWcSessions() {
+  try {
+    const res = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: "PXE_WC_SESSIONS" }, (r) => {
+        if (r?.success) resolve(r);
+        else reject(new Error(r?.error || "Failed to fetch sessions"));
+      });
+    });
+    store.wcSessions = res.sessions || [];
+    render();
+  } catch {}
+}
+
+function renderWcApprove() {
+  const proposal = store.wcProposal;
+  if (!proposal) return renderLoading();
+
+  return `
+    <div class="onboarding" style="padding:28px 20px;gap:16px">
+      <div style="width:48px;height:48px;background:var(--burgundy);transform:rotate(45deg);display:flex;align-items:center;justify-content:center;margin-bottom:4px">
+        <span style="transform:rotate(-45deg);font-size:18px;color:var(--copper)">WC</span>
+      </div>
+      <h2 style="font-family:Poiret One,serif;font-size:18px;letter-spacing:2px;margin:0">SESSION REQUEST</h2>
+      <p style="font-size:10px;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase;margin:0">A dApp wants to connect</p>
+
+      <div style="width:100%;background:var(--bg-card);border:1px solid var(--border);padding:16px;margin:8px 0">
+        <div style="display:flex;justify-content:space-between;margin-bottom:10px">
+          <span style="font-size:10px;color:var(--text-dim);letter-spacing:1px">DAPP</span>
+          <span style="font-size:11px;color:var(--text-warm);font-family:IBM Plex Mono,monospace">${escapeHtml(proposal.peerName || "Unknown")}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="font-size:10px;color:var(--text-dim);letter-spacing:1px">URL</span>
+          <span style="font-size:11px;color:var(--copper);font-family:IBM Plex Mono,monospace">${escapeHtml(proposal.peerUrl || "")}</span>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:12px;width:100%;margin-top:8px">
+        <button id="btn-wc-reject" class="btn btn-secondary" style="flex:1">Reject</button>
+        <button id="btn-wc-approve" class="btn btn-primary" style="flex:1">Approve</button>
+      </div>
+    </div>`;
+}
+
+function bindWcApprove() {
+  document.getElementById("btn-wc-approve")?.addEventListener("click", async () => {
+    try {
+      await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ type: "PXE_WC_APPROVE", data: { proposalId: store.wcProposal?.id } }, (res) => {
+          if (res?.success) resolve(res);
+          else reject(new Error(res?.error || "Approve failed"));
+        });
+      });
+      store.wcProposal = null;
+      showToast("Session approved", "success");
+      setState({ screen: "dashboard" });
+    } catch (e) {
+      showToast(sanitizeError(e), "error");
+    }
+  });
+
+  document.getElementById("btn-wc-reject")?.addEventListener("click", async () => {
+    try {
+      await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ type: "PXE_WC_REJECT", data: { proposalId: store.wcProposal?.id } }, (res) => {
+          if (res?.success) resolve(res);
+          else reject(new Error(res?.error || "Reject failed"));
+        });
+      });
+    } catch {}
+    store.wcProposal = null;
+    setState({ screen: "dashboard" });
+  });
+}
+
+// ─── WalletConnect Message Listener ───────────────────
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.type === "WC_SESSION_PROPOSAL") {
+    store.wcProposal = message.proposal;
+    setState({ screen: "wc-approve" });
+  }
+  if (message.type === "WC_SESSION_REQUEST") {
+    // For now, auto-handle requests in offscreen — just show a toast
+    showToast("dApp request processed", "success");
+  }
+});
 
 // ─── Boot ─────────────────────────────────────────────
 

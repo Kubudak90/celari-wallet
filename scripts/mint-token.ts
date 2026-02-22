@@ -80,7 +80,7 @@ async function main() {
   console.log(`Minted! Block: ${receipt.blockNumber}`);
 
   // Check balance
-  const balance = await token.methods.balance_of_public(accountAddress).simulate();
+  const balance = await token.methods.balance_of_public(accountAddress).simulate({ from: accountAddress });
   console.log(`Balance: ${Number(balance) / 1e18} CLR`);
 }
 

@@ -14,7 +14,7 @@
 
 import type { AuthWitnessProvider } from "@aztec/aztec.js/account";
 import { AuthWitness } from "@aztec/stdlib/auth-witness";
-import type { Fr } from "@aztec/aztec.js";
+import type { Fr } from "@aztec/aztec.js/fields";
 import type { ContractArtifact } from "@aztec/stdlib/abi";
 import type { CompleteAddress } from "@aztec/stdlib/contract";
 import { DefaultAccountContract } from "@aztec/accounts/defaults";
@@ -23,7 +23,6 @@ import { CelariPasskeyAccountContractArtifact } from "../artifacts/CelariPasskey
 import {
   type PasskeyCredential,
   signWithPasskey,
-  hexToBytes,
 } from "./passkey.js";
 
 /**
@@ -40,11 +39,12 @@ export class PasskeyAuthWitnessProvider implements AuthWitnessProvider {
   constructor(private credential: PasskeyCredential) {}
 
   async createAuthWit(messageHash: Fr | Buffer): Promise<AuthWitness> {
-    // Convert the Aztec message hash to bytes for WebAuthn signing
-    const hashHex = messageHash instanceof Buffer
-      ? messageHash.toString("hex")
-      : messageHash.toString();
-    const hashBytes = hexToBytes(hashHex);
+    // Convert the Aztec message hash to a 32-byte Uint8Array for WebAuthn signing.
+    // Using toBuffer() ensures consistent 32-byte big-endian encoding,
+    // matching CliP256AuthWitnessProvider and the browser offscreen implementation.
+    const hashBytes = messageHash instanceof Buffer
+      ? new Uint8Array(messageHash)
+      : new Uint8Array((messageHash as Fr).toBuffer());
 
     // Trigger biometric authentication
     // User sees: "Sign in to Celari Wallet" -> Face ID / fingerprint

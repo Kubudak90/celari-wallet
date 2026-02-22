@@ -1,5 +1,5 @@
 /**
- * Celari Wallet — Faz 1 E2E Integration Tests
+ * Celari Wallet — E2E Integration Tests (Aztec SDK v3)
  *
  * Tests the complete passkey account lifecycle:
  * 1. P256 key generation (simulated — no WebAuthn in Node.js)
@@ -16,101 +16,94 @@
  */
 
 import { describe, it, expect, beforeAll } from "@jest/globals";
-import {
-  createPXEClient,
-  Fr,
-  type PXE,
-  type Wallet,
-  type AztecAddress,
-  createDebugLogger,
-} from "@aztec/aztec.js";
-import { getSchnorrAccount } from "@aztec/accounts/schnorr";
+import { Fr } from "@aztec/aztec.js/fields";
+import { AztecAddress } from "@aztec/aztec.js/addresses";
+import { createAztecNodeClient } from "@aztec/aztec.js/node";
+import { TestWallet } from "@aztec/test-wallet/server";
 import { TokenContract } from "@aztec/noir-contracts.js/Token";
 
-const PXE_URL = process.env.PXE_URL || "http://localhost:8080";
-const logger = createDebugLogger("celari:test:e2e");
+const NODE_URL = process.env.AZTEC_NODE_URL || "http://localhost:8080";
 
-describe("Celari Wallet Faz 1 — Passkey Account E2E", () => {
-  let pxe: PXE;
-  let aliceWallet: Wallet;
-  let bobWallet: Wallet;
-  let aliceAddress: AztecAddress;
-  let bobAddress: AztecAddress;
-  let tokenAddress: AztecAddress;
+describe("Celari Wallet — Passkey Account E2E (SDK v3)", () => {
+  let wallet: Awaited<ReturnType<typeof TestWallet.create>>;
+  let aliceManager: any;
+  let bobManager: any;
+  let aliceWallet: any;
+  let bobWallet: any;
+  let aliceAddress: InstanceType<typeof AztecAddress>;
+  let bobAddress: InstanceType<typeof AztecAddress>;
+  let tokenAddress: InstanceType<typeof AztecAddress>;
 
   // ─── Setup ────────────────────────────────────────────
 
   beforeAll(async () => {
-    // Connect to PXE
-    pxe = createPXEClient(PXE_URL);
-    const nodeInfo = await pxe.getNodeInfo();
-    logger.info(`Connected to Aztec node — Chain ${nodeInfo.l1ChainId}`);
+    // Connect to Aztec node via TestWallet
+    const node = createAztecNodeClient(NODE_URL);
+    wallet = await TestWallet.create(node, { proverEnabled: true });
+    const chainInfo = await wallet.getChainInfo();
+    console.log(`Connected to Aztec node — Chain ${chainInfo.chainId}`);
 
-    // Create test accounts (using Schnorr as P256 fallback in sandbox)
-    // In production, these would use CelariPasskeyAccount with real P256 keys
-    //
-    // NOTE: The Aztec sandbox currently uses Schnorr as the default signer.
-    // Our CelariPasskeyAccount contract uses ecdsa_secp256r1, which requires
-    // the compiled contract artifact. For these tests, we verify the flow
-    // using Schnorr accounts as stand-ins. The Noir contract tests (TXE)
-    // verify the actual P256 signature logic.
-    //
-    // TODO: Add CelariPasskeyAccount E2E tests when the following are available:
-    //   1. Node.js P256 signing compatible with contract's sha256(outer_hash) format
-    //   2. TestWallet support for custom AccountContract implementations
-    //   3. WebAuthn assertion simulation for auth witness generation
+    // Create test accounts using Schnorr (P256 fallback in sandbox)
+    // In production, CelariPasskeyAccount with real P256 keys is used.
+    // The Noir contract tests (TXE) verify actual P256 signature logic.
 
-    logger.info("Creating Alice account (simulated passkey)...");
+    console.log("Creating Alice account (simulated passkey)...");
     const aliceSecret = Fr.random();
-    const aliceSigning = Fr.random();
-    const aliceAccountManager = getSchnorrAccount(pxe, aliceSecret, aliceSigning);
-    aliceWallet = await aliceAccountManager.waitSetup();
-    aliceAddress = aliceWallet.getAddress();
-    logger.info(`Alice: ${aliceAddress}`);
+    const aliceSalt = Fr.random();
+    aliceManager = await wallet.createSchnorrAccount(aliceSecret, aliceSalt);
+    aliceAddress = aliceManager.address;
+    aliceWallet = await aliceManager.getAccount();
+    console.log(`Alice: ${aliceAddress.toString().slice(0, 22)}...`);
 
-    logger.info("Creating Bob account (simulated passkey)...");
+    console.log("Creating Bob account (simulated passkey)...");
     const bobSecret = Fr.random();
-    const bobSigning = Fr.random();
-    const bobAccountManager = getSchnorrAccount(pxe, bobSecret, bobSigning);
-    bobWallet = await bobAccountManager.waitSetup();
-    bobAddress = bobWallet.getAddress();
-    logger.info(`Bob: ${bobAddress}`);
+    const bobSalt = Fr.random();
+    bobManager = await wallet.createSchnorrAccount(bobSecret, bobSalt);
+    bobAddress = bobManager.address;
+    bobWallet = await bobManager.getAccount();
+    console.log(`Bob: ${bobAddress.toString().slice(0, 22)}...`);
+
+    // Deploy both accounts on-chain
+    console.log("Deploying accounts...");
+    const aliceDeployTx = await (await aliceManager.getDeployMethod()).send({
+      from: AztecAddress.ZERO,
+    });
+    await aliceDeployTx.wait({ timeout: 180_000 });
+
+    const bobDeployTx = await (await bobManager.getDeployMethod()).send({
+      from: AztecAddress.ZERO,
+    });
+    await bobDeployTx.wait({ timeout: 180_000 });
+    console.log("Both accounts deployed.");
   }, 300_000);
 
   // ─── Test 1: Account Creation ─────────────────────────
 
-  it("should create accounts with deterministic addresses", async () => {
+  it("should create accounts with deterministic addresses", () => {
     expect(aliceAddress).toBeDefined();
     expect(bobAddress).toBeDefined();
     expect(aliceAddress.toString()).not.toBe(bobAddress.toString());
-
-    // Verify accounts are registered in PXE
-    const registered = await pxe.getRegisteredAccounts();
-    const addresses = registered.map((a) => a.address.toString());
-    expect(addresses).toContain(aliceAddress.toString());
-    expect(addresses).toContain(bobAddress.toString());
-
-    logger.info("✅ Test 1 passed: Accounts created");
+    console.log("Test 1 passed: Accounts created");
   });
 
   // ─── Test 2: Token Deployment ─────────────────────────
 
   it("should deploy a private token contract", async () => {
-    logger.info("Deploying zkUSD token...");
+    console.log("Deploying zkUSD token...");
 
     const token = await TokenContract.deploy(
-      aliceWallet,
+      wallet,
       aliceAddress,  // admin
-      "Celari USD",   // name
+      "Celari USD",  // name
       "zkUSD",       // symbol
-      18             // decimals
-    ).send().deployed();
+      18,            // decimals
+    ).send({ from: aliceAddress }).deployed();
 
     tokenAddress = token.address;
-    logger.info(`zkUSD deployed: ${tokenAddress}`);
+    console.log(`zkUSD deployed: ${tokenAddress.toString().slice(0, 22)}...`);
 
     expect(tokenAddress).toBeDefined();
-    logger.info("✅ Test 2 passed: Token deployed");
+    console.log("Test 2 passed: Token deployed");
   }, 300_000);
 
   // ─── Test 3: Private Mint ─────────────────────────────
@@ -119,22 +112,20 @@ describe("Celari Wallet Faz 1 — Passkey Account E2E", () => {
     const token = await TokenContract.at(tokenAddress, aliceWallet);
     const mintAmount = 10_000n;
 
-    logger.info(`Minting ${mintAmount} zkUSD to Alice (private)...`);
+    console.log(`Minting ${mintAmount} zkUSD to Alice (private)...`);
 
-    // Mint to private balance — creates encrypted UTXO
     await token.methods
       .mint_to_private(aliceAddress, mintAmount)
-      .send()
-      .wait();
+      .send({ from: aliceAddress })
+      .wait({ timeout: 180_000 });
 
-    // Check private balance
     const balance = await token.methods
       .balance_of_private(aliceAddress)
-      .simulate();
+      .simulate({ from: aliceAddress });
 
-    logger.info(`Alice private balance: ${balance}`);
+    console.log(`Alice private balance: ${balance}`);
     expect(balance).toBe(mintAmount);
-    logger.info("✅ Test 3 passed: Private mint successful");
+    console.log("Test 3 passed: Private mint successful");
   }, 300_000);
 
   // ─── Test 4: Private Transfer ─────────────────────────
@@ -143,77 +134,79 @@ describe("Celari Wallet Faz 1 — Passkey Account E2E", () => {
     const token = await TokenContract.at(tokenAddress, aliceWallet);
     const transferAmount = 2_500n;
 
-    logger.info(`Alice → Bob: ${transferAmount} zkUSD (private)...`);
+    console.log(`Alice -> Bob: ${transferAmount} zkUSD (private)...`);
 
-    // Private transfer:
-    // 1. Alice's UTXO is nullified
-    // 2. New encrypted UTXO created for Bob
-    // 3. ZK proof ensures correctness
-    // 4. On-chain: NOTHING visible
     await token.methods
       .transfer(bobAddress, transferAmount)
-      .send()
-      .wait();
+      .send({ from: aliceAddress })
+      .wait({ timeout: 180_000 });
 
     // Verify Alice's balance decreased
     const aliceBalance = await token.methods
       .balance_of_private(aliceAddress)
-      .simulate();
+      .simulate({ from: aliceAddress });
     expect(aliceBalance).toBe(10_000n - transferAmount);
 
     // Verify Bob's balance (need Bob's wallet to see private notes)
     const tokenAsBob = await TokenContract.at(tokenAddress, bobWallet);
     const bobBalance = await tokenAsBob.methods
       .balance_of_private(bobAddress)
-      .simulate();
+      .simulate({ from: bobAddress });
     expect(bobBalance).toBe(transferAmount);
 
-    logger.info(`Alice balance: ${aliceBalance}`);
-    logger.info(`Bob balance: ${bobBalance}`);
-    logger.info("✅ Test 4 passed: Private transfer successful");
+    console.log(`Alice balance: ${aliceBalance}`);
+    console.log(`Bob balance: ${bobBalance}`);
+    console.log("Test 4 passed: Private transfer successful");
   }, 300_000);
 
   // ─── Test 5: Batch Transfer (Payroll Simulation) ──────
 
   it("should handle chained transfers (payroll-like)", async () => {
-    // Simulate: Alice (employer) → Bob (employee) → Charlie (spending)
     const token = await TokenContract.at(tokenAddress, aliceWallet);
 
     // Create Charlie account
     const charlieSecret = Fr.random();
-    const charlieSigning = Fr.random();
-    const charlieAccountManager = getSchnorrAccount(pxe, charlieSecret, charlieSigning);
-    const charlieWallet = await charlieAccountManager.waitSetup();
-    const charlieAddress = charlieWallet.getAddress();
+    const charlieSalt = Fr.random();
+    const charlieMgr = await wallet.createSchnorrAccount(charlieSecret, charlieSalt);
+    const charlieAddress = charlieMgr.address;
+    const charlieWallet = await charlieMgr.getAccount();
+
+    // Deploy Charlie
+    const charlieDeploy = await (await charlieMgr.getDeployMethod()).send({
+      from: AztecAddress.ZERO,
+    });
+    await charlieDeploy.wait({ timeout: 180_000 });
 
     // Alice → Bob (salary payment)
     const salary = 1_000n;
-    await token.methods.transfer(bobAddress, salary).send().wait();
+    await token.methods
+      .transfer(bobAddress, salary)
+      .send({ from: aliceAddress })
+      .wait({ timeout: 180_000 });
 
     // Bob → Charlie (spending)
-    const tokenAsBob = await TokenContract.at(tokenAddress, bobWallet);
+    const tokenAsBob = await TokenContract.at(tokenAddress, bobWallet as any);
     const spending = 500n;
-    await tokenAsBob.methods.transfer(charlieAddress, spending).send().wait();
+    await tokenAsBob.methods
+      .transfer(charlieAddress, spending)
+      .send({ from: bobAddress })
+      .wait({ timeout: 180_000 });
 
     // Verify Charlie received funds
-    const tokenAsCharlie = await TokenContract.at(tokenAddress, charlieWallet);
+    const tokenAsCharlie = await TokenContract.at(tokenAddress, charlieWallet as any);
     const charlieBalance = await tokenAsCharlie.methods
       .balance_of_private(charlieAddress)
-      .simulate();
+      .simulate({ from: charlieAddress });
     expect(charlieBalance).toBe(spending);
 
-    logger.info(`Charlie balance: ${charlieBalance}`);
-    logger.info("✅ Test 5 passed: Chained transfers (payroll flow)");
+    console.log(`Charlie balance: ${charlieBalance}`);
+    console.log("Test 5 passed: Chained transfers (payroll flow)");
   }, 300_000);
 
   // ─── Test 6: P256 Key Format Verification ─────────────
 
   it("should correctly format P256 public key for contract", () => {
     // Simulate P256 key extraction (same logic as passkey.ts)
-    // In browser: WebAuthn returns SPKI format, we extract x,y
-    // In tests: We verify the byte manipulation is correct
-
-    // Example P256 public key (32 bytes each)
     const pubKeyX = new Uint8Array(32);
     const pubKeyY = new Uint8Array(32);
     crypto.getRandomValues(pubKeyX);
@@ -238,26 +231,22 @@ describe("Celari Wallet Faz 1 — Passkey Account E2E", () => {
     const xBack = xField.toString(16).padStart(64, "0");
     expect("0x" + xBack).toBe(xHex);
 
-    logger.info("✅ Test 6 passed: P256 key format verified");
+    console.log("Test 6 passed: P256 key format verified");
   });
 
   // ─── Test 7: DER Signature Normalization ──────────────
 
   it("should normalize DER-encoded P256 signatures", () => {
-    // WebAuthn returns DER-encoded signatures: 30 <len> 02 <r-len> <r> 02 <s-len> <s>
-    // Our contract needs raw (r || s) 64-byte format
-
-    // Example DER signature (with leading zero padding)
     const r = new Uint8Array(32);
     const s = new Uint8Array(32);
     crypto.getRandomValues(r);
     crypto.getRandomValues(s);
 
-    // Construct DER (simplified — r and s without leading zeros)
+    // Construct DER
     const derSig = new Uint8Array([
-      0x30, 2 + 2 + r.length + s.length,  // SEQUENCE
-      0x02, r.length, ...r,                // INTEGER r
-      0x02, s.length, ...s,                // INTEGER s
+      0x30, 2 + 2 + r.length + s.length,
+      0x02, r.length, ...r,
+      0x02, s.length, ...s,
     ]);
 
     // Normalize (extract r || s)
@@ -267,18 +256,12 @@ describe("Celari Wallet Faz 1 — Passkey Account E2E", () => {
     expect(Array.from(normalized.slice(0, 32))).toEqual(Array.from(r));
     expect(Array.from(normalized.slice(32, 64))).toEqual(Array.from(s));
 
-    logger.info("✅ Test 7 passed: DER normalization correct");
+    console.log("Test 7 passed: DER normalization correct");
   });
 
   // ─── Test 8: Auth Witness Layout ──────────────────────
 
   it("should pack auth witness in correct layout for Noir", () => {
-    // Auth witness layout: 64 Fields for signature (r[32]+s[32]). Contract reads first 64 Fields.
-    // Auth witness layout for CelariPasskeyAccount:
-    // [0..64]   → P256 signature (r: 32 bytes, s: 32 bytes)
-    // [64..96]  → authenticatorData hash
-    // [96..128] → clientDataJSON hash
-
     const signature = new Uint8Array(64);
     const authDataHash = new Uint8Array(32);
     const clientDataHash = new Uint8Array(32);
@@ -286,7 +269,7 @@ describe("Celari Wallet Faz 1 — Passkey Account E2E", () => {
     crypto.getRandomValues(authDataHash);
     crypto.getRandomValues(clientDataHash);
 
-    // Pack as witness fields (same logic as passkey_account.ts)
+    // Pack as witness fields
     const witnessFields: bigint[] = [];
     for (let i = 0; i < 64; i++) witnessFields.push(BigInt(signature[i]));
     for (let i = 0; i < 32; i++) witnessFields.push(BigInt(authDataHash[i]));
@@ -304,7 +287,7 @@ describe("Celari Wallet Faz 1 — Passkey Account E2E", () => {
     for (let i = 0; i < 32; i++) authRecon[i] = Number(witnessFields[64 + i]);
     expect(Array.from(authRecon)).toEqual(Array.from(authDataHash));
 
-    logger.info("✅ Test 8 passed: Auth witness layout correct");
+    console.log("Test 8 passed: Auth witness layout correct");
   });
 });
 

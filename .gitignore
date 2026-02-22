@@ -22,6 +22,12 @@ contracts/*/target/
 sdk/dist/
 *.log
 
+# iOS
+ios/**/build/
+ios/**/xcuserdata/
+ios/**/DerivedData/
+ios/CelariWallet/CelariWallet/Resources/offscreen.js
+
 # OS
 .DS_Store
 Thumbs.db

@@ -44,9 +44,9 @@ async function main() {
   // 1. Generate or load P256 key pair
   // Deploy requires a private key for signing. We either load from .celari-keys.json
   // or generate a fresh key pair.
-  let pubKeyX: string;
-  let pubKeyY: string;
-  let privateKeyPkcs8: Uint8Array;
+  let pubKeyX = "";
+  let pubKeyY = "";
+  let privateKeyPkcs8 = new Uint8Array(0);
 
   const keyPath = join(__dirname, "..", ".celari-keys.json");
   let loaded = false;
@@ -82,11 +82,11 @@ async function main() {
   }
 
   // Ensure hex prefix
-  if (!pubKeyX!.startsWith("0x")) pubKeyX = "0x" + pubKeyX!;
-  if (!pubKeyY!.startsWith("0x")) pubKeyY = "0x" + pubKeyY!;
+  if (!pubKeyX.startsWith("0x")) pubKeyX = "0x" + pubKeyX;
+  if (!pubKeyY.startsWith("0x")) pubKeyY = "0x" + pubKeyY;
 
-  console.log(`  X: ${pubKeyX!.slice(0, 22)}...`);
-  console.log(`  Y: ${pubKeyY!.slice(0, 22)}...\n`);
+  console.log(`  X: ${pubKeyX.slice(0, 22)}...`);
+  console.log(`  Y: ${pubKeyY.slice(0, 22)}...\n`);
 
   // 2. Connect to Aztec node
   const nodeUrl = process.env.AZTEC_NODE_URL || "https://devnet-6.aztec-labs.com/";
@@ -165,7 +165,7 @@ async function main() {
   const outputPath = join(__dirname, "..", ".celari-passkey-account.json");
   writeFileSync(outputPath, JSON.stringify(deployInfo, null, 2));
   chmodSync(outputPath, 0o600);
-  console.warn("⚠️  WARNING: .celari-keys.json contains private keys. Never commit this file.");
+  console.warn("⚠️  WARNING: .celari-passkey-account.json contains sensitive data. Never commit this file.");
   console.log(`\nDeployment info saved to ${outputPath}`);
   console.log(`\nAccount deployed successfully!`);
   console.log(`Address: ${address.toString()}`);

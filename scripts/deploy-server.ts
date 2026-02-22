@@ -194,7 +194,7 @@ async function getBalances(accountAddress: string): Promise<Array<{
       const addr = AztecAddress.fromString(accountAddress);
 
       const token = await TokenContract.at(tokenAddr, w);
-      const balance = await token.methods.balance_of_public(addr).simulate({});
+      const balance = await token.methods.balance_of_public(addr).simulate({ from: addr });
       const humanBalance = Number(balance) / (10 ** tk.decimals);
 
       results.push({

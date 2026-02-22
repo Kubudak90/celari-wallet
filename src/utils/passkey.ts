@@ -131,12 +131,12 @@ export async function signWithPasskey(
 ): Promise<PasskeySignature> {
   const getOptions: CredentialRequestOptions = {
     publicKey: {
-      challenge: challenge,
+      challenge: challenge.buffer as ArrayBuffer,
       rpId: RP_ID,
       allowCredentials: [
         {
           type: "public-key",
-          id: base64UrlToBytes(credentialId),
+          id: base64UrlToBytes(credentialId).buffer as ArrayBuffer,
         },
       ],
       userVerification: "required",
@@ -304,6 +304,9 @@ export function bytesToBase64Url(bytes: Uint8Array): string {
 
 // ─── Storage Helpers ───────────────────────────────────
 
+/* global chrome */
+declare const chrome: any;
+
 const STORAGE_KEY = "celari_passkey_credentials";
 
 export interface StoredCredential {
@@ -314,8 +317,8 @@ export interface StoredCredential {
   label: string;
 }
 
-export function saveCredential(cred: PasskeyCredential, label: string = "Default") {
-  const stored = getStoredCredentials();
+export async function saveCredential(cred: PasskeyCredential, label: string = "Default") {
+  const stored = await getStoredCredentials();
   stored.push({
     credentialId: cred.credentialId,
     publicKeyX: cred.publicKeyHex.x,
@@ -323,18 +326,33 @@ export function saveCredential(cred: PasskeyCredential, label: string = "Default
     createdAt: new Date().toISOString(),
     label,
   });
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+  if (typeof chrome !== "undefined" && chrome.storage?.local) {
+    await chrome.storage.local.set({ [STORAGE_KEY]: stored });
+  } else if (typeof localStorage !== "undefined") {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+  }
 }
 
-export function getStoredCredentials(): StoredCredential[] {
+export async function getStoredCredentials(): Promise<StoredCredential[]> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (typeof chrome !== "undefined" && chrome.storage?.local) {
+      const result = await chrome.storage.local.get(STORAGE_KEY);
+      return result[STORAGE_KEY] || [];
+    }
+    if (typeof localStorage !== "undefined") {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    }
+    return [];
   } catch {
     return [];
   }
 }
 
-export function clearStoredCredentials() {
-  localStorage.removeItem(STORAGE_KEY);
+export async function clearStoredCredentials() {
+  if (typeof chrome !== "undefined" && chrome.storage?.local) {
+    await chrome.storage.local.remove(STORAGE_KEY);
+  } else if (typeof localStorage !== "undefined") {
+    localStorage.removeItem(STORAGE_KEY);
+  }
 }

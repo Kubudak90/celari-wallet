@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+/* ===== CELARI DESIGN SYSTEM (Tailwind v4 @theme) ===== */
+@theme inline {
+  /* Backgrounds */
+  --color-bg: #0D0A0A;
+  --color-bg-card: #151111;
+  --color-bg-elevated: #1C1616;
+  --color-bg-section: #100D0C;
+
+  /* Primary: Burgundy */
+  --color-burgundy: #8B2D3A;
+  --color-burgundy-deep: #5C1D28;
+  --color-burgundy-light: #B84455;
+
+  /* Secondary: Copper */
+  --color-copper: #C87941;
+  --color-copper-light: #E09A62;
+  --color-copper-muted: #A06835;
+  --color-bronze: #9A7B5B;
+
+  /* Text */
+  --color-text-warm: #E8D8CC;
+  --color-text-body: #BCA898;
+  --color-text-muted: #8A7A70;
+  --color-text-dim: #5A4E48;
+  --color-text-faint: #3A3230;
+
+  /* Borders */
+  --color-border-default: #2A2222;
+  --color-border-warm: #3A2E2E;
+
+  /* Fonts */
+  --font-display: var(--font-poiret-one), cursive;
+  --font-heading: "Tenor Sans", serif;
+  --font-mono: var(--font-ibm-plex-mono), monospace;
+  --font-body: var(--font-outfit), sans-serif;
+
+  /* Animations */
+  --animate-fade-up: fade-up 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  --animate-fade-in: fade-in 1s ease forwards;
+  --animate-rotate-slow: rotate-slow 60s linear infinite;
+  --animate-breathe: breathe 3s ease-in-out infinite;
+  --animate-pulse-glow: pulse-glow 3s ease-in-out infinite;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes rotate-slow {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(200, 121, 65, 0.2); }
+  50% { box-shadow: 0 0 30px 4px rgba(200, 121, 65, 0.08); }
+}
+
+/* ===== BASE STYLES ===== */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Grain texture overlay */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.02'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+}
+
+::selection {
+  background: #8B2D3A;
+  color: #E8D8CC;
+}

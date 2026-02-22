@@ -719,6 +719,248 @@ body::after {
 .btn-remove-custom-token:hover,
 .btn-delete-network:hover { color: var(--red) !important; }
 
+/* ─── Account Chip Edit ─── */
+.account-chip-edit {
+  width: 60px;
+  padding: 2px 4px;
+  border: 1px solid var(--copper);
+  background: var(--bg);
+  color: var(--copper);
+  font-family: IBM Plex Mono, monospace;
+  font-size: 8px;
+  outline: none;
+}
+
+/* ─── NFT Grid & Items ─── */
+.nft-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.nft-item:hover {
+  background: var(--bg-elevated);
+}
+.nft-icon {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(45deg);
+  flex-shrink: 0;
+}
+.nft-info {
+  flex: 1;
+  min-width: 0;
+}
+.nft-name {
+  font-family: IBM Plex Mono, monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--text-warm);
+  text-transform: uppercase;
+}
+.nft-id {
+  font-family: IBM Plex Mono, monospace;
+  font-size: 8px;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+.nft-badge {
+  font-family: IBM Plex Mono, monospace;
+  font-size: 7px;
+  letter-spacing: 1.5px;
+  padding: 3px 6px;
+  text-transform: uppercase;
+}
+.nft-badge.private {
+  color: var(--green);
+  border: 1px solid rgba(74, 222, 128, 0.2);
+  background: rgba(74, 222, 128, 0.05);
+}
+.nft-badge.public {
+  color: var(--copper);
+  border: 1px solid rgba(200, 121, 65, 0.2);
+  background: rgba(200, 121, 65, 0.05);
+}
+
+/* ─── NFT Detail ─── */
+.nft-detail-card {
+  margin: 16px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  text-align: center;
+}
+.nft-detail-card .nft-detail-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 12px;
+  border: 1px solid var(--copper);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(45deg);
+}
+
+/* ─── Backup / Restore Forms ─── */
+.backup-section {
+  margin: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+}
+.backup-section h3 {
+  font-family: Poiret One, cursive;
+  font-size: 14px;
+  color: var(--text-warm);
+  margin: 0 0 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.backup-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.backup-step-num {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--copper);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: IBM Plex Mono, monospace;
+  font-size: 9px;
+  color: var(--copper);
+  flex-shrink: 0;
+  transform: rotate(45deg);
+}
+.backup-step-num span {
+  transform: rotate(-45deg);
+}
+.password-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-input, var(--bg));
+  color: var(--text-warm);
+  font-family: IBM Plex Mono, monospace;
+  font-size: 11px;
+  letter-spacing: 1px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.password-input:focus {
+  border-color: var(--copper);
+}
+
+/* ─── File Drop Zone ─── */
+.file-drop-zone {
+  border: 2px dashed var(--border);
+  padding: 24px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  margin-bottom: 12px;
+}
+.file-drop-zone:hover,
+.file-drop-zone.dragover {
+  border-color: var(--copper);
+  background: rgba(200, 121, 65, 0.04);
+}
+.file-drop-zone p {
+  font-family: IBM Plex Mono, monospace;
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* ─── WalletConnect ─── */
+.wc-session-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.wc-session-info {
+  flex: 1;
+  min-width: 0;
+}
+.wc-session-name {
+  font-family: IBM Plex Mono, monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--text-warm);
+  text-transform: uppercase;
+}
+.wc-session-url {
+  font-family: IBM Plex Mono, monospace;
+  font-size: 8px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wc-pair-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-input, var(--bg));
+  color: var(--text-warm);
+  font-family: IBM Plex Mono, monospace;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.wc-pair-input:focus {
+  border-color: var(--copper);
+}
+.wc-proposal-card {
+  margin: 16px;
+  padding: 16px;
+  border: 1px solid rgba(200, 121, 65, 0.3);
+  background: rgba(200, 121, 65, 0.04);
+}
+.wc-proposal-card h3 {
+  font-family: Poiret One, cursive;
+  font-size: 14px;
+  color: var(--copper);
+  margin: 0 0 8px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* ─── Delete Account Button ─── */
+.btn-delete-account {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.06);
+  color: var(--red);
+  font-family: IBM Plex Mono, monospace;
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+.btn-delete-account:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
 ::selection {
   background: var(--burgundy);
   color: var(--text-warm);

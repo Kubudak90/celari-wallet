@@ -1,0 +1,147 @@
+{
+  "meta": {
+    "title": "Celari — Hidden by Design | Privacy-First Wallet on Aztec",
+    "description": "The first WebAuthn/Passkey-native smart wallet on Aztec Network. Zero seed phrases. Zero metadata. Zero compromise.",
+    "ogTitle": "Celari — Privacy-First Wallet on Aztec",
+    "ogDescription": "Replace seed phrases with Face ID. Transact privately with zero-knowledge proofs."
+  },
+  "nav": {
+    "features": "Features",
+    "howItWorks": "How It Works",
+    "aztec": "Aztec",
+    "roadmap": "Roadmap",
+    "docs": "Docs",
+    "earlyAccess": "Early Access"
+  },
+  "hero": {
+    "title": "CELARI",
+    "subtitle": "Privacy is not a feature. It's architecture.",
+    "tags": {
+      "seedPhrases": "Zero Seed Phrases",
+      "metadata": "Zero Metadata",
+      "passkey": "Passkey Auth",
+      "aztec": "Aztec Network"
+    },
+    "joinWaitlist": "Join Waitlist",
+    "readDocs": "Read Docs",
+    "scroll": "Scroll"
+  },
+  "features": {
+    "eyebrow": "Architecture",
+    "title": "Built to Vanish",
+    "cards": {
+      "private": {
+        "title": "Private by Default",
+        "description": "Built on Aztec's encrypted rollup. Every transaction is shielded. No one sees your balance, your history, or your identity."
+      },
+      "passkey": {
+        "title": "Passkey Auth",
+        "description": "Face ID. Fingerprint. Hardware key. Sign in the way you already trust. No more 24-word seed phrases."
+      },
+      "metadata": {
+        "title": "Zero Metadata",
+        "description": "We don't track IPs. We don't log requests. Even we can't see who you are or what you do."
+      },
+      "abstraction": {
+        "title": "Account Abstraction",
+        "description": "Smart contract wallets with social recovery, gas sponsorship, and batched transactions."
+      },
+      "openSource": {
+        "title": "Open Source",
+        "description": "Every line of code is auditable. Trust is verified, not assumed. MIT licensed."
+      },
+      "ux": {
+        "title": "Crafted UX",
+        "description": "Privacy tools shouldn't feel like terminal windows. Celari is built for humans."
+      }
+    }
+  },
+  "howItWorks": {
+    "eyebrow": "Protocol",
+    "title": "Three Steps to Sovereignty",
+    "steps": {
+      "authenticate": {
+        "title": "Authenticate with Passkey",
+        "description": "Use Face ID, fingerprint, or your hardware security key. A secure enclave generates your private key — it never leaves your device."
+      },
+      "deploy": {
+        "title": "Your Wallet Deploys Privately",
+        "description": "A smart contract wallet is deployed on the Aztec network. Encrypted by default. Only you know it exists."
+      },
+      "transact": {
+        "title": "Transact in the Shadows",
+        "description": "Send, receive, and interact with DeFi protocols. Every action is shielded by zero-knowledge proofs."
+      }
+    }
+  },
+  "aztec": {
+    "badge": "Built on Aztec",
+    "title": "The First Encrypted Rollup Deserves the First Private Wallet",
+    "description": "Aztec brings programmable privacy to Ethereum. Celari makes it accessible. Together, we build a financial system where privacy isn't optional.",
+    "stats": {
+      "encrypted": { "value": "100%", "label": "Encrypted Txns" },
+      "metadata": { "value": "0", "label": "Metadata Leaked" },
+      "proof": { "value": "<2s", "label": "Proof Generation" }
+    }
+  },
+  "roadmap": {
+    "eyebrow": "Timeline",
+    "title": "The Path Forward",
+    "phases": {
+      "phase0": {
+        "name": "Phase 0",
+        "title": "Schnorr Prototype",
+        "status": "completed",
+        "description": "Initial proof of concept with Schnorr signature scheme on Aztec."
+      },
+      "phase1": {
+        "name": "Phase 1",
+        "title": "Passkey + Extension",
+        "status": "completed",
+        "description": "WebAuthn/P256 integration, Chrome MV3 extension, full deploy pipeline, 95 tests."
+      },
+      "phase2": {
+        "name": "Phase 2",
+        "title": "L1–L2 Bridge",
+        "status": "current",
+        "description": "Ethereum bridge integration, custom tokens/RPC, faucet, SDK release."
+      },
+      "phase3": {
+        "name": "Phase 3",
+        "title": "Batch Payroll",
+        "status": "upcoming",
+        "description": "Private batch_pay contract. Pay 100 employees in a single ZK transaction."
+      },
+      "phase4": {
+        "name": "Phase 4",
+        "title": "Crypto Card",
+        "status": "upcoming",
+        "description": "Virtual and physical card linked to your private wallet. Spend anywhere."
+      },
+      "phase5": {
+        "name": "Phase 5",
+        "title": "Mobile + Cross-chain",
+        "status": "upcoming",
+        "description": "Native iOS/Android app. Cross-chain private transfers via bridge aggregation."
+      }
+    }
+  },
+  "waitlist": {
+    "title": "celāre — to hide, to conceal",
+    "subtitle": "Be among the first to reclaim your privacy",
+    "placeholder": "your@email.com",
+    "button": "Join",
+    "success": "You're on the list. We'll be in touch.",
+    "error": "Something went wrong. Please try again."
+  },
+  "footer": {
+    "brand": "Celari",
+    "links": {
+      "github": "Github",
+      "docs": "Docs",
+      "twitter": "Twitter",
+      "discord": "Discord"
+    },
+    "copyright": "© {year} Celari"
+  }
+}
