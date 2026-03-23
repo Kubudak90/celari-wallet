@@ -95,12 +95,14 @@ enum NetworkPreset: String, CaseIterable {
     case local = "local"
     case devnet = "devnet"
     case testnet = "testnet"
+    case mainnet = "mainnet"
 
     var name: String {
         switch self {
         case .local: return "Local Sandbox"
         case .devnet: return "Aztec Devnet"
         case .testnet: return "Aztec Testnet"
+        case .mainnet: return "Aztec Mainnet"
         }
     }
 
@@ -109,6 +111,14 @@ enum NetworkPreset: String, CaseIterable {
         case .local: return "http://localhost:8080"
         case .devnet: return "https://v4-devnet-2.aztec-labs.com/"
         case .testnet: return "https://rpc.testnet.aztec-labs.com/"
+        case .mainnet: return "https://rpc.aztec.network/"
+        }
+    }
+
+    var hasSponsoredFPC: Bool {
+        switch self {
+        case .local, .devnet: return true
+        case .testnet, .mainnet: return false
         }
     }
 }
@@ -146,8 +156,8 @@ class WalletStore {
 
     // Connection
     var connected: Bool = false
-    var network: String = "local"
-    var nodeUrl: String = "http://localhost:8080"
+    var network: String = "testnet"
+    var nodeUrl: String = "https://rpc.testnet.aztec-labs.com/"
     var nodeInfo: NodeInfo?
 
     // Accounts
@@ -181,15 +191,55 @@ class WalletStore {
     var loading: Bool = false
     var deploying: Bool = false
     var pxeInitialized: Bool = false
+    var pxeInitFailed: Bool = false
+    var pxeInitError: String = ""
 
     /// Live progress message from PXE operations (shown as bottom status bar)
     var progressMessage: String?
+
+    /// Fee Juice balance on L2 (needed for transaction fees on testnet where SponsoredFPC is unavailable)
+    var feeJuiceBalance: String = "0"
+
+    /// Faucet claim data (stored after requesting Fee Juice, used during deploy for FeeJuicePaymentMethodWithClaim)
+    var faucetClaimData: [String: String]?
+    var faucetRequesting: Bool = false
 
     // PXE Logs (in-app console)
     var pxeLogs: [PXELogEntry] = []
     var showLogs: Bool = false
     var deployStep: String = ""
     private let maxLogEntries = 200
+
+    // State Migration & Backup Tracking
+    var pxeNodeInfo: String?
+    var backupReminderDismissed: Bool = false
+
+    var lastKnownNetworkVersion: String {
+        get { UserDefaults.standard.string(forKey: "lastKnownNetworkVersion") ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: "lastKnownNetworkVersion") }
+    }
+
+    var lastBackupDate: Double {
+        get { UserDefaults.standard.double(forKey: "lastBackupDate") }
+        set { UserDefaults.standard.set(newValue, forKey: "lastBackupDate") }
+    }
+
+    var needsBackupReminder: Bool {
+        let daysSinceBackup = (Date().timeIntervalSince1970 - lastBackupDate) / 86400
+        return daysSinceBackup > 7 && accounts.count > 0
+    }
+
+    var networkVersionChanged: Bool {
+        !lastKnownNetworkVersion.isEmpty && lastKnownNetworkVersion != currentNetworkVersion
+    }
+
+    private var currentNetworkVersion: String {
+        return pxeNodeInfo ?? nodeInfo?.nodeVersion ?? "unknown"
+    }
+
+    func acknowledgeNetworkVersion() {
+        lastKnownNetworkVersion = currentNetworkVersion
+    }
 
     // MARK: - Computed
 
@@ -220,6 +270,15 @@ class WalletStore {
         self.pxeBridge = pxeBridge
         // Load persisted data
         loadFromStorage()
+
+        // Clean up orphaned pending addresses (failed deployments that left stale entries)
+        let beforeCount = accounts.count
+        accounts.removeAll { $0.address.hasPrefix("pending_") && !$0.deployed }
+        if accounts.count < beforeCount {
+            walletLog.notice("[WalletStore] Cleaned \(beforeCount - accounts.count, privacy: .public) orphaned pending account(s)")
+            saveToStorage()
+        }
+
         walletLog.notice("[WalletStore] initialize — accounts: \(self.accounts.count, privacy: .public), network: \(self.network, privacy: .public)")
 
         if accounts.isEmpty {
@@ -261,7 +320,10 @@ class WalletStore {
                 }
             }
             guard pxeBridge.isReady else {
-                walletLog.error("[WalletStore] PXE WebView failed to load after 30s, skipping init")
+                walletLog.error("[WalletStore] PXE WebView failed to load after 30s")
+                self.pxeInitFailed = true
+                self.pxeInitError = "PXE engine failed to load. Check your connection and try again."
+                self.showToast("PXE initialization failed — tap to retry", type: .error)
                 return
             }
             walletLog.notice("[WalletStore] PXE bridge ready — sending PXE_INIT to \(self.nodeUrl, privacy: .public)")
@@ -290,6 +352,7 @@ class WalletStore {
                     walletLog.notice("[WalletStore] Waiting 3s for PXE note sync...")
                     try? await Task.sleep(for: .seconds(3))
                     await self.fetchBalances()
+                    await self.checkFeeJuiceBalance()
                     // Save PXE snapshot so private notes persist across restarts
                     await self.savePXESnapshot()
                 }
@@ -303,7 +366,35 @@ class WalletStore {
                 #endif
             } catch {
                 walletLog.error("[WalletStore] PXE init failed: \(error.localizedDescription, privacy: .public)")
+                self.pxeInitFailed = true
+                self.pxeInitError = error.localizedDescription
+                self.showToast("PXE init failed: \(error.localizedDescription)", type: .error)
             }
+        }
+    }
+
+    /// Retry PXE initialization after a failure
+    func retryPXEInit() async {
+        guard let pxeBridge else { return }
+        pxeInitFailed = false
+        pxeInitError = ""
+        showToast("Retrying PXE initialization...")
+        do {
+            let result = try await pxeBridge.initPXE(nodeUrl: self.nodeUrl)
+            self.pxeInitialized = true
+            walletLog.notice("[WalletStore] PXE retry succeeded: \(String(describing: result).prefix(200), privacy: .public)")
+            if let account = self.activeAccount, account.deployed {
+                await self.reRegisterAccount(pxeBridge: pxeBridge, account: account)
+                try? await Task.sleep(for: .seconds(3))
+                await self.fetchBalances()
+                await self.checkFeeJuiceBalance()
+                await self.savePXESnapshot()
+            }
+            showToast("PXE initialized successfully!")
+        } catch {
+            pxeInitFailed = true
+            pxeInitError = error.localizedDescription
+            showToast("PXE retry failed: \(error.localizedDescription)", type: .error)
         }
     }
 
@@ -331,6 +422,13 @@ class WalletStore {
         let result = await networkManager.checkConnection(nodeUrl: nodeUrl)
         connected = result.connected
         nodeInfo = result.nodeInfo
+        // Track network version for state migration warnings
+        if let version = result.nodeInfo?.nodeVersion {
+            pxeNodeInfo = version
+            if lastKnownNetworkVersion.isEmpty {
+                lastKnownNetworkVersion = version
+            }
+        }
         walletLog.notice("[WalletStore] checkConnection — connected: \(self.connected, privacy: .public), nodeVersion: \(self.nodeInfo?.nodeVersion ?? "nil", privacy: .public)")
     }
 
@@ -473,6 +571,84 @@ class WalletStore {
         }
     }
 
+    // MARK: - Fee Juice Balance
+
+    func checkFeeJuiceBalance() async {
+        guard let bridge = pxeBridge, pxeInitialized else {
+            walletLog.notice("[WalletStore] checkFeeJuiceBalance skipped — PXE not initialized")
+            return
+        }
+        guard let account = activeAccount, account.deployed else {
+            walletLog.notice("[WalletStore] checkFeeJuiceBalance skipped — no deployed account")
+            return
+        }
+        do {
+            let balance = try await bridge.getFeeJuiceBalance()
+            feeJuiceBalance = balance
+            walletLog.notice("[WalletStore] Fee Juice balance: \(balance, privacy: .public)")
+        } catch {
+            walletLog.error("[WalletStore] Fee Juice balance check failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    // MARK: - Aztec Faucet (HTTP API)
+
+    func requestFaucetDrip(asset: String = "fee-juice") async {
+        guard let account = activeAccount, !account.address.isEmpty, !account.address.hasPrefix("pending_") else {
+            showToast("No valid address — create wallet first", type: .error)
+            return
+        }
+
+        faucetRequesting = true
+        defer { faucetRequesting = false }
+
+        walletLog.notice("[WalletStore] Requesting faucet drip — asset: \(asset, privacy: .public), address: \(account.address.prefix(22), privacy: .public)")
+
+        do {
+            let url = URL(string: "https://aztec-faucet.dev-nethermind.xyz/api/drip")!
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            let body: [String: String] = ["address": account.address, "asset": asset]
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            request.timeoutInterval = 60
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 else {
+                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+                let bodyStr = String(data: data, encoding: .utf8) ?? ""
+                walletLog.error("[WalletStore] Faucet HTTP \(statusCode, privacy: .public): \(bodyStr.prefix(200), privacy: .public)")
+                showToast("Faucet request failed (HTTP \(statusCode))", type: .error)
+                return
+            }
+
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let success = json["success"] as? Bool, success else {
+                let errorMsg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String ?? "Unknown error"
+                showToast("Faucet: \(errorMsg)", type: .error)
+                return
+            }
+
+            walletLog.notice("[WalletStore] Faucet drip success — claimId: \((json["claimId"] as? String ?? "").prefix(16), privacy: .public)")
+
+            // Store claim data for deploy (FeeJuicePaymentMethodWithClaim)
+            if let claimData = json["claimData"] as? [String: Any] {
+                var cd: [String: String] = [:]
+                if let v = claimData["claimAmount"] as? String { cd["claimAmount"] = v }
+                if let v = claimData["claimSecretHex"] as? String { cd["claimSecret"] = v }
+                if let v = claimData["messageLeafIndex"] as? String { cd["messageLeafIndex"] = v }
+                if let v = claimData["messageLeafIndex"] as? Int { cd["messageLeafIndex"] = String(v) }
+                faucetClaimData = cd
+                walletLog.notice("[WalletStore] Stored faucet claim data for deploy (claimAmount: \(cd["claimAmount"] ?? "?", privacy: .public), leafIndex: \(cd["messageLeafIndex"] ?? "?", privacy: .public))")
+            }
+
+            showToast("Fee Juice requested! Bridging takes ~1-2 min.")
+        } catch {
+            walletLog.error("[WalletStore] Faucet error: \(error.localizedDescription, privacy: .public)")
+            showToast("Faucet failed: \(error.localizedDescription)", type: .error)
+        }
+    }
+
     // MARK: - Account Creation
 
     func createPasskeyAccount(pxeBridge: PXEBridge) async throws {
@@ -490,42 +666,54 @@ class WalletStore {
         let (pubKeyX, pubKeyY, pkcs8Base64) = try generateP256KeyPair()
         walletLog.notice("[WalletStore] P-256 key pair generated — pubKeyX: \(pubKeyX.prefix(20), privacy: .public)...")
 
-        // 3. Create account entry
+        // 3. Compute deterministic Aztec address via PXE (if ready)
+        var computedAddress = ""
+        var secretKeyHex: String?
+        var saltHex: String?
+
+        if pxeBridge.isReady {
+            walletLog.notice("[WalletStore] PXE ready — computing deterministic address...")
+            let addrResult = try await pxeBridge.computeAddress(pubKeyX: pubKeyX, pubKeyY: pubKeyY, pkcs8: pkcs8Base64)
+            if let addr = addrResult["address"] as? String, !addr.isEmpty {
+                computedAddress = addr
+                secretKeyHex = addrResult["secretKey"] as? String
+                saltHex = addrResult["salt"] as? String
+                walletLog.notice("[WalletStore] Computed address: \(computedAddress.prefix(22), privacy: .public)...")
+            }
+        } else {
+            walletLog.warning("[WalletStore] PXE not ready — address will be computed when PXE initializes")
+        }
+
+        let finalAddress = computedAddress.isEmpty ? "pending_\(UUID().uuidString.prefix(8))" : computedAddress
+        let accountLabel2 = accounts.isEmpty ? "Main Wallet" : accountLabel
+
         let account = Account(
-            address: "0x" + String(repeating: "0", count: 40) + "_pending",
+            address: finalAddress,
             credentialId: passkeyResult.credentialId,
             publicKeyX: pubKeyX,
             publicKeyY: pubKeyY,
             type: .passkey,
-            label: accounts.isEmpty ? "Main Wallet" : accountLabel
+            label: accountLabel2
         )
 
         accounts.append(account)
         activeAccountIndex = accounts.count - 1
         saveAccounts()
-        walletLog.notice("[WalletStore] Account entry saved — label: \(account.label, privacy: .public), index: \(self.activeAccountIndex, privacy: .public)")
+        walletLog.notice("[WalletStore] Account entry saved — label: \(account.label, privacy: .public), address: \(finalAddress.prefix(22), privacy: .public)")
 
-        // 4. Store PKCS8 private key in Keychain for future deploy/signing
+        // 4. Store keys in Keychain (secretKey + salt + PKCS8)
         try KeychainManager.saveAccountKeys(
-            address: account.address,
-            secretKey: nil,
+            address: finalAddress,
+            secretKey: secretKeyHex,
             privateKeyPkcs8: pkcs8Base64,
-            salt: nil
+            salt: saltHex
         )
-        walletLog.notice("[WalletStore] PKCS8 key saved to Keychain")
-
-        // NOTE: PXE_GENERATE_KEYS removed — iOS generates P-256 keys natively (CryptoKit).
-        // The JS generateP256KeyPairBrowser() was redundant and caused AbortError when called
-        // during PXE_INIT (IndexedDB transaction conflict in WKWebView single-threaded JS).
-        // secretKey and salt are generated during deploy (deployAccountClientSide → Fr.random()).
-        walletLog.notice("[WalletStore] Using native P-256 keys — secretKey/salt will be generated during deploy")
+        walletLog.notice("[WalletStore] Keys saved to Keychain (secretKey: \(secretKeyHex != nil, privacy: .public), salt: \(saltHex != nil, privacy: .public))")
 
         tokens = Token.defaults
         screen = .dashboard
-        showToast("Passkey wallet created!")
+        showToast("Wallet created!")
         walletLog.notice("[WalletStore] Account creation complete — navigated to dashboard")
-
-        walletLog.notice("[WalletStore] Account ready — user can deploy from dashboard")
     }
 
     // MARK: - P-256 Key Generation (CryptoKit)
@@ -580,9 +768,13 @@ class WalletStore {
                 return
             }
 
-            walletLog.notice("[WalletStore] Calling PXE deployAccount — pubKeyX: \(pubKeyX.prefix(20), privacy: .public)...")
+            walletLog.notice("[WalletStore] Calling PXE deployAccount — pubKeyX: \(pubKeyX.prefix(20), privacy: .public)..., secretKey: \(keys.secretKey != nil, privacy: .public), salt: \(keys.salt != nil, privacy: .public)")
 
-            let result = try await pxeBridge.deployAccount(pubKeyX: pubKeyX, pubKeyY: pubKeyY, pkcs8: pkcs8)
+            let result = try await pxeBridge.deployAccount(
+                pubKeyX: pubKeyX, pubKeyY: pubKeyY, pkcs8: pkcs8,
+                secretKey: keys.secretKey, salt: keys.salt,
+                claimData: faucetClaimData
+            )
             walletLog.notice("[WalletStore] deployAccount result: \(String(describing: result).prefix(200), privacy: .public)")
 
             // Update account with the real address and keys from deployment
@@ -615,10 +807,8 @@ class WalletStore {
                 walletLog.notice("[WalletStore] Account deployed — address: \(deployedAddress.prefix(20), privacy: .public)..., txHash: \(result["txHash"] as? String ?? "nil", privacy: .public)")
                 showToast("Account deployed!")
             } else {
-                accounts[activeAccountIndex].deployed = true
-                saveAccounts()
-                walletLog.warning("[WalletStore] Deploy returned without address: \(String(describing: result).prefix(200), privacy: .public)")
-                showToast("Account deployed!")
+                walletLog.warning("[WalletStore] Deploy returned without address — NOT marking as deployed: \(String(describing: result).prefix(200), privacy: .public)")
+                showToast("Deploy incomplete: no address returned", type: .error)
             }
 
             // Refresh balances
@@ -783,6 +973,58 @@ class WalletStore {
                 toast = nil
             }
         }
+    }
+
+    // MARK: - Withdrawal Rate Limiting
+
+    /// Daily withdrawal amount tracked via UserDefaults
+    var dailyWithdrawalAmount: Double {
+        get { UserDefaults.standard.double(forKey: "dailyWithdrawalAmount") }
+        set { UserDefaults.standard.set(newValue, forKey: "dailyWithdrawalAmount") }
+    }
+
+    /// Date string (YYYY-MM-DD) of the current daily withdrawal tracking window
+    var dailyWithdrawalDate: String {
+        get { UserDefaults.standard.string(forKey: "dailyWithdrawalDate") ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: "dailyWithdrawalDate") }
+    }
+
+    /// Configurable daily withdrawal limit (persisted via UserDefaults)
+    var dailyWithdrawalLimit: Double {
+        get {
+            let val = UserDefaults.standard.double(forKey: "dailyWithdrawalLimit")
+            return val > 0 ? val : 1000.0
+        }
+        set { UserDefaults.standard.set(newValue, forKey: "dailyWithdrawalLimit") }
+    }
+
+    /// Threshold above which extra confirmation is required (persisted via UserDefaults)
+    var largeTransactionThreshold: Double {
+        get {
+            let val = UserDefaults.standard.double(forKey: "largeTransactionThreshold")
+            return val > 0 ? val : 100.0
+        }
+        set { UserDefaults.standard.set(newValue, forKey: "largeTransactionThreshold") }
+    }
+
+    /// Remaining daily withdrawal allowance (resets at midnight)
+    var remainingDailyLimit: Double {
+        let today = String(ISO8601DateFormatter().string(from: Date()).prefix(10))
+        if dailyWithdrawalDate != today {
+            return dailyWithdrawalLimit
+        }
+        return max(0, dailyWithdrawalLimit - dailyWithdrawalAmount)
+    }
+
+    /// Record a successful withdrawal against the daily limit
+    func recordWithdrawal(amount: Double) {
+        let today = String(ISO8601DateFormatter().string(from: Date()).prefix(10))
+        if dailyWithdrawalDate != today {
+            dailyWithdrawalAmount = 0
+            dailyWithdrawalDate = today
+        }
+        dailyWithdrawalAmount += amount
+        walletLog.notice("[WalletStore] Withdrawal recorded: \(amount, privacy: .public), daily total: \(self.dailyWithdrawalAmount, privacy: .public)/\(self.dailyWithdrawalLimit, privacy: .public)")
     }
 
     // MARK: - Demo Mode

@@ -16,6 +16,10 @@ settings:
     INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait"
     INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
 
+packages:
+  Swoirenberg:
+    path: ../../fork/swoirenberg
+
 targets:
   CelariWallet:
     type: application
@@ -26,10 +30,12 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.celari.wallet
         MARKETING_VERSION: "0.5.0"
-        CURRENT_PROJECT_VERSION: "22"
+        CURRENT_PROJECT_VERSION: "24"
         GENERATE_INFOPLIST_FILE: true
         INFOPLIST_KEY_CFBundleDisplayName: "Celari"
         INFOPLIST_KEY_CFBundleIconName: "AppIcon"
+    dependencies:
+      - package: Swoirenberg
     entitlements:
       path: CelariWallet/CelariWallet.entitlements
       properties:

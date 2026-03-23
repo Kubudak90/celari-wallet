@@ -511,6 +511,84 @@ async function initPXE(nodeUrl) {
   await Barretenberg.initSingleton({ backend: BackendType.Wasm, threads: 1 });
   console.log("[PXE] Step C0: Barretenberg singleton ready (" + (Date.now() - t_bb) + "ms)");
 
+  // ── Native Prover Intercept (iOS only) ──
+  // When running in WKWebView, PXEBridge injects window.nativeProver.
+  // We intercept BB.js chonk calls to route them through native Swift prover.
+  const _hasNativeProver = (typeof window !== "undefined" && window.nativeProver && window.nativeProver.available);
+  console.log("[PXE] Step C0b: Native prover check —", _hasNativeProver ? "AVAILABLE" : "not available (WASM mode)");
+
+  if (_hasNativeProver) {
+    // Helper: Uint8Array → base64
+    function toB64(uint8arr) {
+      let binary = '';
+      const bytes = uint8arr instanceof Uint8Array ? uint8arr : new Uint8Array(uint8arr);
+      const chunkSize = 8192;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+      }
+      return btoa(binary);
+    }
+
+    // SRS init is lazy — done on first chonk_start, not here
+    let _nativeSrsReady = false;
+
+    try {
+      // Patch the singleton instance directly
+      const bb = Barretenberg.getSingleton();
+      console.log("[PXE] Step C0b: Got BB singleton, patching chonk methods...");
+
+      bb.chonkStart = async function(command) {
+        console.log("[NativeProver] chonk_start:", command.numCircuits, "circuits");
+        // Lazy SRS init on first chonk call
+        if (!_nativeSrsReady) {
+          console.log("[NativeProver] Initializing native SRS (BN254 + Grumpkin)...");
+          try {
+            await window.nativeProver.setupForChonk({ bn254Size: 262144 });
+            _nativeSrsReady = true;
+            console.log("[NativeProver] SRS ready");
+          } catch (srsErr) {
+            console.error("[NativeProver] SRS init failed:", srsErr.message, "— falling back to WASM for this session");
+            // Restore original and let WASM handle it
+            throw srsErr;
+          }
+        }
+        await window.nativeProver.chonkStart(command.numCircuits);
+        return {};
+      };
+
+      bb.chonkLoad = async function(command) {
+        const c = command.circuit;
+        console.log("[NativeProver] chonk_load:", c.name);
+        await window.nativeProver.chonkLoad(c.name, toB64(c.bytecode), toB64(c.verificationKey));
+        return {};
+      };
+
+      bb.chonkAccumulate = async function(command) {
+        console.log("[NativeProver] chonk_accumulate");
+        await window.nativeProver.chonkAccumulate(toB64(command.witness));
+        return {};
+      };
+
+      bb.chonkProve = async function(_command) {
+        console.log("[NativeProver] chonk_prove — starting native IVC proving...");
+        const t0 = Date.now();
+        const result = await window.nativeProver.chonkProve();
+        const elapsed = Date.now() - t0;
+        console.log("[NativeProver] chonk_prove done in", (result.proveTimeMs || elapsed), "ms");
+
+        // Decode base64 proof → msgpack → ChonkProof object
+        const proofBytes = Uint8Array.from(atob(result.proof), c => c.charCodeAt(0));
+        const { Decoder } = await import("msgpackr");
+        const decoded = new Decoder({ useRecords: false }).unpack(proofBytes);
+        return { proof: decoded };
+      };
+
+      console.log("[PXE] Step C0b: Chonk intercept installed (SRS will init on first prove)");
+    } catch (err) {
+      console.error("[PXE] Step C0b FAILED:", err.message, err.stack);
+    }
+  }
+
   initStep = "Loading WASM prover engine...";
   reportProgress("WASM prover yükleniyor...");
   console.log("[PXE] Step C: WASMSimulator + Prover...");
@@ -686,7 +764,36 @@ async function executeTransfer(data) {
   reportProgress("Token kontratı hazırlanıyor...");
   const token = await TokenContract.at(tokenAddr, acctWallet);
   reportProgress("Fee ödeme ayarlanıyor...");
-  const { paymentMethod } = await setupSponsoredFPC(acctWallet);
+  let paymentMethod;
+  try {
+    const fpc = await Promise.race([
+      setupSponsoredFPC(acctWallet),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("SponsoredFPC timeout")), 30000)),
+    ]);
+    paymentMethod = fpc.paymentMethod;
+    console.log("[PXE] Transfer: SponsoredFPC OK");
+  } catch (e) {
+    console.warn(`[PXE] Transfer: SponsoredFPC unavailable (${e.message}), trying FeeJuice fallback...`);
+    // Fallback: Use FeeJuicePaymentMethod if user has Fee Juice balance
+    try {
+      const { FeeJuicePaymentMethod } = await import("@aztec/aztec.js/fee");
+      const { FeeJuiceAddress } = await import("@aztec/protocol-contracts/fee-juice");
+      const feeJuice = await TokenContract.at(FeeJuiceAddress, acctWallet);
+      const bal = await feeJuice.methods.balance_of_public(acctWallet.getAddress()).simulate();
+      const balResult = bal.result !== undefined ? bal.result : bal;
+      if (BigInt(balResult.toString()) <= 0n) {
+        throw new Error("NO_FEE_JUICE");
+      }
+      paymentMethod = new FeeJuicePaymentMethod(acctWallet.getAddress());
+      console.log(`[PXE] Transfer: FeeJuicePaymentMethod OK (balance: ${balResult.toString()})`);
+    } catch (feeErr) {
+      if (feeErr.message === "NO_FEE_JUICE") {
+        throw new Error("Fee payment unavailable: No Fee Juice balance. Bridge Fee Juice from L1 or request from faucet to pay for transactions.");
+      }
+      console.warn(`[PXE] Transfer: FeeJuice fallback failed (${feeErr.message})`);
+      throw new Error("Fee payment unavailable: SponsoredFPC is not deployed and Fee Juice check failed. You need Fee Juice to pay for transactions.");
+    }
+  }
   const senderAddr = acctWallet.getAddress();
 
   reportProgress("Transfer tx gönderiliyor...");
@@ -892,8 +999,9 @@ async function deployAccountClientSide(data) {
   const { publicKeyX, publicKeyY, privateKeyPkcs8 } = data;
   console.log(`[PXE] pubKeyX: ${publicKeyX?.slice(0,16)}..., pkcs8: ${privateKeyPkcs8 ? 'present' : 'MISSING'}`);
 
-  const secretKey = Fr.random();
-  const salt = Fr.random();
+  // Use pre-computed keys if provided (from PXE_COMPUTE_ADDRESS), otherwise generate new ones
+  const secretKey = data.secretKey ? Fr.fromHexString(data.secretKey) : Fr.random();
+  const salt = data.salt ? Fr.fromHexString(data.salt) : Fr.random();
 
   const accountContract = new BrowserCelariPasskeyAccountContract(
     hexToBuffer(publicKeyX),
@@ -931,21 +1039,39 @@ async function deployAccountClientSide(data) {
     throw e;
   }
 
-  // Step 2: SponsoredFPC
+  // Step 2: Fee payment — cascading fallback: SponsoredFPC → FeeJuiceWithClaim → FeeJuice → Error
   reportProgress("Fee ödeme ayarlanıyor...");
-  console.log("[PXE] Deploy Step 2: setupSponsoredFPC...");
+  console.log("[PXE] Deploy Step 2: setting up fee payment...");
   const t2 = Date.now();
   let paymentMethod;
   try {
     const fpc = await Promise.race([
       setupSponsoredFPC(wallet),
-      new Promise((_, rej) => setTimeout(() => rej(new Error("setupSponsoredFPC timed out after 3 min")), 180000)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("SponsoredFPC timed out")), 30000)),
     ]);
     paymentMethod = fpc.paymentMethod;
-    console.log(`[PXE] Deploy Step 2: OK (${Date.now() - t2}ms)`);
+    console.log(`[PXE] Deploy Step 2: SponsoredFPC OK (${Date.now() - t2}ms)`);
   } catch (e) {
-    console.error(`[PXE] Deploy Step 2: FAILED (${Date.now() - t2}ms) -- ${e.message}`);
-    throw e;
+    console.warn(`[PXE] Deploy Step 2: SponsoredFPC unavailable (${e.message})`);
+    // Fallback 1: Use FeeJuicePaymentMethodWithClaim if faucet claim data provided
+    if (data.claimSecret && data.messageLeafIndex) {
+      const { FeeJuicePaymentMethodWithClaim } = await import("@aztec/aztec.js/fee");
+      paymentMethod = new FeeJuicePaymentMethodWithClaim(address, {
+        claimAmount: BigInt(data.claimAmount || "1000000000000000000000"),
+        claimSecret: Fr.fromHexString(data.claimSecret),
+        messageLeafIndex: BigInt(data.messageLeafIndex),
+      });
+      console.log(`[PXE] Deploy Step 2: FeeJuicePaymentMethodWithClaim OK (leafIndex: ${data.messageLeafIndex})`);
+    } else {
+      // Fallback 2: Use FeeJuicePaymentMethod if user has Fee Juice balance
+      try {
+        const { FeeJuicePaymentMethod } = await import("@aztec/aztec.js/fee");
+        paymentMethod = new FeeJuicePaymentMethod(address);
+        console.log(`[PXE] Deploy Step 2: FeeJuicePaymentMethod fallback OK`);
+      } catch (feeErr) {
+        throw new Error("Fee payment unavailable: SponsoredFPC is not deployed on this network. Request Fee Juice from the faucet or bridge from L1, then try deploying again.");
+      }
+    }
   }
 
   // Step 3: getDeployMethod
@@ -1742,6 +1868,74 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           const cidSim = await contract.methods.get_recovery_cid().simulate();
           const cidResult = cidSim.result !== undefined ? cidSim.result : cidSim;
           return { cidPart1: cidResult[0]?.toString() || "0", cidPart2: cidResult[1]?.toString() || "0" };
+        }
+
+        case "PXE_FEE_JUICE_BALANCE": {
+          if (!wallet) throw new Error("PXE not initialized");
+          const acctWallet = getActiveWallet();
+          if (!acctWallet) throw new Error("No active account");
+          try {
+            const { FeeJuiceAddress } = await import("@aztec/protocol-contracts/fee-juice");
+            const { TokenContract } = await import("@aztec/noir-contracts.js/Token");
+            const feeJuice = await TokenContract.at(FeeJuiceAddress, acctWallet);
+            const bal = await feeJuice.methods.balance_of_public(acctWallet.getAddress()).simulate();
+            const balResult = bal.result !== undefined ? bal.result : bal;
+            return { balance: balResult.toString() };
+          } catch (e) {
+            console.warn(`[PXE] Fee Juice balance check failed: ${e.message}`);
+            return { balance: "0" };
+          }
+        }
+
+        case "PXE_PRIVATE_BALANCE": {
+          if (!wallet) throw new Error("PXE not initialized");
+          const acctWallet = getActiveWallet();
+          if (!acctWallet) throw new Error("No active account");
+          const { TokenContract } = await import("@aztec/noir-contracts.js/Token");
+          const tokenAddr = AztecAddress.fromString(msg.tokenAddress);
+          const ownerAddr = AztecAddress.fromString(msg.ownerAddress);
+          const token = await TokenContract.at(tokenAddr, acctWallet);
+          const bal = await token.methods.balance_of_private(ownerAddr).simulate();
+          const balResult = bal.result !== undefined ? bal.result : bal;
+          return { balance: balResult.toString() };
+        }
+
+        case "PXE_PUBLIC_BALANCE": {
+          if (!wallet) throw new Error("PXE not initialized");
+          const acctWallet = getActiveWallet();
+          if (!acctWallet) throw new Error("No active account");
+          const { TokenContract } = await import("@aztec/noir-contracts.js/Token");
+          const tokenAddr = AztecAddress.fromString(msg.tokenAddress);
+          const ownerAddr = AztecAddress.fromString(msg.ownerAddress);
+          const token = await TokenContract.at(tokenAddr, acctWallet);
+          const bal = await token.methods.balance_of_public(ownerAddr).simulate();
+          const balResult = bal.result !== undefined ? bal.result : bal;
+          return { balance: balResult.toString() };
+        }
+
+        case "PXE_COMPUTE_ADDRESS": {
+          if (!wallet) throw new Error("PXE not initialized");
+          const { publicKeyX, publicKeyY, privateKeyPkcs8 } = msg.data;
+
+          const compSecretKey = Fr.random();
+          const compSalt = Fr.random();
+
+          const compContract = new BrowserCelariPasskeyAccountContract(
+            hexToBuffer(publicKeyX),
+            hexToBuffer(publicKeyY),
+            privateKeyPkcs8,
+          );
+
+          console.log("[PXE] Computing deterministic address...");
+          const compManager = await AccountManager.create(wallet, compSecretKey, compContract, compSalt);
+          const compAddress = compManager.address.toString();
+          console.log(`[PXE] Computed address: ${compAddress.slice(0, 22)}...`);
+
+          return {
+            address: compAddress,
+            secretKey: compSecretKey.toString(),
+            salt: compSalt.toString(),
+          };
         }
 
         default:

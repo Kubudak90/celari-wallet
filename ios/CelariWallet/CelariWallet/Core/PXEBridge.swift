@@ -1,6 +1,8 @@
 import WebKit
 import SwiftUI
 import os.log
+import Swoirenberg
+import SwoirCore
 
 private let pxeLog = Logger(subsystem: "com.celari.wallet", category: "PXEBridge")
 
@@ -56,6 +58,7 @@ class PXEBridge: NSObject {
         controller.add(self, name: "pxeBridge")
         controller.add(self, name: "pxeStorage")
         controller.add(self, name: "pxeEvent")
+        controller.add(self, name: "nativeProver")
 
         // Inject console.log capture so JS logs are visible in Swift
         controller.add(self, name: "jsConsole")
@@ -83,6 +86,90 @@ class PXEBridge: NSObject {
         """
         let consoleScript = WKUserScript(source: consoleOverride, injectionTime: .atDocumentStart, forMainFrameOnly: false)
         controller.addUserScript(consoleScript)
+
+        // Inject native prover bridge (JS → Swift → Swoirenberg)
+        let nativeProverShim = """
+        (function() {
+            var _npCallbacks = {};
+            var _npId = 0;
+
+            window._nativeProverCallback = function(callbackId, resultJson) {
+                var cb = _npCallbacks[callbackId];
+                if (cb) {
+                    delete _npCallbacks[callbackId];
+                    try {
+                        var result = JSON.parse(resultJson);
+                        if (result.error) cb.reject(new Error(result.error));
+                        else cb.resolve(result);
+                    } catch(e) { cb.reject(e); }
+                }
+            };
+
+            function callNative(action, params) {
+                return new Promise(function(resolve, reject) {
+                    var cbId = 'np_' + (++_npId);
+                    _npCallbacks[cbId] = { resolve: resolve, reject: reject };
+                    var msg = JSON.stringify(Object.assign({ action: action, callbackId: cbId }, params || {}));
+                    window.webkit.messageHandlers.nativeProver.postMessage(msg);
+                });
+            }
+
+            window.nativeProver = {
+                available: true,
+                callNative: callNative,
+                setupSrs: function(opts) {
+                    return callNative('setup_srs', opts || {});
+                },
+                setupSrsFromBytecode: function(bytecodeBase64) {
+                    return callNative('setup_srs_from_bytecode', { bytecode: bytecodeBase64 });
+                },
+                execute: function(bytecodeBase64, witnessMap) {
+                    return callNative('execute', { bytecode: bytecodeBase64, witnessMap: witnessMap });
+                },
+                prove: function(bytecodeBase64, witnessMap, proofType) {
+                    return callNative('prove', { bytecode: bytecodeBase64, witnessMap: witnessMap, proofType: proofType || 'ultra_honk' });
+                },
+                verify: function(proofHex, vkeyHex, proofType) {
+                    return callNative('verify', { proof: proofHex, vkey: vkeyHex, proofType: proofType || 'ultra_honk' });
+                },
+                getVerificationKey: function(bytecodeBase64, proofType) {
+                    return callNative('get_vkey', { bytecode: bytecodeBase64, proofType: proofType || 'ultra_honk' });
+                },
+                // Chonk/IVC pipeline
+                setupForChonk: function(opts) {
+                    return callNative('setup_for_chonk', opts || {});
+                },
+                setupGrumpkinSrs: function(opts) {
+                    return callNative('setup_grumpkin_srs', opts || {});
+                },
+                chonkStart: function(numCircuits) {
+                    return callNative('chonk_start', { numCircuits: numCircuits });
+                },
+                chonkLoad: function(name, bytecodeB64, vkeyB64) {
+                    return callNative('chonk_load', { name: name, bytecode: bytecodeB64, vkey: vkeyB64 });
+                },
+                chonkAccumulate: function(witnessB64) {
+                    return callNative('chonk_accumulate', { witness: witnessB64 });
+                },
+                chonkProve: function() {
+                    return callNative('chonk_prove', {});
+                },
+                chonkVerify: function(proofB64, vkeyB64) {
+                    return callNative('chonk_verify', { proof: proofB64, vkey: vkeyB64 });
+                },
+                chonkComputeVk: function(bytecodeB64) {
+                    return callNative('chonk_compute_vk', { bytecode: bytecodeB64 });
+                },
+                chonkDestroy: function() {
+                    return callNative('chonk_destroy', {});
+                }
+            };
+
+            console.log('[NativeProver] JS bridge injected — window.nativeProver.available = true');
+        })();
+        """
+        let nativeProverScript = WKUserScript(source: nativeProverShim, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        controller.addUserScript(nativeProverScript)
 
         // Inject Chrome API shim before page loads (defines process, global, chrome.*)
         if let shimURL = Bundle.main.url(forResource: "pxe-bridge-shim", withExtension: "js"),
@@ -176,6 +263,18 @@ class PXEBridge: NSObject {
         }
     }
 
+    // MARK: - Evaluate JavaScript
+
+    @MainActor
+    func evaluateJS(_ jsCode: String) async throws -> Any? {
+        guard let webView else { throw PXEError.notReady }
+        return try await webView.callAsyncJavaScript(
+            jsCode,
+            arguments: [:],
+            contentWorld: .page
+        )
+    }
+
     // MARK: - Typed PXE Methods
 
     func initPXE(nodeUrl: String) async throws -> [String: Any] {
@@ -190,10 +289,20 @@ class PXEBridge: NSObject {
         try await sendMessage("PXE_GENERATE_KEYS")
     }
 
-    func deployAccount(pubKeyX: String, pubKeyY: String, pkcs8: String) async throws -> [String: Any] {
-        try await sendMessage("PXE_DEPLOY_ACCOUNT", data: [
+    func computeAddress(pubKeyX: String, pubKeyY: String, pkcs8: String) async throws -> [String: Any] {
+        try await sendMessage("PXE_COMPUTE_ADDRESS", data: [
             "data": ["publicKeyX": pubKeyX, "publicKeyY": pubKeyY, "privateKeyPkcs8": pkcs8]
         ])
+    }
+
+    func deployAccount(pubKeyX: String, pubKeyY: String, pkcs8: String, secretKey: String? = nil, salt: String? = nil, claimData: [String: String]? = nil) async throws -> [String: Any] {
+        var payload: [String: Any] = ["publicKeyX": pubKeyX, "publicKeyY": pubKeyY, "privateKeyPkcs8": pkcs8]
+        if let sk = secretKey { payload["secretKey"] = sk }
+        if let s = salt { payload["salt"] = s }
+        if let cd = claimData {
+            for (k, v) in cd { payload[k] = v }
+        }
+        return try await sendMessage("PXE_DEPLOY_ACCOUNT", data: ["data": payload])
     }
 
     func registerAccount(data: [String: String]) async throws -> [String: Any] {
@@ -258,6 +367,32 @@ class PXEBridge: NSObject {
 
     func wcSessions() async throws -> [String: Any] {
         try await sendMessage("PXE_WC_SESSIONS")
+    }
+
+    // MARK: - AIP-20 Balance Queries
+
+    func getPrivateBalance(tokenAddress: String, ownerAddress: String) async throws -> String {
+        let result = try await sendMessage("PXE_PRIVATE_BALANCE", data: [
+            "data": ["tokenAddress": tokenAddress, "ownerAddress": ownerAddress]
+        ])
+        return result["balance"] as? String ?? "0"
+    }
+
+    func getPublicBalance(tokenAddress: String, ownerAddress: String) async throws -> String {
+        let result = try await sendMessage("PXE_PUBLIC_BALANCE", data: [
+            "data": ["tokenAddress": tokenAddress, "ownerAddress": ownerAddress]
+        ])
+        return result["balance"] as? String ?? "0"
+    }
+
+    // MARK: - Fee Juice
+
+    func getFeeJuiceBalance() async throws -> String {
+        let result = try await sendMessage("PXE_FEE_JUICE_BALANCE")
+        guard let balance = result["balance"] as? String else {
+            throw PXEError.jsError("getFeeJuiceBalance returned no balance")
+        }
+        return balance
     }
 
     // MARK: - Guardian Recovery
@@ -386,6 +521,9 @@ extension PXEBridge: WKScriptMessageHandler {
             // WalletConnect events from JS
             handleEvent(json)
 
+        case "nativeProver":
+            handleNativeProverRequest(json)
+
         case "jsConsole":
             // JavaScript console output
             let level = json["level"] as? String ?? "log"
@@ -393,7 +531,7 @@ extension PXEBridge: WKScriptMessageHandler {
             pxeLog.notice("[PXE-JS:\(level, privacy: .public)] \(msg, privacy: .public)")
 
             // Forward PXE-related logs to in-app log panel
-            if msg.contains("[PXE") || msg.contains("[AuthWit") || level == "error" {
+            if msg.contains("[PXE") || msg.contains("[AuthWit") || msg.contains("[NativeProver") || level == "error" || level == "warn" {
                 Task { @MainActor in
                     self.store?.appendPXELog(level: level, message: msg)
                 }
@@ -476,6 +614,210 @@ extension PXEBridge: WKScriptMessageHandler {
             default:
                 break
             }
+        }
+    }
+}
+
+// MARK: - Native Prover Handler
+
+extension PXEBridge {
+    func handleNativeProverRequest(_ json: [String: Any]) {
+        let action = json["action"] as? String ?? ""
+        let callbackId = json["callbackId"] as? String ?? ""
+
+        pxeLog.notice("[NativeProver] action=\(action, privacy: .public), cbId=\(callbackId, privacy: .public)")
+
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
+            do {
+                var result: [String: Any] = [:]
+
+                switch action {
+                case "setup_srs":
+                    let circuitSize = json["circuitSize"] as? UInt32 ?? 500
+                    let numPoints = try Swoirenberg.setup_srs(circuit_size: circuitSize, srs_path: nil)
+                    result["numPoints"] = numPoints
+
+                case "setup_srs_from_bytecode":
+                    guard let b64 = json["bytecode"] as? String,
+                          let bytecode = Data(base64Encoded: b64) else {
+                        throw NativeProverError.invalidBytecode
+                    }
+                    let numPoints = try Swoirenberg.setup_srs_from_bytecode(bytecode: bytecode, srs_path: nil)
+                    result["numPoints"] = numPoints
+
+                case "execute":
+                    guard let b64 = json["bytecode"] as? String,
+                          let bytecode = Data(base64Encoded: b64),
+                          let witnessMap = json["witnessMap"] as? [String] else {
+                        throw NativeProverError.invalidBytecode
+                    }
+                    let solvedWitness = try Swoirenberg.execute(bytecode: bytecode, witnessMap: witnessMap)
+                    result["witness"] = solvedWitness
+
+                case "prove":
+                    guard let b64 = json["bytecode"] as? String,
+                          let bytecode = Data(base64Encoded: b64),
+                          let witnessMap = json["witnessMap"] as? [String] else {
+                        throw NativeProverError.invalidBytecode
+                    }
+                    let proofType = json["proofType"] as? String ?? "ultra_honk"
+                    let vkey = try Swoirenberg.get_verification_key(
+                        bytecode: bytecode, proof_type: proofType,
+                        low_memory_mode: false, storage_cap: nil
+                    )
+                    let start = CFAbsoluteTimeGetCurrent()
+                    let proof = try Swoirenberg.prove(
+                        bytecode: bytecode, witnessMap: witnessMap,
+                        proof_type: proofType, vkey: vkey,
+                        low_memory_mode: false, storage_cap: nil
+                    )
+                    let elapsed = CFAbsoluteTimeGetCurrent() - start
+                    result["proof"] = proof.map { String(format: "%02x", $0) }.joined()
+                    result["proofSize"] = proof.count
+                    result["proveTimeMs"] = Int(elapsed * 1000)
+                    result["vkey"] = vkey.map { String(format: "%02x", $0) }.joined()
+
+                case "verify":
+                    guard let proofHex = json["proof"] as? String,
+                          let vkeyHex = json["vkey"] as? String else {
+                        throw NativeProverError.invalidBytecode
+                    }
+                    let proofType = json["proofType"] as? String ?? "ultra_honk"
+                    let proof = Data(hexString: proofHex)
+                    let vkey = Data(hexString: vkeyHex)
+                    let valid = try Swoirenberg.verify(proof: proof, vkey: vkey, proof_type: proofType)
+                    result["verified"] = valid
+
+                case "get_vkey":
+                    guard let b64 = json["bytecode"] as? String,
+                          let bytecode = Data(base64Encoded: b64) else {
+                        throw NativeProverError.invalidBytecode
+                    }
+                    let proofType = json["proofType"] as? String ?? "ultra_honk"
+                    let vkey = try Swoirenberg.get_verification_key(
+                        bytecode: bytecode, proof_type: proofType,
+                        low_memory_mode: false, storage_cap: nil
+                    )
+                    result["vkey"] = vkey.map { String(format: "%02x", $0) }.joined()
+                    result["vkeySize"] = vkey.count
+
+                // ── Chonk/IVC Pipeline ──
+
+                case "setup_grumpkin_srs":
+                    let numPoints = json["numPoints"] as? UInt32 ?? 65537
+                    try NativeProver.shared.setupGrumpkinSRS(numPoints: numPoints)
+                    result["success"] = true
+
+                case "setup_for_chonk":
+                    let bn254Size = json["bn254Size"] as? UInt32 ?? 262144
+                    try await NativeProver.shared.setupForChonk(bn254Size: bn254Size)
+                    result["success"] = true
+
+                case "chonk_start":
+                    let numCircuits = json["numCircuits"] as? UInt32 ?? 0
+                    try NativeProver.shared.chonkStart(numCircuits: numCircuits)
+                    result["success"] = true
+
+                case "chonk_load":
+                    guard let name = json["name"] as? String,
+                          let b64Bytecode = json["bytecode"] as? String,
+                          let bytecode = Data(base64Encoded: b64Bytecode),
+                          let b64Vkey = json["vkey"] as? String,
+                          let vkey = Data(base64Encoded: b64Vkey) else {
+                        throw NativeProverError.invalidBytecode
+                    }
+                    try NativeProver.shared.chonkLoad(name: name, bytecode: bytecode, verificationKey: vkey)
+                    result["success"] = true
+
+                case "chonk_accumulate":
+                    guard let b64Witness = json["witness"] as? String,
+                          let witness = Data(base64Encoded: b64Witness) else {
+                        throw NativeProverError.invalidBytecode
+                    }
+                    try NativeProver.shared.chonkAccumulate(witness: witness)
+                    result["success"] = true
+
+                case "chonk_prove":
+                    let start = CFAbsoluteTimeGetCurrent()
+                    let proof = try NativeProver.shared.chonkProve()
+                    let elapsed = CFAbsoluteTimeGetCurrent() - start
+                    result["proof"] = proof.base64EncodedString()
+                    result["proofSize"] = proof.count
+                    result["proveTimeMs"] = Int(elapsed * 1000)
+
+                case "chonk_verify":
+                    guard let b64Proof = json["proof"] as? String,
+                          let proof = Data(base64Encoded: b64Proof),
+                          let b64Vkey = json["vkey"] as? String,
+                          let vkey = Data(base64Encoded: b64Vkey) else {
+                        throw NativeProverError.invalidBytecode
+                    }
+                    let valid = try NativeProver.shared.chonkVerify(proof: proof, verificationKey: vkey)
+                    result["verified"] = valid
+
+                case "chonk_compute_vk":
+                    guard let b64Bytecode = json["bytecode"] as? String,
+                          let bytecode = Data(base64Encoded: b64Bytecode) else {
+                        throw NativeProverError.invalidBytecode
+                    }
+                    let vk = try NativeProver.shared.chonkComputeVK(bytecode: bytecode)
+                    result["vkey"] = vk.base64EncodedString()
+                    result["vkeySize"] = vk.count
+
+                case "chonk_destroy":
+                    try NativeProver.shared.chonkDestroy()
+                    result["success"] = true
+
+                case "chonk_prove_transaction":
+                    guard let names = json["names"] as? [String],
+                          let b64Bytecodes = json["bytecodes"] as? [String],
+                          let b64Witnesses = json["witnesses"] as? [String],
+                          let b64Vkeys = json["vkeys"] as? [String] else {
+                        throw NativeProverError.invalidBytecode
+                    }
+                    let steps: [(name: String, bytecode: Data, witness: Data, vkey: Data)] = try zip(
+                        zip(names, b64Bytecodes),
+                        zip(b64Witnesses, b64Vkeys)
+                    ).map { pair in
+                        guard let bc = Data(base64Encoded: pair.0.1),
+                              let w = Data(base64Encoded: pair.1.0),
+                              let vk = Data(base64Encoded: pair.1.1) else {
+                            throw NativeProverError.invalidBytecode
+                        }
+                        return (name: pair.0.0, bytecode: bc, witness: w, vkey: vk)
+                    }
+                    let start = CFAbsoluteTimeGetCurrent()
+                    let proof = try NativeProver.shared.proveTransaction(steps: steps)
+                    let elapsed = CFAbsoluteTimeGetCurrent() - start
+                    result["proof"] = proof.base64EncodedString()
+                    result["proofSize"] = proof.count
+                    result["proveTimeMs"] = Int(elapsed * 1000)
+
+                default:
+                    throw NativeProverError.provingFailed("Unknown action: \(action)")
+                }
+
+                await self.deliverNativeProverCallback(callbackId, result: result)
+            } catch {
+                pxeLog.error("[NativeProver] \(action, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+                await self.deliverNativeProverCallback(callbackId, result: ["error": error.localizedDescription])
+            }
+        }
+    }
+
+    @MainActor
+    func deliverNativeProverCallback(_ callbackId: String, result: [String: Any]) {
+        guard let webView else { return }
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: result),
+              let jsonStr = String(data: jsonData, encoding: .utf8) else { return }
+
+        Task {
+            try? await webView.callAsyncJavaScript(
+                "window._nativeProverCallback(cbId, resultJson)",
+                arguments: ["cbId": callbackId, "resultJson": jsonStr],
+                contentWorld: .page
+            )
         }
     }
 }
