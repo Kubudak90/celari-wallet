@@ -1,0 +1,18 @@
+# Build artifacts from Cargo/Swift
+# Note that we're intentionally not ignoring Cargo.lock
+target/
+.build/
+.artifacts/
+.res/
+Frameworks/
+
+# Ignored files
+**/*.rs.bk
+*.DS_Store
+*.run
+*.a
+*.so
+*.so
+*.zip
+*.bak
+.swiftpm

@@ -1,0 +1,27 @@
+[package]
+name = "swoirenberg"
+version = "1.0.0-beta.19-1"
+authors = ["Bartosz Nowak", "Michael Elliot", "Theo Madzou"]
+repository = "https://github.com/Swoir/Swoirenberg.git"
+license = "Apache-2.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib"]
+
+[build-dependencies]
+swift-bridge-build = "0.1"
+sha2 = "0.10.8"
+regex = "1.10.2"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+swift-bridge = "0.1"
+rmp-serde = "1.1"
+base64 = "0.22"
+noir_rs = { git = "https://github.com/Kubudak90/noir_rs.git", tag = "v1.0.0-beta.19-1-chonk", features = ["barretenberg"] }
+
+[profile.release]
+strip = "symbols"
+lto = true

@@ -1,0 +1,72 @@
+name: Build XCFramework
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            Rust/target
+          key: cargo-ios-${{ hashFiles('Rust/Cargo.lock') }}
+
+      - name: Build iOS device
+        working-directory: Rust
+        run: cargo build --release --target aarch64-apple-ios
+
+      - name: Build iOS simulator
+        working-directory: Rust
+        run: cargo build --release --target aarch64-apple-ios-sim
+
+      - name: Create XCFramework
+        run: |
+          mkdir -p build/{ios-device,ios-sim}/SwoirenbergFramework.framework/{Headers,Modules}
+          cp Rust/target/aarch64-apple-ios/release/libswoirenberg.a \
+             build/ios-device/SwoirenbergFramework.framework/SwoirenbergFramework
+          cp Rust/target/aarch64-apple-ios-sim/release/libswoirenberg.a \
+             build/ios-sim/SwoirenbergFramework.framework/SwoirenbergFramework
+          for dir in build/ios-device build/ios-sim; do
+            printf 'module SwoirenbergFramework {\n  header "Swoirenberg-Swift.h"\n  export *\n}\n' \
+              > "$dir/SwoirenbergFramework.framework/Modules/module.modulemap"
+            touch "$dir/SwoirenbergFramework.framework/Headers/Swoirenberg-Swift.h"
+          done
+          xcodebuild -create-xcframework \
+            -framework build/ios-device/SwoirenbergFramework.framework \
+            -framework build/ios-sim/SwoirenbergFramework.framework \
+            -output Swoirenberg.xcframework
+          zip -r Swoirenberg.xcframework.zip Swoirenberg.xcframework
+
+      - name: Compute checksum
+        id: checksum
+        run: |
+          CHECKSUM=$(shasum -a 256 Swoirenberg.xcframework.zip | cut -d' ' -f1)
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          CHECKSUM: ${{ steps.checksum.outputs.checksum }}
+          TAG_NAME: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Swoirenberg.xcframework.zip
+          body: |
+            Swoirenberg XCFramework with Chonk/IVC support.
+            Checksum: ${{ steps.checksum.outputs.checksum }}
