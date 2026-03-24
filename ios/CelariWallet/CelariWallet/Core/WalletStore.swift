@@ -272,11 +272,11 @@ class WalletStore {
         loadFromStorage()
 
         // Clean up orphaned pending addresses (failed deployments that left stale entries)
-        let beforeCount = accounts.count
-        accounts.removeAll { $0.address.hasPrefix("pending_") && !$0.deployed }
-        if accounts.count < beforeCount {
-            walletLog.notice("[WalletStore] Cleaned \(beforeCount - accounts.count, privacy: .public) orphaned pending account(s)")
-            saveToStorage()
+        let beforeCount = self.accounts.count
+        self.accounts.removeAll { $0.address.hasPrefix("pending_") && !$0.deployed }
+        if self.accounts.count < beforeCount {
+            walletLog.notice("[WalletStore] Cleaned \(beforeCount - self.accounts.count, privacy: .public) orphaned pending account(s)")
+            self.saveAccounts()
         }
 
         walletLog.notice("[WalletStore] initialize — accounts: \(self.accounts.count, privacy: .public), network: \(self.network, privacy: .public)")

@@ -125,6 +125,7 @@ struct NetworkPickerSheet: View {
         case .local: return "desktopcomputer"
         case .devnet: return "hammer.fill"
         case .testnet: return "globe"
+        case .mainnet: return "shield.fill"
         }
     }
 
@@ -133,6 +134,7 @@ struct NetworkPickerSheet: View {
         case .local: return V2Colors.textTertiary
         case .devnet: return V2Colors.soOrange
         case .testnet: return V2Colors.aztecGreen
+        case .mainnet: return V2Colors.soBlue
         }
     }
 }
