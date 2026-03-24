@@ -1039,37 +1039,39 @@ async function deployAccountClientSide(data) {
     throw e;
   }
 
-  // Step 2: Fee payment — cascading fallback: SponsoredFPC → FeeJuiceWithClaim → FeeJuice → Error
+  // Step 2: Fee payment — priority: FeeJuiceWithClaim (if available) → SponsoredFPC → FeeJuice → Error
   reportProgress("Fee ödeme ayarlanıyor...");
   console.log("[PXE] Deploy Step 2: setting up fee payment...");
   const t2 = Date.now();
   let paymentMethod;
-  try {
-    const fpc = await Promise.race([
-      setupSponsoredFPC(wallet),
-      new Promise((_, rej) => setTimeout(() => rej(new Error("SponsoredFPC timed out")), 30000)),
-    ]);
-    paymentMethod = fpc.paymentMethod;
-    console.log(`[PXE] Deploy Step 2: SponsoredFPC OK (${Date.now() - t2}ms)`);
-  } catch (e) {
-    console.warn(`[PXE] Deploy Step 2: SponsoredFPC unavailable (${e.message})`);
-    // Fallback 1: Use FeeJuicePaymentMethodWithClaim if faucet claim data provided
-    if (data.claimSecret && data.messageLeafIndex) {
-      const { FeeJuicePaymentMethodWithClaim } = await import("@aztec/aztec.js/fee");
-      paymentMethod = new FeeJuicePaymentMethodWithClaim(address, {
-        claimAmount: BigInt(data.claimAmount || "1000000000000000000000"),
-        claimSecret: Fr.fromHexString(data.claimSecret),
-        messageLeafIndex: BigInt(data.messageLeafIndex),
-      });
-      console.log(`[PXE] Deploy Step 2: FeeJuicePaymentMethodWithClaim OK (leafIndex: ${data.messageLeafIndex})`);
-    } else {
-      // Fallback 2: Use FeeJuicePaymentMethod if user has Fee Juice balance
+
+  // Priority 1: If user has faucet claim data, use it directly (most reliable)
+  if (data.claimSecret && data.messageLeafIndex) {
+    const { FeeJuicePaymentMethodWithClaim } = await import("@aztec/aztec.js/fee");
+    paymentMethod = new FeeJuicePaymentMethodWithClaim(address, {
+      claimAmount: BigInt(data.claimAmount || "1000000000000000000000"),
+      claimSecret: Fr.fromHexString(data.claimSecret),
+      messageLeafIndex: BigInt(data.messageLeafIndex),
+    });
+    console.log(`[PXE] Deploy Step 2: FeeJuicePaymentMethodWithClaim OK (leafIndex: ${data.messageLeafIndex}, ${Date.now() - t2}ms)`);
+  } else {
+    // Priority 2: Try SponsoredFPC (devnet only — may be depleted)
+    try {
+      const fpc = await Promise.race([
+        setupSponsoredFPC(wallet),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("SponsoredFPC timed out")), 30000)),
+      ]);
+      paymentMethod = fpc.paymentMethod;
+      console.log(`[PXE] Deploy Step 2: SponsoredFPC OK (${Date.now() - t2}ms)`);
+    } catch (e) {
+      console.warn(`[PXE] Deploy Step 2: SponsoredFPC unavailable (${e.message})`);
+      // Priority 3: Use FeeJuicePaymentMethod if user has Fee Juice balance
       try {
         const { FeeJuicePaymentMethod } = await import("@aztec/aztec.js/fee");
         paymentMethod = new FeeJuicePaymentMethod(address);
         console.log(`[PXE] Deploy Step 2: FeeJuicePaymentMethod fallback OK`);
       } catch (feeErr) {
-        throw new Error("Fee payment unavailable: SponsoredFPC is not deployed on this network. Request Fee Juice from the faucet or bridge from L1, then try deploying again.");
+        throw new Error("Fee payment unavailable: Request Fee Juice from the faucet or bridge from L1, then try deploying again.");
       }
     }
   }
