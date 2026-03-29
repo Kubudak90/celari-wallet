@@ -252,6 +252,11 @@ class WalletStore {
         set { UserDefaults.standard.set(newValue, forKey: "lastBackupDate") }
     }
 
+    var pinataApiKey: String? {
+        get { UserDefaults.standard.string(forKey: "pinataApiKey") }
+        set { UserDefaults.standard.set(newValue, forKey: "pinataApiKey") }
+    }
+
     var needsBackupReminder: Bool {
         let daysSinceBackup = (Date().timeIntervalSince1970 - lastBackupDate) / 86400
         return daysSinceBackup > 7 && accounts.count > 0
