@@ -46,6 +46,20 @@ enum GuardianStatus: Codable, Equatable {
     case recovered
 }
 
+    struct BridgeTransaction: Codable, Identifiable, Equatable {
+        let id: UUID
+        let type: BridgeType
+        let token: String
+        let amount: String
+        var status: BridgeStatus
+        let l1TxHash: String?
+        var l2TxHash: String?
+        let timestamp: Date
+
+        enum BridgeType: String, Codable { case deposit, withdraw }
+        enum BridgeStatus: String, Codable { case pending, l1Confirmed, l2Claimed, failed }
+    }
+
 // MARK: - Supporting Types
 
 struct NodeInfo: Codable {
@@ -237,6 +251,9 @@ class WalletStore {
     // Guardian Recovery
     var guardianStatus: GuardianStatus = .notSetup
     var guardians: [String] = []
+
+    // Bridge
+    var bridgeTransactions: [BridgeTransaction] = []
 
     // State Migration & Backup Tracking
     var pxeNodeInfo: String?
@@ -1030,6 +1047,10 @@ class WalletStore {
             self.guardianStatus = status
         }
         self.guardians = UserDefaults.standard.stringArray(forKey: "guardians") ?? []
+        if let data = UserDefaults.standard.data(forKey: "bridgeTransactions"),
+           let txs = try? JSONDecoder().decode([BridgeTransaction].self, from: data) {
+            self.bridgeTransactions = txs
+        }
     }
 
     func saveAccounts() {
@@ -1065,6 +1086,12 @@ class WalletStore {
             UserDefaults.standard.set(data, forKey: "guardianStatus")
         }
         UserDefaults.standard.set(guardians, forKey: "guardians")
+    }
+
+    func saveBridgeTransactions() {
+        if let data = try? JSONEncoder().encode(bridgeTransactions) {
+            UserDefaults.standard.set(data, forKey: "bridgeTransactions")
+        }
     }
 
     // MARK: - PXE Log Management
