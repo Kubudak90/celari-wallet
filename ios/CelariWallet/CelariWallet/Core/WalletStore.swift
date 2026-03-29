@@ -26,6 +26,16 @@ enum Screen: Equatable {
     case recoverAccount
 }
 
+// MARK: - PXE State
+
+enum PXEState: Equatable {
+    case notStarted
+    case initializing
+    case syncing(progress: String)
+    case ready
+    case failed(error: String)
+}
+
 // MARK: - Supporting Types
 
 struct NodeInfo: Codable {
@@ -190,9 +200,13 @@ class WalletStore {
     var toast: Toast?
     var loading: Bool = false
     var deploying: Bool = false
-    var pxeInitialized: Bool = false
-    var pxeInitFailed: Bool = false
-    var pxeInitError: String = ""
+    var pxeState: PXEState = .notStarted
+
+    var pxeInitialized: Bool { pxeState == .ready }
+    var pxeInitFailed: Bool {
+        if case .failed = pxeState { return true }
+        return false
+    }
 
     /// Live progress message from PXE operations (shown as bottom status bar)
     var progressMessage: String?
@@ -321,15 +335,15 @@ class WalletStore {
             }
             guard pxeBridge.isReady else {
                 walletLog.error("[WalletStore] PXE WebView failed to load after 30s")
-                self.pxeInitFailed = true
-                self.pxeInitError = "PXE engine failed to load. Check your connection and try again."
+                self.pxeState = .failed(error: "PXE engine failed to load. Check your connection and try again.")
                 self.showToast("PXE initialization failed — tap to retry", type: .error)
                 return
             }
             walletLog.notice("[WalletStore] PXE bridge ready — sending PXE_INIT to \(self.nodeUrl, privacy: .public)")
+            self.pxeState = .initializing
             do {
                 let result = try await pxeBridge.initPXE(nodeUrl: self.nodeUrl)
-                self.pxeInitialized = true
+                self.pxeState = .syncing(progress: "Restoring state...")
                 walletLog.notice("[WalletStore] PXE initialized: \(String(describing: result).prefix(200), privacy: .public)")
 
                 // Restore PXE snapshot if available (preserves notes, contracts, tree data across restarts)
@@ -345,9 +359,11 @@ class WalletStore {
                 }
 
                 if let account = self.activeAccount, account.deployed {
+                    self.pxeState = .syncing(progress: "Re-registering account...")
                     // Account already deployed — re-register with PXE (in-memory store is fresh)
                     walletLog.notice("[WalletStore] PXE ready, account deployed — re-registering with PXE")
                     await self.reRegisterAccount(pxeBridge: pxeBridge, account: account)
+                    self.pxeState = .syncing(progress: "Syncing notes...")
                     // Wait for PXE block sync to discover private notes (note sync needs a few seconds)
                     walletLog.notice("[WalletStore] Waiting 3s for PXE note sync...")
                     try? await Task.sleep(for: .seconds(3))
@@ -355,6 +371,7 @@ class WalletStore {
                     await self.checkFeeJuiceBalance()
                     // Save PXE snapshot so private notes persist across restarts
                     await self.savePXESnapshot()
+                    self.pxeState = .ready
                 }
 
                 #if targetEnvironment(simulator)
@@ -366,8 +383,7 @@ class WalletStore {
                 #endif
             } catch {
                 walletLog.error("[WalletStore] PXE init failed: \(error.localizedDescription, privacy: .public)")
-                self.pxeInitFailed = true
-                self.pxeInitError = error.localizedDescription
+                self.pxeState = .failed(error: error.localizedDescription)
                 self.showToast("PXE init failed: \(error.localizedDescription)", type: .error)
             }
         }
@@ -376,12 +392,11 @@ class WalletStore {
     /// Retry PXE initialization after a failure
     func retryPXEInit() async {
         guard let pxeBridge else { return }
-        pxeInitFailed = false
-        pxeInitError = ""
+        pxeState = .notStarted
         showToast("Retrying PXE initialization...")
         do {
             let result = try await pxeBridge.initPXE(nodeUrl: self.nodeUrl)
-            self.pxeInitialized = true
+            self.pxeState = .syncing(progress: "Restoring state...")
             walletLog.notice("[WalletStore] PXE retry succeeded: \(String(describing: result).prefix(200), privacy: .public)")
             if let account = self.activeAccount, account.deployed {
                 await self.reRegisterAccount(pxeBridge: pxeBridge, account: account)
@@ -390,10 +405,10 @@ class WalletStore {
                 await self.checkFeeJuiceBalance()
                 await self.savePXESnapshot()
             }
+            self.pxeState = .ready
             showToast("PXE initialized successfully!")
         } catch {
-            pxeInitFailed = true
-            pxeInitError = error.localizedDescription
+            pxeState = .failed(error: error.localizedDescription)
             showToast("PXE retry failed: \(error.localizedDescription)", type: .error)
         }
     }
