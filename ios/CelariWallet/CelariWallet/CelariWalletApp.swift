@@ -29,6 +29,25 @@ struct CelariWalletApp: App {
                         break
                     }
                 }
+                .onOpenURL { url in
+                    handleDeepLink(url)
+                }
+        }
+    }
+
+    private func handleDeepLink(_ url: URL) {
+        guard url.scheme == "celari" else { return }
+
+        if url.host == "wc",
+           let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           let uri = components.queryItems?.first(where: { $0.name == "uri" })?.value {
+            Task {
+                do {
+                    try await pxeBridge.wcPair(uri: uri)
+                } catch {
+                    store.showToast("WalletConnect pairing failed", type: .error)
+                }
+            }
         }
     }
 }

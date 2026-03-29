@@ -43,6 +43,13 @@ targets:
           - group.com.celari.wallet
         com.apple.developer.associated-domains:
           - webcredentials:celariwallet.com
+    info:
+      path: CelariWallet/Info.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleURLSchemes:
+              - celari
+            CFBundleURLName: com.celari.wallet
 
   CelariWalletTests:
     type: bundle.unit-test
