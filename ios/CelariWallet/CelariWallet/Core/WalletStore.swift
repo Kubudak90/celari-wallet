@@ -353,6 +353,9 @@ class WalletStore {
                         let json = try await PXEPersistenceManager.load()
                         try await pxeBridge.restoreSnapshot(json: json)
                         walletLog.notice("[WalletStore] PXE snapshot restored OK — \(json.count / 1024) KB")
+                        if let lastBlock = PXEPersistenceManager.getLastSyncedBlock() {
+                            walletLog.notice("[WalletStore] Incremental sync from block \(lastBlock, privacy: .public)")
+                        }
                     } catch {
                         walletLog.error("[WalletStore] PXE snapshot restore failed: \(error.localizedDescription, privacy: .public) — continuing with fresh store")
                     }
@@ -425,6 +428,12 @@ class WalletStore {
             let json = try await pxeBridge.saveSnapshot()
             try await PXEPersistenceManager.save(json: json)
             walletLog.notice("[WalletStore] PXE snapshot saved — \(json.count / 1024) KB")
+            // Save last synced block for incremental sync tracking
+            if let result = try? await pxeBridge.checkStatus(),
+               let blockNum = result["blockNumber"] as? Int {
+                PXEPersistenceManager.saveLastSyncedBlock(blockNum)
+                walletLog.notice("[WalletStore] Snapshot saved at block \(blockNum, privacy: .public)")
+            }
         } catch {
             walletLog.error("[WalletStore] PXE snapshot save failed: \(error.localizedDescription, privacy: .public)")
         }
