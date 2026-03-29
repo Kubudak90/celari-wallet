@@ -1956,6 +1956,36 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           };
         }
 
+        case "PXE_DEX_GET_QUOTE": {
+          try {
+            const { tokenIn, tokenOut, amountIn, slippage } = data;
+            // Placeholder quote — will be connected to DEX contract
+            const estimatedOut = BigInt(amountIn || "0") * 99n / 100n;
+            return {
+              success: true,
+              quote: {
+                tokenIn,
+                tokenOut,
+                amountIn: String(amountIn),
+                amountOut: String(estimatedOut),
+                priceImpact: 0.01,
+                estimatedGas: "500000",
+                expiresAt: Date.now() + 30000,
+              }
+            };
+          } catch (e) {
+            return { success: false, error: e.message };
+          }
+        }
+
+        case "PXE_DEX_EXECUTE_SWAP": {
+          return { success: false, error: "DEX swap not yet connected to contract" };
+        }
+
+        case "PXE_DEX_SUPPORTED_PAIRS": {
+          return { success: true, pairs: [] };
+        }
+
         default:
           return { error: `Unknown PXE command: ${msg.type}` };
       }
