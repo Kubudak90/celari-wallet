@@ -36,6 +36,15 @@ enum PXEState: Equatable {
     case failed(error: String)
 }
 
+// MARK: - Guardian Status
+
+enum GuardianStatus: Codable, Equatable {
+    case notSetup
+    case configured(guardianCount: Int)
+    case recoveryPending(initiatedAt: Date, deadline: Date)
+    case recovered
+}
+
 // MARK: - Supporting Types
 
 struct NodeInfo: Codable {
@@ -224,6 +233,10 @@ class WalletStore {
     var deployStep: String = ""
     private let maxLogEntries = 200
 
+    // Guardian Recovery
+    var guardianStatus: GuardianStatus = .notSetup
+    var guardians: [String] = []
+
     // State Migration & Backup Tracking
     var pxeNodeInfo: String?
     var backupReminderDismissed: Bool = false
@@ -375,6 +388,7 @@ class WalletStore {
                     // Save PXE snapshot so private notes persist across restarts
                     await self.savePXESnapshot()
                     self.pxeState = .ready
+                    await self.checkGuardianStatus()
                 }
 
                 #if targetEnvironment(simulator)
@@ -620,6 +634,23 @@ class WalletStore {
             walletLog.notice("[WalletStore] Fee Juice balance: \(balance, privacy: .public)")
         } catch {
             walletLog.error("[WalletStore] Fee Juice balance check failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    // MARK: - Guardian Recovery
+
+    func checkGuardianStatus() async {
+        guard pxeInitialized, let pxeBridge else { return }
+        do {
+            let result = try await pxeBridge.isGuardianConfigured()
+            if let isConfigured = result["configured"] as? Bool, isConfigured {
+                self.guardianStatus = .configured(guardianCount: 3)
+                walletLog.notice("[WalletStore] Guardian recovery configured")
+            } else {
+                self.guardianStatus = .notSetup
+            }
+        } catch {
+            walletLog.error("[WalletStore] Guardian status check failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -949,6 +980,11 @@ class WalletStore {
            let cached = try? JSONDecoder().decode([Token].self, from: data) {
             self.tokens = cached
         }
+        if let data = UserDefaults.standard.data(forKey: "guardianStatus"),
+           let status = try? JSONDecoder().decode(GuardianStatus.self, from: data) {
+            self.guardianStatus = status
+        }
+        self.guardians = UserDefaults.standard.stringArray(forKey: "guardians") ?? []
     }
 
     func saveAccounts() {
@@ -977,6 +1013,13 @@ class WalletStore {
         if let data = try? JSONEncoder().encode(activities) {
             UserDefaults.standard.set(data, forKey: activitiesKey)
         }
+    }
+
+    func saveGuardianStatus() {
+        if let data = try? JSONEncoder().encode(guardianStatus) {
+            UserDefaults.standard.set(data, forKey: "guardianStatus")
+        }
+        UserDefaults.standard.set(guardians, forKey: "guardians")
     }
 
     // MARK: - PXE Log Management
