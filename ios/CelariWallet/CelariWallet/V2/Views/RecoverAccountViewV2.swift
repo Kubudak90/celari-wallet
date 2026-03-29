@@ -21,6 +21,7 @@ struct RecoverAccountViewV2: View {
     @State private var pollAttempts = 0
     @State private var timeLockStart: Date?
     @State private var timeLockRemaining: String = "24:00:00"
+    @State private var canExecuteChain: Bool = false
 
     private let relayBaseUrl = "https://recovery.celariwallet.com"
     private let maxPollAttempts = 120 // Max status checks before showing "contact guardians" message
@@ -223,6 +224,7 @@ struct RecoverAccountViewV2: View {
                 }
                 .task(id: timeLockStart) {
                     guard let start = timeLockStart else { return }
+                    var tickCount = 0
                     while !Task.isCancelled {
                         let elapsed = Date().timeIntervalSince(start)
                         let remaining = max(0, 86400 - elapsed) // 24h = 86400s
@@ -231,6 +233,11 @@ struct RecoverAccountViewV2: View {
                         let seconds = Int(remaining) % 60
                         timeLockRemaining = String(format: "%02d:%02d:%02d", hours, minutes, seconds)
                         if remaining <= 0 { break }
+                        // Query on-chain block state every 30 seconds to verify remaining time
+                        if tickCount % 30 == 0 {
+                            await refreshCountdownFromChain()
+                        }
+                        tickCount += 1
                         try? await Task.sleep(for: .seconds(1))
                     }
                 }
@@ -268,6 +275,7 @@ struct RecoverAccountViewV2: View {
     }
 
     private var isTimeLockExpired: Bool {
+        if canExecuteChain { return true }
         guard let start = timeLockStart else { return false }
         return Date().timeIntervalSince(start) >= 86400
     }
@@ -368,6 +376,28 @@ struct RecoverAccountViewV2: View {
             store.showToast("Status check failed (attempt \(pollAttempts)/\(maxPollAttempts))", type: .error)
         }
         polling = false
+    }
+
+    func refreshCountdownFromChain() async {
+        do {
+            let status = try await pxeBridge.checkRecoveryStatus()
+            if let active = status["active"] as? Bool, active,
+               let startBlock = status["startBlock"] as? Int,
+               let currentBlock = status["currentBlock"] as? Int {
+                let blocksRemaining = max(0, 7200 - (currentBlock - startBlock))
+                let secondsRemaining = blocksRemaining * 12
+                let hours = secondsRemaining / 3600
+                let minutes = (secondsRemaining % 3600) / 60
+                let secs = secondsRemaining % 60
+                timeLockRemaining = String(format: "%02d:%02d:%02d", hours, minutes, secs)
+
+                if blocksRemaining == 0 {
+                    canExecuteChain = true
+                }
+            }
+        } catch {
+            // Silently fall back to local timer on failure
+        }
     }
 
     private func finalizeRecovery() async {
