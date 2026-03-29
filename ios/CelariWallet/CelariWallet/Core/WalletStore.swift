@@ -477,6 +477,10 @@ class WalletStore {
                         .filter { !serverSymbols.contains($0.symbol) }
                         .map { Token(name: $0.name, symbol: $0.symbol, balance: "—", value: "$0.00", icon: "C", color: "#666", isCustom: true) }
                     tokens = response.tokens + customExtras
+                    // Cache balances for instant display on next launch
+                    if let data = try? JSONEncoder().encode(self.tokens) {
+                        UserDefaults.standard.set(data, forKey: "cachedTokens")
+                    }
                     return
                 }
             } catch {
@@ -574,6 +578,10 @@ class WalletStore {
                 let fetchedSymbols = Set(fetchedTokens.map(\.symbol))
                 let remaining = Token.defaults.filter { !fetchedSymbols.contains($0.symbol) }
                 tokens = fetchedTokens + remaining
+                // Cache balances for instant display on next launch
+                if let data = try? JSONEncoder().encode(self.tokens) {
+                    UserDefaults.standard.set(data, forKey: "cachedTokens")
+                }
             }
         } catch {
             walletLog.error("[WalletStore] PXE balance fetch failed: \(error.localizedDescription, privacy: .public)")
@@ -926,6 +934,11 @@ class WalletStore {
         if let config = UserDefaults.standard.dictionary(forKey: configKey) {
             network = config["network"] as? String ?? network
             nodeUrl = config["nodeUrl"] as? String ?? nodeUrl
+        }
+        // Load cached token balances for instant dashboard display
+        if let data = UserDefaults.standard.data(forKey: "cachedTokens"),
+           let cached = try? JSONDecoder().decode([Token].self, from: data) {
+            self.tokens = cached
         }
     }
 
