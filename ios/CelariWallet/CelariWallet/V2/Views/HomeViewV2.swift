@@ -107,7 +107,10 @@ struct HomeViewV2: View {
                                     Text("PXE Engine Error")
                                         .font(V2Fonts.bodySemibold(13))
                                         .foregroundColor(V2Colors.errorRed)
-                                    Text(store.pxeInitError.isEmpty ? "Initialization failed" : store.pxeInitError)
+                                    Text({
+                                        if case .failed(let error) = store.pxeState { return error }
+                                        return "Initialization failed"
+                                    }())
                                         .font(V2Fonts.body(11))
                                         .foregroundColor(V2Colors.textSecondary)
                                         .lineLimit(2)

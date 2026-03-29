@@ -479,7 +479,6 @@
 				};
 			};
 			buildConfigurationList = 78A11D2835A2B65A41F00D7B /* Build configuration list for PBXProject "CelariWallet" */;
-			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -492,6 +491,7 @@
 				175DF6C35A6182DEFBEC869A /* XCLocalSwiftPackageReference "../../fork/swoirenberg" */,
 			);
 			preferredProjectObjectVersion = 77;
+			productRefGroup = 57B908856D3259DD9645E129 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
