@@ -115,7 +115,7 @@ class PXEBridge: NSObject {
             }
 
             window.nativeProver = {
-                available: false, // Disabled: Swoirenberg XCFramework chonk_prove not stable yet — using WASM prover
+                available: false, // Decision gate: Week 4 — set to true after Swoirenberg stabilizes
                 callNative: callNative,
                 setupSrs: function(opts) {
                     return callNative('setup_srs', opts || {});

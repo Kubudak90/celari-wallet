@@ -2,12 +2,25 @@ import Foundation
 import Swoirenberg
 import SwoirCore
 
+// NATIVE PROVER STATUS
+// ====================
+// Current: DISABLED (WASM fallback active)
+// Reason: Swoirenberg XCFramework chonk_prove crashes on some circuits
+// Decision gate: End of Week 4 (approx. 2026-04-27)
+//   - If stable on iPhone 13+: enable native proving, keep WASM as fallback
+//   - If unstable: stay on WASM, track CHONK prover for future integration
+// To test: Set NativeProver.isEnabled = true and run proof benchmark
+
 /// Native Barretenberg prover using Swoirenberg XCFramework.
 /// Provides 8-12x speedup over WASM proving in WKWebView.
 /// Supports both single-circuit UltraHonk and multi-circuit Chonk/IVC proving.
 @Observable
 final class NativeProver {
     static let shared = NativeProver()
+
+    /// Returns true if native proving is available and stable.
+    /// Set to false to force WASM fallback.
+    static let isEnabled: Bool = false // Decision gate: Week 4 — set to true after Swoirenberg stabilizes
 
     private(set) var isReady = false
     private(set) var isChonkReady = false
@@ -138,11 +151,19 @@ final class NativeProver {
     /// Returns msgpack-serialized ChonkProof bytes.
     func chonkProve() throws -> Data {
         let start = CFAbsoluteTimeGetCurrent()
-        guard let proof = try Swoirenberg.chonk_prove() else {
-            throw NativeProverError.chonkSessionFailed("chonk_prove returned nil")
+        do {
+            guard let proof = try Swoirenberg.chonk_prove() else {
+                let elapsed = CFAbsoluteTimeGetCurrent() - start
+                throw NativeProverError.chonkSessionFailed("chonk_prove returned nil after \(String(format: "%.2f", elapsed))s")
+            }
+            lastChonkProveTime = CFAbsoluteTimeGetCurrent() - start
+            return proof
+        } catch let error as NativeProverError {
+            throw error
+        } catch {
+            let elapsed = CFAbsoluteTimeGetCurrent() - start
+            throw NativeProverError.chonkSessionFailed("chonk_prove crashed after \(String(format: "%.2f", elapsed))s: \(error.localizedDescription)")
         }
-        lastChonkProveTime = CFAbsoluteTimeGetCurrent() - start
-        return proof
     }
 
     /// Verify a chonk proof against a verification key.
