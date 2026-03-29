@@ -440,6 +440,10 @@ class PXEBridge: NSObject {
         return (part1, part2)
     }
 
+    func checkRecoveryStatus() async throws -> [String: Any] {
+        return try await sendMessage("PXE_IS_RECOVERY_ACTIVE")
+    }
+
     // MARK: - Snapshot Persistence
 
     func saveSnapshot() async throws -> String {

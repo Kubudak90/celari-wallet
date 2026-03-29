@@ -1859,6 +1859,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return { configured: !!guardianConfigured };
         }
 
+        case "PXE_IS_RECOVERY_ACTIVE": {
+          try {
+            const recoveryArtifact = getRecoveryArtifact();
+            if (!recoveryArtifact) return { active: false };
+            const acctWallet = getActiveWallet();
+            if (!acctWallet) return { active: false };
+            const { Contract } = await import("@aztec/aztec.js");
+            const contract = await Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
+            const result = await contract.methods.is_recovery_active().simulate();
+            const active = result.result !== undefined ? result.result : result;
+            return { active: Boolean(active) };
+          } catch (e) {
+            return { active: false };
+          }
+        }
+
         case "PXE_GET_RECOVERY_CID": {
           const recoveryArtifact = getRecoveryArtifact();
           if (!recoveryArtifact) return { cidPart1: "0", cidPart2: "0" };
