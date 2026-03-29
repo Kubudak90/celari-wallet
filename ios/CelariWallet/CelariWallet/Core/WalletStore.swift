@@ -648,8 +648,8 @@ class WalletStore {
     func checkGuardianStatus() async {
         guard pxeInitialized, let pxeBridge else { return }
         do {
-            let result = try await pxeBridge.isGuardianConfigured()
-            if let isConfigured = result["configured"] as? Bool, isConfigured {
+            let isConfigured = try await pxeBridge.isGuardianConfigured()
+            if isConfigured {
                 self.guardianStatus = .configured(guardianCount: 3)
                 walletLog.notice("[WalletStore] Guardian recovery configured")
 

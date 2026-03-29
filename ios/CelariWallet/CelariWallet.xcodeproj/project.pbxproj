@@ -37,6 +37,7 @@
 		70E32D176E51701692DD4A9E /* KeychainManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EE66FBCC262142B654803F1 /* KeychainManager.swift */; };
 		74D59BFF603C0749A376B3E4 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9F1642ED814E408DDF04D6A /* DashboardView.swift */; };
 		753E745F80B127F60DAAE980 /* ConfirmTxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0BC3EDE8012F09C4BB8B72 /* ConfirmTxView.swift */; };
+		7606DB4E241D3EDABD336114 /* IPFSManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE494B2B899165C5E77920A9 /* IPFSManager.swift */; };
 		788C09E31AAEAB1AEA21D5DD /* ActionButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C59B18FD85AF0D07B004DA9 /* ActionButton.swift */; };
 		7CE7C70F52C2A91B7B49F9DE /* NftListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 951EE84245A4742020EBA197 /* NftListView.swift */; };
 		7FEEA1405DF7BCD65816E577 /* TokenListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44E5EE7D5B98EB2EEFE3F34C /* TokenListView.swift */; };
@@ -186,6 +187,7 @@
 		F7065F5128DC1B0829AA4587 /* pxe-bridge.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = "pxe-bridge.html"; sourceTree = "<group>"; };
 		F72F558BDDE1AA2E6F1D7084 /* acvm_js_bg.wasm */ = {isa = PBXFileReference; path = acvm_js_bg.wasm; sourceTree = "<group>"; };
 		FE2F33FBECD1AAA692E269C5 /* CelariWalletApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CelariWalletApp.swift; sourceTree = "<group>"; };
+		FE494B2B899165C5E77920A9 /* IPFSManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPFSManager.swift; sourceTree = "<group>"; };
 		FF05EC8C3D3FDA45FD16FAA1 /* CelariThemeV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CelariThemeV2.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -338,6 +340,7 @@
 			children = (
 				4543D8D84D4AFA61222D7CF0 /* BackupManager.swift */,
 				5EA57B5CA4A0F1727D85ED8B /* CelariSchemeHandler.swift */,
+				FE494B2B899165C5E77920A9 /* IPFSManager.swift */,
 				2EE66FBCC262142B654803F1 /* KeychainManager.swift */,
 				DE703D8DD12F4698E9C4D6B5 /* NativeProver.swift */,
 				BC89992F2DB9F93999222FB2 /* NetworkManager.swift */,
@@ -555,6 +558,7 @@
 				65E9D7FCA7072B90DACD323A /* HeaderView.swift in Sources */,
 				FD7690B532DB10531C7F4035 /* HistoryViewV2.swift in Sources */,
 				E9266A39629ACED94DE097E2 /* HomeViewV2.swift in Sources */,
+				7606DB4E241D3EDABD336114 /* IPFSManager.swift in Sources */,
 				70E32D176E51701692DD4A9E /* KeychainManager.swift in Sources */,
 				C99832E05CE94F27203C85EC /* LoadingView.swift in Sources */,
 				C9A413B90BD9EE45479333AD /* NFT.swift in Sources */,
