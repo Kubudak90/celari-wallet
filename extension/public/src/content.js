@@ -24,7 +24,7 @@ const CELARI_WALLET_INFO = {
   id: CELARI_WALLET_ID,
   name: "Celari Wallet",
   icon: chrome.runtime.getURL("icons/icon-48.png"),
-  version: "0.3.0",
+  version: "0.5.0",
 };
 
 window.addEventListener("message", async (event) => {

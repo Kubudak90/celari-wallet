@@ -56,7 +56,7 @@
 
   window.celari = {
     isCelari: true,
-    version: "0.3.0",
+    version: "0.5.0",
     walletSdkId: "celari-wallet", // Aztec wallet-sdk discovery identifier
 
     /** Request wallet connection */
