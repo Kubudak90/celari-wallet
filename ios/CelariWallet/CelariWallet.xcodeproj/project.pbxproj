@@ -94,7 +94,6 @@
 		FC7129F8B7980C91898E729E /* RecoverAccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16BBB404C4655C6B1ECB7CF0 /* RecoverAccountView.swift */; };
 		FD7690B532DB10531C7F4035 /* HistoryViewV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = A08BB06DD8ED83117A34B0FC /* HistoryViewV2.swift */; };
 		FE425F6162A6AD10D46F0F4F /* SwapViewV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1963DF826FA1F9C41B98A1A1 /* SwapViewV2.swift */; };
-		FF2C7B57BE84D009C37D3546 /* CelariWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 3B7B14B9B250F70D69AE392F /* CelariWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -105,28 +104,7 @@
 			remoteGlobalIDString = 67396E096D1FDB63EEF5E296;
 			remoteInfo = CelariWallet;
 		};
-		675E5B3124C6B6631F95EB58 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 3375C32BC65B2BF67DE4B2FC /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 7C0E09034D08B6873115FDCE;
-			remoteInfo = CelariWidget;
-		};
 /* End PBXContainerItemProxy section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		7F956B6B0ED32421EA1EC4E2 /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				FF2C7B57BE84D009C37D3546 /* CelariWidget.appex in Embed Foundation Extensions */,
-			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		033F55A568D454A8337A42CC /* GuardianSetupViewV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuardianSetupViewV2.swift; sourceTree = "<group>"; };
@@ -176,6 +154,7 @@
 		7BA625C017C6FC46CB0B0C51 /* AddNftContractView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddNftContractView.swift; sourceTree = "<group>"; };
 		81D2739076AFD3CE9FE2A6AF /* swoirenberg */ = {isa = PBXFileReference; lastKnownFileType = folder; name = swoirenberg; path = ../../fork/swoirenberg; sourceTree = SOURCE_ROOT; };
 		83A8761765263B7A2A95C38C /* WCSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WCSession.swift; sourceTree = "<group>"; };
+		864889B3D1D82A5A540AECCC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		88784F92044A09214A63F361 /* OnboardingViewV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewV2.swift; sourceTree = "<group>"; };
 		88B7F660D79A9B8B7A8FA13D /* FeeJuiceBridgeViewV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeeJuiceBridgeViewV2.swift; sourceTree = "<group>"; };
 		8BDA7832D009CEAC35E85420 /* HomeViewV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewV2.swift; sourceTree = "<group>"; };
@@ -272,6 +251,7 @@
 			children = (
 				1713EECAA3C85212AF33AAA1 /* CelariWidget.entitlements */,
 				579FB171A096D4A7C4469DBB /* CelariWidget.swift */,
+				864889B3D1D82A5A540AECCC /* Info.plist */,
 			);
 			path = CelariWidget;
 			sourceTree = "<group>";
@@ -499,12 +479,10 @@
 				875E303C8BD191C351D15046 /* Sources */,
 				3F10EC5FB83B4DF77B78C954 /* Resources */,
 				1D673416DF1DA8B640B45F9B /* Frameworks */,
-				7F956B6B0ED32421EA1EC4E2 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				B382A75ADE1C4B7EFEF63C74 /* PBXTargetDependency */,
 			);
 			name = CelariWallet;
 			packageProductDependencies = (
@@ -701,11 +679,6 @@
 			target = 67396E096D1FDB63EEF5E296 /* CelariWallet */;
 			targetProxy = 19167E4475AF77E548A5D3F7 /* PBXContainerItemProxy */;
 		};
-		B382A75ADE1C4B7EFEF63C74 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 7C0E09034D08B6873115FDCE /* CelariWidget */;
-			targetProxy = 675E5B3124C6B6631F95EB58 /* PBXContainerItemProxy */;
-		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -795,8 +768,7 @@
 				CODE_SIGN_ENTITLEMENTS = CelariWidget/CelariWidget.entitlements;
 				CURRENT_PROJECT_VERSION = 24;
 				DEVELOPMENT_TEAM = GBQUC68GE9;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier = "com.apple.widgetkit-extension";
+				INFOPLIST_FILE = CelariWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -817,8 +789,7 @@
 				CODE_SIGN_ENTITLEMENTS = CelariWidget/CelariWidget.entitlements;
 				CURRENT_PROJECT_VERSION = 24;
 				DEVELOPMENT_TEAM = GBQUC68GE9;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier = "com.apple.widgetkit-extension";
+				INFOPLIST_FILE = CelariWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
