@@ -1064,7 +1064,7 @@ async function deployAccountClientSide(data) {
     });
     // Store gasSettings to pass to send()
     deployGasSettings = gasSettings;
-    console.log(`[PXE] Deploy Step 2: FeeJuicePaymentMethodWithClaim OK (leafIndex: ${data.messageLeafIndex}, maxFees: ${JSON.stringify(maxFeesPerGas)}, ${Date.now() - t2}ms)`);
+    console.log(`[PXE] Deploy Step 2: FeeJuicePaymentMethodWithClaim OK (leafIndex: ${data.messageLeafIndex}, ${Date.now() - t2}ms)`);
   } else {
     // Priority 2: Try SponsoredFPC (devnet only — may be depleted)
     try {
