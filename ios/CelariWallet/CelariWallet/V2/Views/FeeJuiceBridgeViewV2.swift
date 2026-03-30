@@ -83,23 +83,65 @@ struct FeeJuiceBridgeViewV2: View {
                     }
                     .disabled(store.faucetRequesting || hasPendingAddress)
 
-                    // Claim status
-                    if store.faucetClaimData != nil {
-                        HStack(spacing: 8) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(V2Colors.successGreen)
-                            Text("Fee Juice claim ready — will be used during account deploy")
-                                .font(V2Fonts.mono(11))
-                                .foregroundColor(V2Colors.successGreen)
+                    // Faucet progress status
+                    if !store.faucetStatus.isEmpty {
+                        let isReady = store.faucetClaimData != nil
+                        let isFailed = store.faucetStatus.contains("Failed")
+                        let statusColor = isReady ? V2Colors.successGreen : (isFailed ? V2Colors.errorRed : V2Colors.soOrange)
+                        let statusIcon = isReady ? "checkmark.circle.fill" : (isFailed ? "xmark.circle.fill" : "arrow.triangle.2.circlepath")
+
+                        HStack(spacing: 10) {
+                            if !isReady && !isFailed {
+                                ProgressView()
+                                    .tint(statusColor)
+                                    .scaleEffect(0.8)
+                            } else {
+                                Image(systemName: statusIcon)
+                                    .foregroundColor(statusColor)
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(store.faucetStatus)
+                                    .font(V2Fonts.bodySemibold(13))
+                                    .foregroundColor(statusColor)
+                                if isReady {
+                                    Text("Will be used automatically during account deploy")
+                                        .font(V2Fonts.mono(10))
+                                        .foregroundColor(V2Colors.textSecondary)
+                                }
+                            }
                         }
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(
                             RoundedRectangle(cornerRadius: 10)
-                                .fill(V2Colors.successGreen.opacity(0.08))
+                                .fill(statusColor.opacity(0.08))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 10)
-                                        .stroke(V2Colors.successGreen.opacity(0.2), lineWidth: 1)
+                                        .stroke(statusColor.opacity(0.2), lineWidth: 1)
+                                )
+                        )
+                    }
+
+                    // Claim data details
+                    if let cd = store.faucetClaimData {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("CLAIM DATA")
+                                .font(V2Fonts.label(10))
+                                .tracking(1)
+                                .foregroundColor(V2Colors.textTertiary)
+
+                            claimRow(label: "Amount", value: formatClaimAmount(cd["claimAmount"] ?? "0"))
+                            claimRow(label: "Leaf Index", value: cd["messageLeafIndex"] ?? "—")
+                            claimRow(label: "Secret", value: String((cd["claimSecret"] ?? "—").prefix(18)) + "...")
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(V2Colors.bgCard)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .stroke(V2Colors.borderPrimary, lineWidth: 1)
                                 )
                         )
                     }
@@ -210,6 +252,34 @@ struct FeeJuiceBridgeViewV2: View {
             return V2Colors.errorRed
         }
         return V2Colors.successGreen
+    }
+
+    private func claimRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(V2Fonts.label(11))
+                .foregroundColor(V2Colors.textSecondary)
+                .frame(width: 70, alignment: .leading)
+            Text(value)
+                .font(V2Fonts.mono(11))
+                .foregroundColor(V2Colors.textPrimary)
+                .lineLimit(1)
+            Spacer()
+            Button {
+                UIPasteboard.general.string = value
+                store.showToast("Copied!")
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 10))
+                    .foregroundColor(V2Colors.textTertiary)
+            }
+        }
+    }
+
+    private func formatClaimAmount(_ raw: String) -> String {
+        guard let bigVal = Double(raw) else { return raw }
+        let formatted = bigVal / 1e18
+        return String(format: "%.0f Fee Juice", formatted)
     }
 
     private func stepRow(number: String, title: String, description: String) -> some View {

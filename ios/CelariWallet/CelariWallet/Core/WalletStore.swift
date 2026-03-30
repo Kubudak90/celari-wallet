@@ -730,6 +730,9 @@ class WalletStore {
 
     // MARK: - Aztec Faucet (HTTP API)
 
+    /// Faucet progress state for UI display
+    var faucetStatus: String = ""
+
     func requestFaucetDrip(asset: String = "fee-juice") async {
         guard let account = activeAccount, !account.address.isEmpty, !account.address.hasPrefix("pending_") else {
             showToast("No valid address — create wallet first", type: .error)
@@ -737,9 +740,11 @@ class WalletStore {
         }
 
         faucetRequesting = true
+        faucetStatus = "Requesting..."
         defer { faucetRequesting = false }
 
-        walletLog.notice("[WalletStore] Requesting faucet drip — asset: \(asset, privacy: .public), address: \(account.address.prefix(22), privacy: .public)")
+        appendPXELog(level: "info", message: "Faucet: Requesting \(asset) on \(self.network)...")
+        walletLog.notice("[WalletStore] Requesting faucet drip — asset: \(asset, privacy: .public), network: \(self.network, privacy: .public), address: \(account.address.prefix(22), privacy: .public)")
 
         do {
             let url = URL(string: "https://aztec-faucet.dev-nethermind.xyz/api/drip")!
@@ -750,11 +755,16 @@ class WalletStore {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             request.timeoutInterval = 60
 
+            faucetStatus = "Sending request to faucet..."
+            appendPXELog(level: "info", message: "Faucet: Sending request to \(url.absoluteString)")
+
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 else {
                 let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
                 let bodyStr = String(data: data, encoding: .utf8) ?? ""
                 walletLog.error("[WalletStore] Faucet HTTP \(statusCode, privacy: .public): \(bodyStr.prefix(200), privacy: .public)")
+                appendPXELog(level: "error", message: "Faucet: HTTP \(statusCode) — \(bodyStr.prefix(100))")
+                faucetStatus = "Failed (HTTP \(statusCode))"
                 showToast("Faucet request failed (HTTP \(statusCode))", type: .error)
                 return
             }
@@ -762,11 +772,17 @@ class WalletStore {
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let success = json["success"] as? Bool, success else {
                 let errorMsg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String ?? "Unknown error"
+                appendPXELog(level: "error", message: "Faucet: \(errorMsg)")
+                faucetStatus = "Failed"
                 showToast("Faucet: \(errorMsg)", type: .error)
                 return
             }
 
-            walletLog.notice("[WalletStore] Faucet drip success — claimId: \((json["claimId"] as? String ?? "").prefix(16), privacy: .public)")
+            let claimStatus = json["claimStatus"] as? String ?? "unknown"
+            let claimId = (json["claimId"] as? String ?? "").prefix(12)
+            faucetStatus = "Bridging L1 → L2..."
+            appendPXELog(level: "info", message: "Faucet: Response OK — status: \(claimStatus), claimId: \(claimId)")
+            walletLog.notice("[WalletStore] Faucet drip success — claimId: \(claimId, privacy: .public), status: \(claimStatus, privacy: .public)")
 
             // Store claim data for deploy (FeeJuicePaymentMethodWithClaim)
             if let claimData = json["claimData"] as? [String: Any] {
@@ -776,12 +792,31 @@ class WalletStore {
                 if let v = claimData["messageLeafIndex"] as? String { cd["messageLeafIndex"] = v }
                 if let v = claimData["messageLeafIndex"] as? Int { cd["messageLeafIndex"] = String(v) }
                 faucetClaimData = cd
-                walletLog.notice("[WalletStore] Stored faucet claim data for deploy (claimAmount: \(cd["claimAmount"] ?? "?", privacy: .public), leafIndex: \(cd["messageLeafIndex"] ?? "?", privacy: .public))")
+
+                let amountDisplay = cd["claimAmount"] ?? "?"
+                let leafIndex = cd["messageLeafIndex"] ?? "?"
+                let l1TxHash = (claimData["l1TxHash"] as? String ?? "").prefix(16)
+
+                faucetStatus = "Claim ready!"
+                appendPXELog(level: "info", message: "Faucet: Claim data received!")
+                appendPXELog(level: "info", message: "  Amount: \(amountDisplay)")
+                appendPXELog(level: "info", message: "  Leaf Index: \(leafIndex)")
+                if !l1TxHash.isEmpty {
+                    appendPXELog(level: "info", message: "  L1 TX: \(l1TxHash)...")
+                }
+                appendPXELog(level: "info", message: "Faucet: Ready to use for deploy/transactions")
+
+                walletLog.notice("[WalletStore] Stored faucet claim data — amount: \(amountDisplay, privacy: .public), leafIndex: \(leafIndex, privacy: .public)")
+            } else {
+                faucetStatus = "Bridging..."
+                appendPXELog(level: "warn", message: "Faucet: No claim data in response — bridge may still be in progress")
             }
 
-            showToast("Fee Juice requested! Bridging takes ~1-2 min.")
+            showToast("Fee Juice claim ready!")
         } catch {
             walletLog.error("[WalletStore] Faucet error: \(error.localizedDescription, privacy: .public)")
+            appendPXELog(level: "error", message: "Faucet: \(error.localizedDescription)")
+            faucetStatus = "Failed"
             showToast("Faucet failed: \(error.localizedDescription)", type: .error)
         }
     }
