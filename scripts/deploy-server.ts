@@ -26,6 +26,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
+import { NO_FROM } from "@aztec/aztec.js/account";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { AccountManager } from "@aztec/aztec.js/wallet";
 
@@ -92,9 +93,9 @@ async function deployAccount(): Promise<Record<string, string>> {
 
   const deployMethod = await accountManager.getDeployMethod();
   const receipt = await deployMethod.send({
-    from: AztecAddress.ZERO,
-    fee: { paymentMethod },
-    wait: { timeout: 180_000, returnReceipt: true },
+    from: NO_FROM,
+    fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 },
+    wait: { timeout: 180_000 },
   });
 
   const txHash = receipt.txHash;
@@ -189,7 +190,7 @@ async function getBalances(accountAddress: string): Promise<Array<{
       const tokenAddr = AztecAddress.fromString(tk.address);
       const addr = AztecAddress.fromString(accountAddress);
 
-      const token = await TokenContract.at(tokenAddr, w);
+      const token = TokenContract.at(tokenAddr, w);
       const balance = await token.methods.balance_of_public(addr).simulate({ from: addr });
       const humanBalance = Number(balance) / (10 ** tk.decimals);
 
@@ -239,7 +240,7 @@ async function setupTransferInfra() {
       Fr.fromHexString(info.salt),
     );
     adminAddr = mgr.address;
-    clrToken = await TokenContract.at(AztecAddress.fromString(info.tokenAddress), w);
+    clrToken = TokenContract.at(AztecAddress.fromString(info.tokenAddress), w);
     knownTokens = [{ address: info.tokenAddress, name: "Celari Token", symbol: "CLR", decimals: 18 }];
     transferReady = true;
     console.log(`Transfer infra loaded: admin=${adminAddr.toString().slice(0, 16)}... token=${info.tokenAddress.slice(0, 16)}...`);
@@ -254,11 +255,11 @@ async function setupTransferInfra() {
   adminAddr = mgr.address;
 
   console.log(`Deploying admin ${adminAddr.toString().slice(0, 16)}...`);
-  await (await mgr.getDeployMethod()).send({ from: AztecAddress.ZERO, fee: { paymentMethod }, wait: { timeout: 180_000 } });
+  await (await mgr.getDeployMethod()).send({ from: NO_FROM, fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 180_000 } });
 
   console.log("Deploying CLR token...");
   const token = await TokenContract.deploy(w, adminAddr, "Celari Token", "CLR", 18)
-    .send({ from: adminAddr, fee: { paymentMethod }, wait: { timeout: 180_000 } });
+    .send({ from: adminAddr, fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 180_000 } });
   const tokenAddress = token.address;
   clrToken = token;
 
@@ -291,7 +292,7 @@ async function transferToken(
   console.log(`Minting ${amount} CLR to ${toAddr.slice(0, 16)}...`);
   const receipt = await clrToken.methods
     .mint_to_public(to, rawAmount)
-    .send({ from: adminAddr!, fee: { paymentMethod }, wait: { timeout: 180_000 } });
+    .send({ from: adminAddr!, fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 180_000 } });
 
   console.log(`Tx: ${receipt.txHash.toString().slice(0, 22)}...`);
   console.log(`Done! Block ${receipt.blockNumber}`);
