@@ -1,12 +1,13 @@
 import SwiftUI
 
 enum V2Tab: Int, CaseIterable {
-    case home, send, bridge, receive, history
+    case home, send, swap, bridge, receive, history
 
     var label: String {
         switch self {
         case .home: return "HOME"
         case .send: return "SEND"
+        case .swap: return "SWAP"
         case .bridge: return "BRIDGE"
         case .receive: return "RECEIVE"
         case .history: return "HISTORY"
@@ -17,6 +18,7 @@ enum V2Tab: Int, CaseIterable {
         switch self {
         case .home: return "house.fill"
         case .send: return "paperplane.fill"
+        case .swap: return "arrow.triangle.2.circlepath"
         case .bridge: return "arrow.left.arrow.right"
         case .receive: return "arrow.down.circle.fill"
         case .history: return "clock.fill"

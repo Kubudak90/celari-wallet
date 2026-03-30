@@ -70,6 +70,8 @@ struct RootViewV2: View {
                         HomeViewV2(activeTab: $activeTab)
                     case .send:
                         SendViewV2()
+                    case .swap:
+                        SwapViewV2()
                     case .bridge:
                         BridgeViewV2()
                     case .receive:
