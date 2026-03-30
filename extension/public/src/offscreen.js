@@ -1045,16 +1045,24 @@ async function deployAccountClientSide(data) {
   console.log("[PXE] Deploy Step 2: setting up fee payment...");
   const t2 = Date.now();
   let paymentMethod;
+  let deployGasSettings = undefined;
 
   // Priority 1: If user has faucet claim data, use it directly (most reliable)
   if (data.claimSecret && data.messageLeafIndex) {
     const { FeeJuicePaymentMethodWithClaim } = await import("@aztec/aztec.js/fee");
+    const { GasSettings } = await import("@aztec/stdlib/gas");
+    // Get current network fees and compute gas settings with 2x margin
+    const currentFees = await nodeClient.getCurrentMinFees();
+    const maxFeesPerGas = currentFees.mul(2);
+    const gasSettings = GasSettings.default({ maxFeesPerGas });
     paymentMethod = new FeeJuicePaymentMethodWithClaim(address, {
       claimAmount: BigInt(data.claimAmount || "1000000000000000000000"),
       claimSecret: Fr.fromHexString(data.claimSecret),
       messageLeafIndex: BigInt(data.messageLeafIndex),
     });
-    console.log(`[PXE] Deploy Step 2: FeeJuicePaymentMethodWithClaim OK (leafIndex: ${data.messageLeafIndex}, ${Date.now() - t2}ms)`);
+    // Store gasSettings to pass to send()
+    deployGasSettings = gasSettings;
+    console.log(`[PXE] Deploy Step 2: FeeJuicePaymentMethodWithClaim OK (leafIndex: ${data.messageLeafIndex}, maxFees: ${JSON.stringify(maxFeesPerGas)}, ${Date.now() - t2}ms)`);
   } else {
     // Priority 2: Try SponsoredFPC (devnet only — may be depleted)
     try {
@@ -1105,9 +1113,12 @@ async function deployAccountClientSide(data) {
   }, 15000);
   let txReceipt;
   try {
+    const feeOpts = deployGasSettings
+      ? { paymentMethod, gasSettings: deployGasSettings }
+      : { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 };
     const sendResult = await deployMethod.send({
       from: NO_FROM,
-      fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 },
+      fee: feeOpts,
       wait: { timeout: 900_000 },
     });
     clearInterval(progressTimer);
