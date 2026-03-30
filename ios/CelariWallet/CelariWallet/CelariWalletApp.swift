@@ -16,6 +16,9 @@ struct CelariWalletApp: App {
                     pxeBridge.store = store
                     pxeBridge.setupWebView()
                     Task { await store.initialize(pxeBridge: pxeBridge) }
+                    Task {
+                        await NotificationManager.shared.requestPermission()
+                    }
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     switch newPhase {
