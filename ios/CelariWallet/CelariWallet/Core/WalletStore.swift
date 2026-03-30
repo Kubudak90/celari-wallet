@@ -746,7 +746,7 @@ class WalletStore {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            let body: [String: String] = ["address": account.address, "asset": asset]
+            let body: [String: String] = ["address": account.address, "asset": asset, "network": network]
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             request.timeoutInterval = 60
 
