@@ -1048,6 +1048,8 @@ async function deployAccountClientSide(data) {
   let deployGasSettings = undefined;
 
   // Priority 1: If user has faucet claim data, use it directly (most reliable)
+  console.log(`[PXE] Deploy Step 2: checking claim data — claimSecret: ${data.claimSecret ? 'YES' : 'NO'}, leafIndex: ${data.messageLeafIndex || 'NO'}, claimAmount: ${data.claimAmount || 'NO'}`);
+  console.log(`[PXE] Deploy Step 2: all data keys: ${Object.keys(data).join(', ')}`);
   if (data.claimSecret && data.messageLeafIndex) {
     const { FeeJuicePaymentMethodWithClaim } = await import("@aztec/aztec.js/fee");
     const { GasSettings } = await import("@aztec/stdlib/gas");
@@ -1092,14 +1094,6 @@ async function deployAccountClientSide(data) {
   const deployMethod = await manager.getDeployMethod();
   console.log(`[PXE] Deploy Step 3: OK (${Date.now() - t3}ms)`);
 
-  // Patch: force external fee path (deployer=undefined) while keeping from=ZERO for SignerlessAccount
-  const _origConvert = deployMethod.convertDeployOptionsToRequestOptions.bind(deployMethod);
-  deployMethod.convertDeployOptionsToRequestOptions = (opts) => {
-    const r = _origConvert(opts);
-    r.deployer = undefined;
-    return r;
-  };
-
   // Step 4: send + wait (prove is the slowest part — may take minutes in WASM)
   reportProgress("Deploy tx gönderiliyor...");
   console.log("[PXE] Deploy Step 4: deployMethod.send() + wait...");
@@ -1116,6 +1110,7 @@ async function deployAccountClientSide(data) {
     const feeOpts = deployGasSettings
       ? { paymentMethod, gasSettings: deployGasSettings }
       : { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 };
+    console.log(`[PXE] Deploy Step 4: fee method = ${paymentMethod.constructor?.name || 'unknown'}, hasGasSettings = ${!!deployGasSettings}`);
     const sendResult = await deployMethod.send({
       from: NO_FROM,
       fee: feeOpts,
