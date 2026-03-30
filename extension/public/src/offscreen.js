@@ -15,7 +15,8 @@ import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { DefaultAccountContract } from "@aztec/accounts/defaults";
 import { AuthWitness } from "@aztec/stdlib/auth-witness";
-import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
+import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee/testing";
+import { NO_FROM } from "@aztec/aztec.js/account";
 import { getContractInstanceFromInstantiationParams } from "@aztec/stdlib/contract";
 import { loadContractArtifact } from "@aztec/aztec.js/abi";
 import { jsonStringify } from "@aztec/foundation/json-rpc";
@@ -762,7 +763,7 @@ async function executeTransfer(data) {
   }
 
   reportProgress("Token kontratı hazırlanıyor...");
-  const token = await TokenContract.at(tokenAddr, acctWallet);
+  const token = TokenContract.at(tokenAddr, acctWallet);
   reportProgress("Fee ödeme ayarlanıyor...");
   let paymentMethod;
   try {
@@ -778,7 +779,7 @@ async function executeTransfer(data) {
     try {
       const { FeeJuicePaymentMethod } = await import("@aztec/aztec.js/fee");
       const { FeeJuiceAddress } = await import("@aztec/protocol-contracts/fee-juice");
-      const feeJuice = await TokenContract.at(FeeJuiceAddress, acctWallet);
+      const feeJuice = TokenContract.at(FeeJuiceAddress, acctWallet);
       const bal = await feeJuice.methods.balance_of_public(acctWallet.getAddress()).simulate();
       const balResult = bal.result !== undefined ? bal.result : bal;
       if (BigInt(balResult.toString()) <= 0n) {
@@ -803,7 +804,7 @@ async function executeTransfer(data) {
   console.log(`[PXE] acctWallet.getAddress(): ${acctWallet.getAddress().toString().slice(0, 22)}...`);
 
   let sendResult;
-  const sendOpts = { from: senderAddr, fee: { paymentMethod }, wait: { timeout: 600_000 } };
+  const sendOpts = { from: senderAddr, fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 600_000 } };
   reportProgress("Blok onayı bekleniyor...");
   switch (transferType) {
     case "private":
@@ -902,7 +903,7 @@ async function getBalances(data) {
       }
 
       // Step 1: Get contract instance
-      const tokenForPublic = await TokenContract.at(tokenAddr, wallet);
+      const tokenForPublic = TokenContract.at(tokenAddr, wallet);
 
       // Step 2: Query public balance (from: test account to avoid getAccountFromAddress crash)
       // In 4.1.0-rc.2, simulate() returns SimulationResult { result, stats?, ... }
@@ -917,7 +918,7 @@ async function getBalances(data) {
         try {
           // Use EmbeddedWallet (not AccountWithSecretKey) — it has simulateViaEntrypoint()
           // needed for unconstrained balance_of_private queries
-          const tokenForPrivate = await TokenContract.at(tokenAddr, wallet);
+          const tokenForPrivate = TokenContract.at(tokenAddr, wallet);
           const privateSim = await tokenForPrivate.methods.balance_of_private(addr).simulate({ from: balanceFromAddress });
           const privateBal = privateSim.result !== undefined ? privateSim.result : privateSim;
           privateBalance = Number(privateBal) / 10 ** tk.decimals;
@@ -1105,9 +1106,9 @@ async function deployAccountClientSide(data) {
   let txReceipt;
   try {
     const sendResult = await deployMethod.send({
-      from: AztecAddress.ZERO,
-      fee: { paymentMethod },
-      wait: { timeout: 900_000, returnReceipt: true },
+      from: NO_FROM,
+      fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 },
+      wait: { timeout: 900_000 },
     });
     clearInterval(progressTimer);
     // In 4.1.0-rc.2, send() with wait returns { receipt: TxReceipt, ...OffchainOutput }
@@ -1197,7 +1198,7 @@ async function executeFaucet(data) {
         const adminAddr = mgr.address;
         const tokenAddr = AztecAddress.fromString(cached.tokenAddress);
 
-        const clrToken = await TokenContract.at(tokenAddr, wallet);
+        const clrToken = TokenContract.at(tokenAddr, wallet);
         faucetAdmin = { adminAddr, clrToken, tokenAddress: cached.tokenAddress };
         console.log(`[PXE] Faucet admin loaded from cache: ${adminAddr.toString().slice(0, 22)}...`);
         console.log(`[PXE] Token contract verified on-chain ✓`);
@@ -1222,8 +1223,8 @@ async function executeFaucet(data) {
     reportProgress("Admin hesap deploy ediliyor... (1/3)");
     reportProgress("Admin tx onayı bekleniyor... (1/3)");
     await (await mgr.getDeployMethod()).send({
-      from: AztecAddress.ZERO,
-      fee: { paymentMethod },
+      from: NO_FROM,
+      fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 },
       wait: { timeout: 600_000 },
     });
     console.log("[PXE] Faucet admin deployed!");
@@ -1236,7 +1237,7 @@ async function executeFaucet(data) {
     for (let attempt = 0; attempt < 6; attempt++) {
       try {
         const tokenDeploy = TokenContract.deploy(wallet, adminAddr, "Celari Token", "CLR", 18);
-        const deployResult = await tokenDeploy.send({ from: adminAddr, fee: { paymentMethod }, wait: { timeout: 600_000 } });
+        const deployResult = await tokenDeploy.send({ from: adminAddr, fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 600_000 } });
         // In 4.1.0-rc.2, DeployMethod.send() returns { contract, receipt, ...OffchainOutput }
         deployedToken = deployResult.contract;
         break;
@@ -1276,7 +1277,7 @@ async function executeFaucet(data) {
   reportProgress("Mint tx onayı bekleniyor... (3/3)");
   const mintResult = await faucetAdmin.clrToken.methods
     .mint_to_public(to, FAUCET_AMOUNT)
-    .send({ from: faucetAdmin.adminAddr, fee: { paymentMethod }, wait: { timeout: 600_000 } });
+    .send({ from: faucetAdmin.adminAddr, fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 600_000 } });
   const mintReceipt = mintResult.receipt;
 
   lastFaucetTime = Date.now();
@@ -1584,7 +1585,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           for (const c of contracts) {
             try {
               const contractAddr = AztecAddress.fromString(c.address);
-              const nft = await NFTContract.at(contractAddr, activeWallet);
+              const nft = NFTContract.at(contractAddr, activeWallet);
               // Fetch private NFTs (paginated)
               let page = 0;
               let hasMore = true;
@@ -1622,13 +1623,25 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
           const { NFTContract } = await import("@aztec/noir-contracts.js/NFT");
           const { AztecAddress, Fr } = await import("@aztec/aztec.js");
-          const nft = await NFTContract.at(AztecAddress.fromString(contractAddress), activeWallet);
+          const nft = NFTContract.at(AztecAddress.fromString(contractAddress), activeWallet);
           const fromAddr = AztecAddress.fromString(activeAddress);
           const toAddr = AztecAddress.fromString(to);
           const tokenIdBig = BigInt(tokenId);
           const nonceVal = nonce ? Fr.fromString(nonce) : Fr.ZERO;
 
-          const sendOpts = { from: fromAddr, wait: { timeout: 600_000 } };
+          // Set up fee payment for NFT transfer
+          let nftPaymentMethod;
+          try {
+            const fpc = await Promise.race([
+              setupSponsoredFPC(activeWallet),
+              new Promise((_, rej) => setTimeout(() => rej(new Error("SponsoredFPC timeout")), 30000)),
+            ]);
+            nftPaymentMethod = fpc.paymentMethod;
+          } catch (e) {
+            const { FeeJuicePaymentMethod } = await import("@aztec/aztec.js/fee");
+            nftPaymentMethod = new FeeJuicePaymentMethod(activeWallet.getAddress());
+          }
+          const sendOpts = { from: fromAddr, fee: { paymentMethod: nftPaymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 600_000 } };
           let nftResult;
           switch (mode) {
             case "private":
@@ -1740,7 +1753,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
           reportProgress("Guardian kontrati hazirlaniyor...");
           const { Contract } = await import("@aztec/aztec.js");
-          const contract = await Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
+          const contract = Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
 
           reportProgress("Fee odeme ayarlaniyor...");
           const { paymentMethod } = await setupSponsoredFPC(acctWallet);
@@ -1756,7 +1769,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
               Fr.fromString(cidPart1),
               Fr.fromString(cidPart2),
             )
-            .send({ from: acctWallet.getAddress(), fee: { paymentMethod }, wait: { timeout: 600_000 } });
+            .send({ from: acctWallet.getAddress(), fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 600_000 } });
 
           const guardianReceipt = guardianResult.receipt;
           console.log(`[PXE] setup_guardians OK — block ${guardianReceipt.blockNumber}`);
@@ -1777,7 +1790,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           const { Contract } = await import("@aztec/aztec.js");
           // Use the base wallet (not account-specific) for public calls
           const accountAddr = AztecAddress.fromString(msg.data.accountAddress || activeAddress);
-          const contract = await Contract.at(accountAddr, recoveryArtifact, wallet);
+          const contract = Contract.at(accountAddr, recoveryArtifact, wallet);
 
           reportProgress("Fee odeme ayarlaniyor...");
           const { paymentMethod } = await setupSponsoredFPC(wallet);
@@ -1791,7 +1804,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
               Fr.fromString(guardianKeyA),
               Fr.fromString(guardianKeyB),
             )
-            .send({ from: AztecAddress.ZERO, fee: { paymentMethod }, wait: { timeout: 600_000 } });
+            .send({ from: NO_FROM, fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 600_000 } });
 
           const recoveryInitReceipt = recoveryInitResult.receipt;
           console.log(`[PXE] initiate_recovery OK — block ${recoveryInitReceipt.blockNumber}`);
@@ -1808,7 +1821,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
           reportProgress("Recovery tamamlaniyor...");
           const { Contract } = await import("@aztec/aztec.js");
-          const contract = await Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
+          const contract = Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
 
           const { paymentMethod } = await setupSponsoredFPC(acctWallet);
 
@@ -1819,7 +1832,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           reportProgress("Blok onayi bekleniyor...");
           const execRecoveryResult = await contract.methods
             .execute_recovery(Array.from(keyXBytes), Array.from(keyYBytes))
-            .send({ from: acctWallet.getAddress(), fee: { paymentMethod }, wait: { timeout: 600_000 } });
+            .send({ from: acctWallet.getAddress(), fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 600_000 } });
 
           const execRecoveryReceipt = execRecoveryResult.receipt;
           console.log(`[PXE] execute_recovery OK — block ${execRecoveryReceipt.blockNumber}`);
@@ -1834,12 +1847,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
           reportProgress("Recovery iptal ediliyor...");
           const { Contract } = await import("@aztec/aztec.js");
-          const contract = await Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
+          const contract = Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
 
           const { paymentMethod } = await setupSponsoredFPC(acctWallet);
           reportProgress("Blok onayi bekleniyor...");
           const cancelResult = await contract.methods.cancel_recovery()
-            .send({ from: acctWallet.getAddress(), fee: { paymentMethod }, wait: { timeout: 600_000 } });
+            .send({ from: acctWallet.getAddress(), fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 600_000 } });
 
           const cancelReceipt = cancelResult.receipt;
           console.log(`[PXE] cancel_recovery OK — block ${cancelReceipt.blockNumber}`);
@@ -1853,7 +1866,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           if (!acctWallet) throw new Error("No active account");
 
           const { Contract } = await import("@aztec/aztec.js");
-          const contract = await Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
+          const contract = Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
           const guardianSim = await contract.methods.is_guardian_configured().simulate();
           const guardianConfigured = guardianSim.result !== undefined ? guardianSim.result : guardianSim;
           return { configured: !!guardianConfigured };
@@ -1866,7 +1879,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             const acctWallet = getActiveWallet();
             if (!acctWallet) return { active: false };
             const { Contract } = await import("@aztec/aztec.js");
-            const contract = await Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
+            const contract = Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
             const result = await contract.methods.is_recovery_active().simulate();
             const active = result.result !== undefined ? result.result : result;
             return { active: Boolean(active) };
@@ -1882,7 +1895,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           if (!acctWallet) throw new Error("No active account");
 
           const { Contract } = await import("@aztec/aztec.js");
-          const contract = await Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
+          const contract = Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
           const cidSim = await contract.methods.get_recovery_cid().simulate();
           const cidResult = cidSim.result !== undefined ? cidSim.result : cidSim;
           return { cidPart1: cidResult[0]?.toString() || "0", cidPart2: cidResult[1]?.toString() || "0" };
@@ -1895,7 +1908,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           try {
             const { FeeJuiceAddress } = await import("@aztec/protocol-contracts/fee-juice");
             const { TokenContract } = await import("@aztec/noir-contracts.js/Token");
-            const feeJuice = await TokenContract.at(FeeJuiceAddress, acctWallet);
+            const feeJuice = TokenContract.at(FeeJuiceAddress, acctWallet);
             const bal = await feeJuice.methods.balance_of_public(acctWallet.getAddress()).simulate();
             const balResult = bal.result !== undefined ? bal.result : bal;
             return { balance: balResult.toString() };
@@ -1912,7 +1925,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           const { TokenContract } = await import("@aztec/noir-contracts.js/Token");
           const tokenAddr = AztecAddress.fromString(msg.tokenAddress);
           const ownerAddr = AztecAddress.fromString(msg.ownerAddress);
-          const token = await TokenContract.at(tokenAddr, acctWallet);
+          const token = TokenContract.at(tokenAddr, acctWallet);
           const bal = await token.methods.balance_of_private(ownerAddr).simulate();
           const balResult = bal.result !== undefined ? bal.result : bal;
           return { balance: balResult.toString() };
@@ -1925,7 +1938,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           const { TokenContract } = await import("@aztec/noir-contracts.js/Token");
           const tokenAddr = AztecAddress.fromString(msg.tokenAddress);
           const ownerAddr = AztecAddress.fromString(msg.ownerAddress);
-          const token = await TokenContract.at(tokenAddr, acctWallet);
+          const token = TokenContract.at(tokenAddr, acctWallet);
           const bal = await token.methods.balance_of_public(ownerAddr).simulate();
           const balResult = bal.result !== undefined ? bal.result : bal;
           return { balance: balResult.toString() };
