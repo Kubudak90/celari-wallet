@@ -444,6 +444,30 @@ class PXEBridge: NSObject {
         return try await sendMessage("PXE_IS_RECOVERY_ACTIVE")
     }
 
+    // MARK: - DEX
+
+    func getSwapQuote(tokenIn: String, tokenOut: String, amountIn: String, slippage: Double = 0.01) async throws -> [String: Any] {
+        return try await sendMessage("PXE_DEX_GET_QUOTE", data: ["data": [
+            "tokenIn": tokenIn,
+            "tokenOut": tokenOut,
+            "amountIn": amountIn,
+            "slippage": slippage
+        ]])
+    }
+
+    func executeSwap(tokenIn: String, tokenOut: String, amountIn: String, amountOutMin: String) async throws -> [String: Any] {
+        return try await sendMessage("PXE_DEX_EXECUTE_SWAP", data: ["data": [
+            "tokenIn": tokenIn,
+            "tokenOut": tokenOut,
+            "amountIn": amountIn,
+            "amountOutMin": amountOutMin
+        ]])
+    }
+
+    func getSupportedPairs() async throws -> [String: Any] {
+        return try await sendMessage("PXE_DEX_SUPPORTED_PAIRS")
+    }
+
     // MARK: - Snapshot Persistence
 
     func saveSnapshot() async throws -> String {
