@@ -2,6 +2,7 @@ import SwiftUI
 import CryptoKit
 import os.log
 import UserNotifications
+import WidgetKit
 
 private let walletLog = Logger(subsystem: "com.celari.wallet", category: "WalletStore")
 
@@ -199,7 +200,18 @@ class WalletStore {
     var activeAccountIndex: Int = 0
 
     // Tokens
-    var tokens: [Token] = []
+    var tokens: [Token] = [] {
+        didSet {
+            // Update widget data via shared App Group
+            let shared = UserDefaults(suiteName: "group.com.celari.wallet")
+            shared?.set(self.tokens.first?.balance ?? "0.00", forKey: "widgetTotalBalance")
+            let widgetTokens = self.tokens.prefix(3).map { [$0.symbol, $0.balance] }
+            if let data = try? JSONEncoder().encode(widgetTokens) {
+                shared?.set(data, forKey: "widgetTokens")
+            }
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
     var customTokens: [CustomToken] = []
     var tokenAddresses: [String: String] = [:]
 
