@@ -80,6 +80,7 @@ targets:
         INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier: com.apple.widgetkit-extension
         GENERATE_INFOPLIST_FILE: true
     entitlements:
+      path: CelariWidget/CelariWidget.entitlements
       properties:
         com.apple.security.application-groups:
           - group.com.celari.wallet
