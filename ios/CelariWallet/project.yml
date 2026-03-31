@@ -36,7 +36,7 @@ targets:
         INFOPLIST_KEY_CFBundleIconName: "AppIcon"
     dependencies:
       - package: Swoirenberg
-      # - target: CelariWidget  # TODO: fix widget Info.plist before re-enabling
+      - target: CelariWidget
     entitlements:
       path: CelariWallet/CelariWallet.entitlements
       properties:

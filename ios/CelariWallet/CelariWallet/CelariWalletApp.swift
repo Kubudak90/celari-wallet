@@ -15,7 +15,15 @@ struct CelariWalletApp: App {
                 .onAppear {
                     pxeBridge.store = store
                     pxeBridge.setupWebView()
-                    Task { await store.initialize(pxeBridge: pxeBridge) }
+                    Task {
+                        await store.initialize(pxeBridge: pxeBridge)
+                        // Initialize WalletConnect after PXE is ready
+                        do {
+                            _ = try await pxeBridge.wcInit()
+                        } catch {
+                            print("[CelariWalletApp] WalletConnect init failed: \(error)")
+                        }
+                    }
                     Task {
                         await NotificationManager.shared.requestPermission()
                     }

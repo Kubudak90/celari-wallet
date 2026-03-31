@@ -1721,14 +1721,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
         case "PXE_WC_APPROVE": {
           if (!wcClient) return { error: "WalletConnect not initialized" };
-          const { id: proposalId, namespaces } = msg.data;
-          const session = await wcClient.approve({ id: proposalId, namespaces });
+          const approveId = msg.data.proposalId ?? msg.data.id;
+          const { namespaces } = msg.data;
+          const session = await wcClient.approve({ id: approveId, namespaces });
           return { topic: session.topic, peer: session.peer?.metadata?.name || "Unknown" };
         }
 
         case "PXE_WC_REJECT": {
           if (!wcClient) return { error: "WalletConnect not initialized" };
-          await wcClient.reject({ id: msg.data.id, reason: { code: 4001, message: "User rejected" } });
+          const rejectId = msg.data.proposalId ?? msg.data.id;
+          await wcClient.reject({ id: rejectId, reason: { code: 4001, message: "User rejected" } });
           return { rejected: true };
         }
 
