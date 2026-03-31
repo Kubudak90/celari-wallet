@@ -26,7 +26,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { NO_FROM } from "@aztec/aztec.js/account";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { AccountManager } from "@aztec/aztec.js/wallet";
 
@@ -93,7 +92,7 @@ async function deployAccount(): Promise<Record<string, string>> {
 
   const deployMethod = await accountManager.getDeployMethod();
   const receipt = await deployMethod.send({
-    from: NO_FROM,
+    from: AztecAddress.ZERO,
     fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 },
     wait: { timeout: 180_000 },
   });
@@ -255,7 +254,7 @@ async function setupTransferInfra() {
   adminAddr = mgr.address;
 
   console.log(`Deploying admin ${adminAddr.toString().slice(0, 16)}...`);
-  await (await mgr.getDeployMethod()).send({ from: NO_FROM, fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 180_000 } });
+  await (await mgr.getDeployMethod()).send({ from: AztecAddress.ZERO, fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 180_000 } });
 
   console.log("Deploying CLR token...");
   const token = await TokenContract.deploy(w, adminAddr, "Celari Token", "CLR", 18)

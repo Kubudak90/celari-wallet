@@ -15,8 +15,10 @@ import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { DefaultAccountContract } from "@aztec/accounts/defaults";
 import { AuthWitness } from "@aztec/stdlib/auth-witness";
+// AztecAddress already imported from @aztec/aztec.js/addresses above
 import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee/testing";
-import { NO_FROM } from "@aztec/aztec.js/account";
+// NO_FROM was added in v4.2.0; in v4.1.x we just use undefined
+const NO_FROM = undefined;
 import { getContractInstanceFromInstantiationParams } from "@aztec/stdlib/contract";
 import { loadContractArtifact } from "@aztec/aztec.js/abi";
 import { jsonStringify } from "@aztec/foundation/json-rpc";
@@ -1112,7 +1114,7 @@ async function deployAccountClientSide(data) {
       : { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 };
     console.log(`[PXE] Deploy Step 4: fee method = ${paymentMethod.constructor?.name || 'unknown'}, hasGasSettings = ${!!deployGasSettings}`);
     const sendResult = await deployMethod.send({
-      from: NO_FROM,
+      from: AztecAddress.ZERO,
       fee: feeOpts,
       wait: { timeout: 900_000 },
     });
@@ -1229,7 +1231,7 @@ async function executeFaucet(data) {
     reportProgress("Admin hesap deploy ediliyor... (1/3)");
     reportProgress("Admin tx onayı bekleniyor... (1/3)");
     await (await mgr.getDeployMethod()).send({
-      from: NO_FROM,
+      // from: removed for v4.1.2 compat (NO_FROM is v4.2+)
       fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 },
       wait: { timeout: 600_000 },
     });
@@ -1810,7 +1812,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
               Fr.fromString(guardianKeyA),
               Fr.fromString(guardianKeyB),
             )
-            .send({ from: NO_FROM, fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 600_000 } });
+            .send({ fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 600_000 } });
 
           const recoveryInitReceipt = recoveryInitResult.receipt;
           console.log(`[PXE] initiate_recovery OK — block ${recoveryInitReceipt.blockNumber}`);

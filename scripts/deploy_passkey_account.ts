@@ -24,7 +24,6 @@ import { fileURLToPath } from "url";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { NO_FROM } from "@aztec/aztec.js/account";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { AccountManager } from "@aztec/aztec.js/wallet";
 
@@ -127,7 +126,7 @@ async function main() {
 
   const deployMethod = await accountManager.getDeployMethod();
   const receipt = await deployMethod.send({
-    from: NO_FROM,
+    from: AztecAddress.ZERO,
     fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 },
     wait: { timeout: 180_000 },
   });
