@@ -1231,7 +1231,7 @@ async function executeFaucet(data) {
     reportProgress("Admin hesap deploy ediliyor... (1/3)");
     reportProgress("Admin tx onayı bekleniyor... (1/3)");
     await (await mgr.getDeployMethod()).send({
-      // from: removed for v4.1.2 compat (NO_FROM is v4.2+)
+      from: AztecAddress.ZERO,
       fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 },
       wait: { timeout: 600_000 },
     });
@@ -1814,7 +1814,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
               Fr.fromString(guardianKeyA),
               Fr.fromString(guardianKeyB),
             )
-            .send({ fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 600_000 } });
+            .send({ from: acctWallet.getAddress(), fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 600_000 } });
 
           const recoveryInitReceipt = recoveryInitResult.receipt;
           console.log(`[PXE] initiate_recovery OK — block ${recoveryInitReceipt.blockNumber}`);
