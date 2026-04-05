@@ -16,20 +16,40 @@ export interface TokenPair {
   liquidity: bigint;
 }
 
+/** Default pairs — will be replaced with on-chain query when DEX contract is live. */
+const DEFAULT_PAIRS: TokenPair[] = [
+  { tokenA: "ETH", tokenB: "zkUSD", liquidity: 0n },
+  { tokenA: "ETH", tokenB: "DAI", liquidity: 0n },
+  { tokenA: "zkUSD", tokenB: "DAI", liquidity: 0n },
+];
+
 /**
  * Client for interacting with DEX contracts on Aztec.
- * Currently provides stub implementations — will be connected to
- * Shieldswap or Nemi DEX contracts when available.
+ *
+ * When constructed without a contract address, all trading methods throw
+ * "DEX contract not configured". This allows the UI to gracefully show
+ * "DEX not available" instead of crashing.
+ *
+ * When a contract address is provided, methods will interact with the
+ * on-chain AMM (not yet implemented — requires deployed DEX contract).
  */
 export class DexClient {
   private nodeUrl: string;
+  private contractAddress: string | undefined;
 
-  constructor(nodeUrl: string) {
+  constructor(nodeUrl: string, dexContractAddress?: string) {
     this.nodeUrl = nodeUrl;
+    this.contractAddress = dexContractAddress;
+  }
+
+  /** Whether a DEX contract is configured and trading is possible. */
+  isAvailable(): boolean {
+    return this.contractAddress !== undefined;
   }
 
   /**
    * Get a swap quote from the DEX.
+   * Throws if no contract address is configured.
    */
   async getQuote(
     tokenIn: string,
@@ -37,15 +57,17 @@ export class DexClient {
     amountIn: bigint,
     slippage: number = 0.01
   ): Promise<SwapQuote> {
-    // TODO: Query on-chain AMM contract for real swap quote
-    // Placeholder: 1% spread estimate
-    const estimatedOut = amountIn * 99n / 100n;
+    if (!this.contractAddress) {
+      throw new Error("DEX contract not configured");
+    }
+    const slippageBps = BigInt(Math.floor(slippage * 10000));
+    const estimatedOut = amountIn * (10000n - slippageBps) / 10000n;
     return {
       tokenIn,
       tokenOut,
       amountIn,
       amountOut: estimatedOut,
-      priceImpact: 0.01,
+      priceImpact: slippage,
       estimatedGas: 500000n,
       expiresAt: Date.now() + 30000,
     };
@@ -53,17 +75,23 @@ export class DexClient {
 
   /**
    * Execute a swap through the DEX contract.
+   * Throws if no contract address is configured.
    */
   async executeSwap(quote: SwapQuote, walletAddress: string): Promise<string> {
-    // TODO: Execute swap through DEX contract interaction
-    throw new Error("DEX swap not yet connected to contract");
+    if (!this.contractAddress) {
+      throw new Error("DEX contract not configured");
+    }
+    throw new Error("DEX swap execution not yet implemented — awaiting contract deployment");
   }
 
   /**
-   * Get available trading pairs from the DEX.
+   * Get available trading pairs.
+   * Returns hardcoded defaults when contract is configured, empty otherwise.
    */
   async getSupportedPairs(): Promise<TokenPair[]> {
-    // TODO: Query DEX for available trading pairs
-    return [];
+    if (!this.contractAddress) {
+      return [];
+    }
+    return DEFAULT_PAIRS;
   }
 }
