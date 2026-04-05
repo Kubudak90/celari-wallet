@@ -22,6 +22,7 @@ struct RecoverAccountViewV2: View {
     @State private var timeLockStart: Date?
     @State private var timeLockRemaining: String = "24:00:00"
     @State private var canExecuteChain: Bool = false
+    @State private var recoveryDeadline: Date = .distantFuture
 
     private let relayBaseUrl = "https://recovery.celariwallet.com"
     private let maxPollAttempts = 120 // Max status checks before showing "contact guardians" message
@@ -216,59 +217,57 @@ struct RecoverAccountViewV2: View {
                 .multilineTextAlignment(.center)
 
             // Countdown timer
-            Text(timeLockRemaining)
-                .font(V2Fonts.monoBold(32))
-                .foregroundColor(isTimeLockExpired ? V2Colors.successGreen : V2Colors.soOrange)
-                .onAppear {
-                    if timeLockStart == nil { timeLockStart = Date() }
-                }
-                .task(id: timeLockStart) {
-                    guard let start = timeLockStart else { return }
-                    var tickCount = 0
-                    while !Task.isCancelled {
-                        let elapsed = Date().timeIntervalSince(start)
-                        let remaining = max(0, 86400 - elapsed) // 24h = 86400s
-                        let hours = Int(remaining) / 3600
-                        let minutes = (Int(remaining) % 3600) / 60
-                        let seconds = Int(remaining) % 60
-                        timeLockRemaining = String(format: "%02d:%02d:%02d", hours, minutes, seconds)
-                        if remaining <= 0 { break }
-                        // Query on-chain block state every 30 seconds to verify remaining time
-                        if tickCount % 30 == 0 {
-                            await refreshCountdownFromChain()
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                let remaining = max(0, recoveryDeadline.timeIntervalSince(context.date))
+                let hours = Int(remaining) / 3600
+                let minutes = (Int(remaining) % 3600) / 60
+                let seconds = Int(remaining) % 60
+
+                VStack(spacing: 16) {
+                    Text("Recovery Time-Lock")
+                        .font(.headline)
+
+                    Text(String(format: "%02d:%02d:%02d", hours, minutes, seconds))
+                        .font(.system(size: 48, weight: .bold, design: .monospaced))
+                        .foregroundStyle(remaining > 0 ? Color.secondary : V2Colors.successGreen)
+
+                    if remaining <= 0 {
+                        Button {
+                            Task { await finalizeRecovery() }
+                        } label: {
+                            HStack(spacing: 8) {
+                                if processing {
+                                    ProgressView().tint(V2Colors.textWhite)
+                                } else {
+                                    Image(systemName: "checkmark.shield")
+                                    Text("Finalize Recovery")
+                                }
+                            }
+                            .font(V2Fonts.bodySemibold(16))
+                            .foregroundColor(V2Colors.textWhite)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(V2Colors.aztecDark)
+                            )
                         }
-                        tickCount += 1
-                        try? await Task.sleep(for: .seconds(1))
-                    }
-                }
-
-            if !isTimeLockExpired {
-                Text("Recovery will be available when the timer expires")
-                    .font(V2Fonts.body(12))
-                    .foregroundColor(V2Colors.textMuted)
-            }
-
-            Button {
-                Task { await finalizeRecovery() }
-            } label: {
-                HStack(spacing: 8) {
-                    if processing {
-                        ProgressView().tint(V2Colors.textWhite)
+                        .disabled(processing)
                     } else {
-                        Image(systemName: "checkmark.shield")
-                        Text("Finalize Recovery")
+                        Text("Recovery will be available when countdown reaches zero")
+                            .font(.caption)
+                            .foregroundStyle(Color.secondary)
                     }
                 }
-                .font(V2Fonts.bodySemibold(16))
-                .foregroundColor(V2Colors.textWhite)
-                .frame(maxWidth: .infinity)
-                .frame(height: 52)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(V2Colors.aztecDark)
-                )
             }
-            .disabled(processing || !isTimeLockExpired)
+            .onAppear {
+                if timeLockStart == nil { timeLockStart = Date() }
+                // Seed deadline from local 24h timer if chain hasn't provided one yet
+                if recoveryDeadline == .distantFuture, let start = timeLockStart {
+                    recoveryDeadline = start.addingTimeInterval(86400)
+                }
+                Task { await refreshCountdownFromChain() }
+            }
 
             Spacer()
         }
@@ -390,6 +389,10 @@ struct RecoverAccountViewV2: View {
                 let minutes = (secondsRemaining % 3600) / 60
                 let secs = secondsRemaining % 60
                 timeLockRemaining = String(format: "%02d:%02d:%02d", hours, minutes, secs)
+
+                let remainingSeconds = Double(blocksRemaining) * 12.0  // ~12s per block
+                recoveryDeadline = Date().addingTimeInterval(remainingSeconds)
+                store.scheduleRecoveryNotification(deadline: recoveryDeadline)
 
                 if blocksRemaining == 0 {
                     canExecuteChain = true
