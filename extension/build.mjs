@@ -12,7 +12,7 @@
  */
 
 import { build } from "esbuild";
-import { cpSync, mkdirSync, existsSync } from "fs";
+import { cpSync, mkdirSync, existsSync, unlinkSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -55,6 +55,13 @@ try {
   console.log("  Pass 1: Standard entry points OK");
 
   // --- Pass 2: Offscreen bundle (Aztec SDK + WASM PXE) ---
+
+  // Clean stale sourcemaps from previous dev builds
+  const staleMap = resolve(outdir, "src/offscreen.js.map");
+  if (!isDev && existsSync(staleMap)) {
+    unlinkSync(staleMap);
+    console.log("  Cleaned stale sourcemap: offscreen.js.map");
+  }
 
   console.log("  Pass 2: Bundling offscreen.js with Aztec SDK...");
 
