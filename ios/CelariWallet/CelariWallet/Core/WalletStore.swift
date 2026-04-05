@@ -188,11 +188,20 @@ class WalletStore {
     // Navigation
     var screen: Screen = .loading
 
-    // Connection
-    var connected: Bool = false
-    var network: String = "testnet"
-    var nodeUrl: String = "https://rpc.testnet.aztec-labs.com/"
-    var nodeInfo: NodeInfo?
+    // Connection (forwarded to walletNetworkManager)
+    var connected: Bool {
+        get { walletNetworkManager.connected }
+        set { walletNetworkManager.connected = newValue }
+    }
+    var network: String {
+        get { walletNetworkManager.network }
+        set { walletNetworkManager.network = newValue }
+    }
+    var nodeUrl: String {
+        get { walletNetworkManager.nodeUrl }
+        set { walletNetworkManager.nodeUrl = newValue }
+    }
+    var nodeInfo: NodeInfo? { walletNetworkManager.nodeInfo }
 
     // Accounts
     var accounts: [Account] = []
@@ -219,9 +228,15 @@ class WalletStore {
     var wcSessions: [WCSession] = []
     var wcProposal: WCProposal?
 
-    // Networks
-    var customNetworks: [CustomNetwork] = []
-    var deployServerUrl: String = ""
+    // Networks (forwarded to walletNetworkManager)
+    var customNetworks: [CustomNetwork] {
+        get { walletNetworkManager.customNetworks }
+        set { walletNetworkManager.customNetworks = newValue }
+    }
+    var deployServerUrl: String {
+        get { walletNetworkManager.deployServerUrl }
+        set { walletNetworkManager.deployServerUrl = newValue }
+    }
 
     // UI State
     var sendForm: SendForm = SendForm()
@@ -316,6 +331,7 @@ class WalletStore {
     // Core managers
     let persistence = WalletPersistence()
     let networkManager = NetworkManager()
+    let walletNetworkManager = WalletNetworkManager()
     let passkeyManager = PasskeyManager()
     weak var pxeBridge: PXEBridge?
 
@@ -484,12 +500,9 @@ class WalletStore {
     // MARK: - Network Connection
 
     func checkConnection() async {
-        walletLog.notice("[WalletStore] checkConnection — nodeUrl: \(self.nodeUrl, privacy: .public)")
-        let result = await networkManager.checkConnection(nodeUrl: nodeUrl)
-        connected = result.connected
-        nodeInfo = result.nodeInfo
+        await walletNetworkManager.checkConnection()
         // Track network version for state migration warnings
-        if let version = result.nodeInfo?.nodeVersion {
+        if let version = walletNetworkManager.nodeInfo?.nodeVersion {
             pxeNodeInfo = version
             if lastKnownNetworkVersion.isEmpty {
                 lastKnownNetworkVersion = version
@@ -499,10 +512,8 @@ class WalletStore {
     }
 
     func switchNetwork(preset: NetworkPreset) async {
-        network = preset.rawValue
-        nodeUrl = preset.url
+        await walletNetworkManager.switchNetwork(preset: preset)
         saveConfig()
-        await checkConnection()
     }
 
     // MARK: - Balance Fetching
@@ -1044,12 +1055,12 @@ class WalletStore {
     func loadFromStorage() {
         accounts = persistence.loadAccounts()
         customTokens = persistence.loadCustomTokens()
-        customNetworks = persistence.loadCustomNetworks()
+        walletNetworkManager.customNetworks = persistence.loadCustomNetworks()
         customNftContracts = persistence.loadNftContracts()
         activities = persistence.loadActivities()
         let config = persistence.loadConfig()
-        network = config.network ?? network
-        nodeUrl = config.nodeUrl ?? nodeUrl
+        if let n = config.network { walletNetworkManager.network = n }
+        if let u = config.nodeUrl { walletNetworkManager.nodeUrl = u }
         // Load cached token balances for instant dashboard display
         if let cached = persistence.loadCachedTokens() {
             tokens = cached
