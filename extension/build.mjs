@@ -65,11 +65,12 @@ try {
 
   console.log("  Pass 2: Bundling offscreen.js with Aztec SDK...");
 
-  await build({
+  const pass2Result = await build({
     entryPoints: [
       { in: resolve(__dirname, "public/src/offscreen.js"), out: "src/offscreen" },
     ],
     bundle: true,
+    metafile: true,
     minify: !isDev,
     sourcemap: isDev,
     outdir,
@@ -130,6 +131,24 @@ try {
   });
 
   console.log("  Pass 2: Offscreen bundle OK");
+
+  if (pass2Result.metafile) {
+    const outputs = pass2Result.metafile.outputs;
+    const mainOutput = Object.entries(outputs).find(([k]) => k.includes("offscreen"));
+    if (mainOutput) {
+      const [name, meta] = mainOutput;
+      const sizeMB = (meta.bytes / 1048576).toFixed(1);
+      console.log(`  Bundle size: ${sizeMB} MB`);
+      const inputs = Object.entries(meta.inputs)
+        .sort(([, a], [, b]) => b.bytesInOutput - a.bytesInOutput)
+        .slice(0, 10);
+      console.log("  Top 10 largest modules:");
+      for (const [path, info] of inputs) {
+        const mb = (info.bytesInOutput / 1048576).toFixed(2);
+        console.log(`    ${mb} MB — ${path}`);
+      }
+    }
+  }
 
   // --- Pass 3: iOS offscreen bundle (ESM — WKWebView Safari 17+ supports modules) ---
   // IMPORTANT: Previous IIFE format caused `import.meta` to be replaced with `{}`,
