@@ -2,7 +2,6 @@ import SwiftUI
 import CryptoKit
 import os.log
 import UserNotifications
-import WidgetKit
 
 private let walletLog = Logger(subsystem: "com.celari.wallet", category: "WalletStore")
 
@@ -202,14 +201,7 @@ class WalletStore {
     // Tokens
     var tokens: [Token] = [] {
         didSet {
-            // Update widget data via shared App Group
-            let shared = UserDefaults(suiteName: "group.com.celari.wallet")
-            shared?.set(self.tokens.first?.balance ?? "0.00", forKey: "widgetTotalBalance")
-            let widgetTokens = self.tokens.prefix(3).map { [$0.symbol, $0.balance] }
-            if let data = try? JSONEncoder().encode(widgetTokens) {
-                shared?.set(data, forKey: "widgetTokens")
-            }
-            WidgetCenter.shared.reloadAllTimelines()
+            persistence.updateWidget(tokens: self.tokens)
         }
     }
     var customTokens: [CustomToken] = []
@@ -272,18 +264,18 @@ class WalletStore {
     var backupReminderDismissed: Bool = false
 
     var lastKnownNetworkVersion: String {
-        get { UserDefaults.standard.string(forKey: "lastKnownNetworkVersion") ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: "lastKnownNetworkVersion") }
+        get { persistence.lastKnownNetworkVersion }
+        set { persistence.lastKnownNetworkVersion = newValue }
     }
 
     var lastBackupDate: Double {
-        get { UserDefaults.standard.double(forKey: "lastBackupDate") }
-        set { UserDefaults.standard.set(newValue, forKey: "lastBackupDate") }
+        get { persistence.lastBackupDate }
+        set { persistence.lastBackupDate = newValue }
     }
 
     var pinataApiKey: String? {
-        get { UserDefaults.standard.string(forKey: "pinataApiKey") }
-        set { UserDefaults.standard.set(newValue, forKey: "pinataApiKey") }
+        get { persistence.pinataApiKey }
+        set { persistence.pinataApiKey = newValue }
     }
 
     var needsBackupReminder: Bool {
@@ -322,6 +314,7 @@ class WalletStore {
     }
 
     // Core managers
+    let persistence = WalletPersistence()
     let networkManager = NetworkManager()
     let passkeyManager = PasskeyManager()
     weak var pxeBridge: PXEBridge?
@@ -536,9 +529,7 @@ class WalletStore {
                         .map { Token(name: $0.name, symbol: $0.symbol, balance: "—", value: "$0.00", icon: "C", color: "#666", isCustom: true) }
                     tokens = response.tokens + customExtras
                     // Cache balances for instant display on next launch
-                    if let data = try? JSONEncoder().encode(self.tokens) {
-                        UserDefaults.standard.set(data, forKey: "cachedTokens")
-                    }
+                    persistence.saveCachedTokens(self.tokens)
                     return
                 }
             } catch {
@@ -637,9 +628,7 @@ class WalletStore {
                 let remaining = Token.defaults.filter { !fetchedSymbols.contains($0.symbol) }
                 tokens = fetchedTokens + remaining
                 // Cache balances for instant display on next launch
-                if let data = try? JSONEncoder().encode(self.tokens) {
-                    UserDefaults.standard.set(data, forKey: "cachedTokens")
-                }
+                persistence.saveCachedTokens(self.tokens)
             }
         } catch {
             walletLog.error("[WalletStore] PXE balance fetch failed: \(error.localizedDescription, privacy: .public)")
@@ -1052,93 +1041,52 @@ class WalletStore {
 
     // MARK: - Storage
 
-    private let accountsKey = "celari_accounts"
-    private let configKey = "celari_config"
-    private let customTokensKey = "celari_custom_tokens"
-    private let customNetworksKey = "celari_custom_networks"
-    private let nftContractsKey = "celari_custom_nft_contracts"
-    private let activitiesKey = "celari_activities"
-
     func loadFromStorage() {
-        if let data = UserDefaults.standard.data(forKey: accountsKey),
-           let decoded = try? JSONDecoder().decode([Account].self, from: data) {
-            accounts = decoded
-        }
-        if let data = UserDefaults.standard.data(forKey: customTokensKey),
-           let decoded = try? JSONDecoder().decode([CustomToken].self, from: data) {
-            customTokens = decoded
-        }
-        if let data = UserDefaults.standard.data(forKey: customNetworksKey),
-           let decoded = try? JSONDecoder().decode([CustomNetwork].self, from: data) {
-            customNetworks = decoded
-        }
-        if let data = UserDefaults.standard.data(forKey: nftContractsKey),
-           let decoded = try? JSONDecoder().decode([NFTContract].self, from: data) {
-            customNftContracts = decoded
-        }
-        if let data = UserDefaults.standard.data(forKey: activitiesKey),
-           let decoded = try? JSONDecoder().decode([Activity].self, from: data) {
-            activities = decoded
-        }
-        if let config = UserDefaults.standard.dictionary(forKey: configKey) {
-            network = config["network"] as? String ?? network
-            nodeUrl = config["nodeUrl"] as? String ?? nodeUrl
-        }
+        accounts = persistence.loadAccounts()
+        customTokens = persistence.loadCustomTokens()
+        customNetworks = persistence.loadCustomNetworks()
+        customNftContracts = persistence.loadNftContracts()
+        activities = persistence.loadActivities()
+        let config = persistence.loadConfig()
+        network = config.network ?? network
+        nodeUrl = config.nodeUrl ?? nodeUrl
         // Load cached token balances for instant dashboard display
-        if let data = UserDefaults.standard.data(forKey: "cachedTokens"),
-           let cached = try? JSONDecoder().decode([Token].self, from: data) {
-            self.tokens = cached
+        if let cached = persistence.loadCachedTokens() {
+            tokens = cached
         }
-        if let data = UserDefaults.standard.data(forKey: "guardianStatus"),
-           let status = try? JSONDecoder().decode(GuardianStatus.self, from: data) {
-            self.guardianStatus = status
+        if let status = persistence.loadGuardianStatus() {
+            guardianStatus = status
         }
-        self.guardians = UserDefaults.standard.stringArray(forKey: "guardians") ?? []
-        if let data = UserDefaults.standard.data(forKey: "bridgeTransactions"),
-           let txs = try? JSONDecoder().decode([BridgeTransaction].self, from: data) {
-            self.bridgeTransactions = txs
-        }
+        guardians = persistence.loadGuardians()
+        bridgeTransactions = persistence.loadBridgeTransactions()
     }
 
     func saveAccounts() {
-        if let data = try? JSONEncoder().encode(accounts) {
-            UserDefaults.standard.set(data, forKey: accountsKey)
-        }
+        persistence.saveAccounts(accounts)
     }
 
     func saveConfig() {
-        UserDefaults.standard.set(["network": network, "nodeUrl": nodeUrl], forKey: configKey)
+        persistence.saveConfig(network: network, nodeUrl: nodeUrl)
     }
 
     func saveCustomTokens() {
-        if let data = try? JSONEncoder().encode(customTokens) {
-            UserDefaults.standard.set(data, forKey: customTokensKey)
-        }
+        persistence.saveCustomTokens(customTokens)
     }
 
     func saveNftContracts() {
-        if let data = try? JSONEncoder().encode(customNftContracts) {
-            UserDefaults.standard.set(data, forKey: nftContractsKey)
-        }
+        persistence.saveNftContracts(customNftContracts)
     }
 
     func saveActivities() {
-        if let data = try? JSONEncoder().encode(activities) {
-            UserDefaults.standard.set(data, forKey: activitiesKey)
-        }
+        persistence.saveActivities(activities)
     }
 
     func saveGuardianStatus() {
-        if let data = try? JSONEncoder().encode(guardianStatus) {
-            UserDefaults.standard.set(data, forKey: "guardianStatus")
-        }
-        UserDefaults.standard.set(guardians, forKey: "guardians")
+        persistence.saveGuardianStatus(guardianStatus, guardians: guardians)
     }
 
     func saveBridgeTransactions() {
-        if let data = try? JSONEncoder().encode(bridgeTransactions) {
-            UserDefaults.standard.set(data, forKey: "bridgeTransactions")
-        }
+        persistence.saveBridgeTransactions(bridgeTransactions)
     }
 
     // MARK: - PXE Log Management
@@ -1178,32 +1126,26 @@ class WalletStore {
 
     /// Daily withdrawal amount tracked via UserDefaults
     var dailyWithdrawalAmount: Double {
-        get { UserDefaults.standard.double(forKey: "dailyWithdrawalAmount") }
-        set { UserDefaults.standard.set(newValue, forKey: "dailyWithdrawalAmount") }
+        get { persistence.dailyWithdrawalAmount }
+        set { persistence.dailyWithdrawalAmount = newValue }
     }
 
     /// Date string (YYYY-MM-DD) of the current daily withdrawal tracking window
     var dailyWithdrawalDate: String {
-        get { UserDefaults.standard.string(forKey: "dailyWithdrawalDate") ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: "dailyWithdrawalDate") }
+        get { persistence.dailyWithdrawalDate }
+        set { persistence.dailyWithdrawalDate = newValue }
     }
 
     /// Configurable daily withdrawal limit (persisted via UserDefaults)
     var dailyWithdrawalLimit: Double {
-        get {
-            let val = UserDefaults.standard.double(forKey: "dailyWithdrawalLimit")
-            return val > 0 ? val : 1000.0
-        }
-        set { UserDefaults.standard.set(newValue, forKey: "dailyWithdrawalLimit") }
+        get { persistence.dailyWithdrawalLimit }
+        set { persistence.dailyWithdrawalLimit = newValue }
     }
 
     /// Threshold above which extra confirmation is required (persisted via UserDefaults)
     var largeTransactionThreshold: Double {
-        get {
-            let val = UserDefaults.standard.double(forKey: "largeTransactionThreshold")
-            return val > 0 ? val : 100.0
-        }
-        set { UserDefaults.standard.set(newValue, forKey: "largeTransactionThreshold") }
+        get { persistence.largeTransactionThreshold }
+        set { persistence.largeTransactionThreshold = newValue }
     }
 
     /// Remaining daily withdrawal allowance (resets at midnight)
