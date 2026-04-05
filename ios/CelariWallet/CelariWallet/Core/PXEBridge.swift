@@ -14,30 +14,12 @@ class PXEBridge: NSObject {
     var error: String?
     weak var store: WalletStore?
 
+    let messageBus = PXEMessageBus()
     private var webView: WKWebView?
-    private var pendingCallbacks: [String: CheckedContinuation<[String: Any], Error>] = [:]
-    private let callbackLock = NSLock()
     private var storageData: [String: Any] = [:]
 
     override init() {
         super.init()
-    }
-
-    // MARK: - Thread-safe Continuation Access
-
-    private func storeContinuation(_ id: String, _ continuation: CheckedContinuation<[String: Any], Error>) {
-        callbackLock.lock()
-        pendingCallbacks[id] = continuation
-        callbackLock.unlock()
-    }
-
-    /// Remove and return the continuation for the given ID, or nil if already consumed.
-    /// This ensures each CheckedContinuation is resumed at most once.
-    private func removeContinuation(_ id: String) -> CheckedContinuation<[String: Any], Error>? {
-        callbackLock.lock()
-        let cb = pendingCallbacks.removeValue(forKey: id)
-        callbackLock.unlock()
-        return cb
     }
 
     // MARK: - Setup
@@ -194,6 +176,7 @@ class PXEBridge: NSObject {
         wv.isOpaque = false
         wv.alpha = 0.01 // effectively invisible but keeps process alive
         self.webView = wv
+        messageBus.setWebView(wv)
 
         // Attach to key window so the WebContent process stays active
         if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
@@ -208,71 +191,14 @@ class PXEBridge: NSObject {
     // MARK: - Send Message to JavaScript
 
     func sendMessage(_ type: String, data: [String: Any] = [:]) async throws -> [String: Any] {
-        guard let webView else { throw PXEError.notReady }
-
-        let messageId = "msg_\(Date().timeIntervalSince1970)_\(UUID().uuidString.prefix(8))"
-
-        var message = data
-        message["type"] = type
-        message["_messageId"] = messageId
-
-        let jsonData = try JSONSerialization.data(withJSONObject: message)
-        let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
-
-        // ZK proof generation on single-threaded WASM takes ~140s per proof.
-        // Faucet first-time setup needs 3 sequential proofs (~15 min total).
-        let timeoutSeconds: Int
-        switch type {
-        case "PXE_FAUCET":
-            timeoutSeconds = 1200  // 20 min — up to 3 sequential proofs + block inclusion
-        case "PXE_DEPLOY_ACCOUNT", "PXE_TRANSFER", "PXE_NFT_TRANSFER",
-             "PXE_SETUP_GUARDIANS", "PXE_INITIATE_RECOVERY", "PXE_EXECUTE_RECOVERY", "PXE_CANCEL_RECOVERY":
-            timeoutSeconds = 600   // 10 min — 1 proof + block inclusion
-        case "PXE_SNAPSHOT_RESTORE":
-            timeoutSeconds = 600   // 10 min — deserialize + recreate PXE/TestWallet
-        default:
-            timeoutSeconds = 300   // 5 min — non-proving operations
-        }
-
-        return try await withCheckedThrowingContinuation { continuation in
-            storeContinuation(messageId, continuation)
-
-            pxeLog.notice("[PXEBridge] callAsyncJavaScript for \(type, privacy: .public), msgId: \(messageId, privacy: .public), jsonLen: \(jsonString.count), timeout: \(timeoutSeconds)s")
-            Task { @MainActor in
-                do {
-                    _ = try await webView.callAsyncJavaScript(
-                        "window._receiveFromSwift(msg)",
-                        arguments: ["msg": jsonString],
-                        contentWorld: .page
-                    )
-                    pxeLog.notice("[PXEBridge] callAsyncJavaScript OK for \(type, privacy: .public)")
-                } catch {
-                    pxeLog.error("[PXEBridge] callAsyncJavaScript ERROR for \(type, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                    if let cb = self.removeContinuation(messageId) {
-                        cb.resume(throwing: error)
-                    }
-                }
-            }
-
-            Task {
-                try? await Task.sleep(for: .seconds(timeoutSeconds))
-                if let cb = self.removeContinuation(messageId) {
-                    cb.resume(throwing: PXEError.timeout)
-                }
-            }
-        }
+        try await messageBus.sendMessage(type, data: data)
     }
 
     // MARK: - Evaluate JavaScript
 
     @MainActor
     func evaluateJS(_ jsCode: String) async throws -> Any? {
-        guard let webView else { throw PXEError.notReady }
-        return try await webView.callAsyncJavaScript(
-            jsCode,
-            arguments: [:],
-            contentWorld: .page
-        )
+        try await messageBus.evaluateJS(jsCode)
     }
 
     // MARK: - Typed PXE Methods
@@ -532,12 +458,11 @@ extension PXEBridge: WKScriptMessageHandler {
                 return
             }
             // Response from JS to a pending Swift call
-            if let messageId = json["_messageId"] as? String,
-               let continuation = removeContinuation(messageId) {
+            if let messageId = json["_messageId"] as? String {
                 if let error = json["error"] as? String {
-                    continuation.resume(throwing: PXEError.jsError(error))
+                    messageBus.resumeContinuation(messageId, with: .failure(PXEError.jsError(error)))
                 } else {
-                    continuation.resume(returning: json)
+                    messageBus.resumeContinuation(messageId, with: .success(json))
                 }
             }
 
