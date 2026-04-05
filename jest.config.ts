@@ -21,6 +21,6 @@ export default {
   transformIgnorePatterns: [
     "node_modules/(?!(@aztec)/)",
   ],
-  testMatch: ["**/test/**/*.test.ts"],
+  testMatch: ["**/test/**/*.test.ts", "**/__tests__/**/*.test.ts"],
   testTimeout: 300_000,
 };
