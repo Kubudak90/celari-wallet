@@ -1097,35 +1097,54 @@ async function deployAccountClientSide(data) {
   console.log(`[PXE] Deploy Step 3: OK (${Date.now() - t3}ms)`);
 
   // Step 4: send + wait (prove is the slowest part — may take minutes in WASM)
-  reportProgress("Deploy tx gönderiliyor...");
-  console.log("[PXE] Deploy Step 4: deployMethod.send() + wait...");
-  console.log("[PXE] (proving may take several minutes in WKWebView WASM...)");
-  const t4 = Date.now();
-  // Log periodic progress while waiting
-  const progressTimer = setInterval(() => {
-    const elapsed = Math.round((Date.now() - t4) / 1000);
-    console.log(`[PXE] Deploy Step 4: still running... ${elapsed}s elapsed`);
-    reportProgress(`Deploy tx işleniyor... (${elapsed}s)`);
-  }, 15000);
+  // Retry on "Block header not found" — chain reorgs can invalidate the anchor block
+  // during the long proving window (2-5 min on WASM).
+  const MAX_DEPLOY_RETRIES = 3;
   let txReceipt;
-  try {
-    const feeOpts = deployGasSettings
-      ? { paymentMethod, gasSettings: deployGasSettings }
-      : { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 };
-    console.log(`[PXE] Deploy Step 4: fee method = ${paymentMethod.constructor?.name || 'unknown'}, hasGasSettings = ${!!deployGasSettings}`);
-    const sendResult = await deployMethod.send({
-      from: AztecAddress.ZERO,
-      fee: feeOpts,
-      wait: { timeout: 900_000 },
-    });
-    clearInterval(progressTimer);
-    // In 4.1.0-rc.2, send() with wait returns { receipt: TxReceipt, ...OffchainOutput }
-    txReceipt = sendResult.receipt;
-    console.log(`[PXE] Deploy Step 4: txHash: ${txReceipt.txHash.toString().slice(0, 22)}... Deployed! Block ${txReceipt.blockNumber} (${Date.now() - t4}ms)`);
-  } catch (e) {
-    clearInterval(progressTimer);
-    console.error(`[PXE] Deploy Step 4: FAILED (${Date.now() - t4}ms) -- ${e.message}`);
-    throw e;
+  for (let attempt = 1; attempt <= MAX_DEPLOY_RETRIES; attempt++) {
+    reportProgress(attempt > 1 ? `Deploy tx yeniden gönderiliyor... (deneme ${attempt})` : "Deploy tx gönderiliyor...");
+    console.log(`[PXE] Deploy Step 4 (attempt ${attempt}/${MAX_DEPLOY_RETRIES}): deployMethod.send() + wait...`);
+    console.log("[PXE] (proving may take several minutes in WKWebView WASM...)");
+    const t4 = Date.now();
+    const progressTimer = setInterval(() => {
+      const elapsed = Math.round((Date.now() - t4) / 1000);
+      console.log(`[PXE] Deploy Step 4: still running... ${elapsed}s elapsed`);
+      reportProgress(`Deploy tx işleniyor... (${elapsed}s)`);
+    }, 15000);
+    try {
+      const feeOpts = deployGasSettings
+        ? { paymentMethod, gasSettings: deployGasSettings }
+        : { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 };
+      console.log(`[PXE] Deploy Step 4: fee method = ${paymentMethod.constructor?.name || 'unknown'}, hasGasSettings = ${!!deployGasSettings}`);
+      const sendResult = await deployMethod.send({
+        from: AztecAddress.ZERO,
+        fee: feeOpts,
+        wait: { timeout: 900_000 },
+      });
+      clearInterval(progressTimer);
+      txReceipt = sendResult.receipt;
+      console.log(`[PXE] Deploy Step 4: txHash: ${txReceipt.txHash.toString().slice(0, 22)}... Deployed! Block ${txReceipt.blockNumber} (${Date.now() - t4}ms)`);
+      break; // Success — exit retry loop
+    } catch (e) {
+      clearInterval(progressTimer);
+      const isReorgError = e.message?.includes("Block header not found") || e.message?.includes("Invalid tx");
+      console.error(`[PXE] Deploy Step 4: FAILED (attempt ${attempt}, ${Date.now() - t4}ms) -- ${e.message}`);
+      if (isReorgError && attempt < MAX_DEPLOY_RETRIES) {
+        console.warn(`[PXE] Deploy Step 4: Chain reorg detected — re-syncing PXE before retry...`);
+        reportProgress("Chain reorg algılandı, yeniden sync ediliyor...");
+        try {
+          if (wallet.pxe.blockStateSynchronizer?.sync) {
+            await wallet.pxe.blockStateSynchronizer.sync();
+          }
+        } catch (syncErr) {
+          console.warn(`[PXE] Deploy Step 4: re-sync failed: ${syncErr.message}`);
+        }
+        // Brief delay before retry to let the chain stabilize
+        await new Promise(r => setTimeout(r, 3000));
+        continue;
+      }
+      throw e; // Non-reorg error or final attempt — propagate
+    }
   }
 
   reportProgress("Hesap deploy edildi ✓");
