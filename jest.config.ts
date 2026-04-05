@@ -23,4 +23,12 @@ export default {
   ],
   testMatch: ["**/test/**/*.test.ts", "**/__tests__/**/*.test.ts"],
   testTimeout: 300_000,
+  collectCoverageFrom: [
+    "src/**/*.ts",
+    "bridge/sdk/**/*.ts",
+    "!src/artifacts/**",
+    "!src/test/**",
+  ],
+  coverageDirectory: "coverage",
+  coverageReporters: ["text", "text-summary", "lcov"],
 };
