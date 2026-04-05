@@ -21,6 +21,7 @@ import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee/testing";
 const NO_FROM = undefined;
 import { getContractInstanceFromInstantiationParams } from "@aztec/stdlib/contract";
 import { loadContractArtifact } from "@aztec/aztec.js/abi";
+import { Contract } from "@aztec/aztec.js/contracts";
 import { jsonStringify } from "@aztec/foundation/json-rpc";
 import { WalletSchema, AccountManager } from "@aztec/aztec.js/wallet";
 import { deriveKeys } from "@aztec/stdlib/keys";
@@ -1781,7 +1782,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           const { guardianHash0, guardianHash1, guardianHash2, threshold, cidPart1, cidPart2 } = msg.data;
 
           reportProgress("Guardian kontrati hazirlaniyor...");
-          const { Contract } = await import("@aztec/aztec.js");
+
           const contract = Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
 
           reportProgress("Fee odeme ayarlaniyor...");
@@ -1816,7 +1817,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           const { newKeyX, newKeyY, guardianKeyA, guardianKeyB } = msg.data;
 
           reportProgress("Recovery kontrati hazirlaniyor...");
-          const { Contract } = await import("@aztec/aztec.js");
+
           // Use the base wallet (not account-specific) for public calls
           const accountAddr = AztecAddress.fromString(msg.data.accountAddress || activeAddress);
           const contract = Contract.at(accountAddr, recoveryArtifact, wallet);
@@ -1849,7 +1850,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           const { newKeyX, newKeyY } = msg.data;
 
           reportProgress("Recovery tamamlaniyor...");
-          const { Contract } = await import("@aztec/aztec.js");
+
           const contract = Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
 
           const { paymentMethod } = await setupSponsoredFPC(acctWallet);
@@ -1875,7 +1876,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           if (!acctWallet) throw new Error("No active account");
 
           reportProgress("Recovery iptal ediliyor...");
-          const { Contract } = await import("@aztec/aztec.js");
+
           const contract = Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
 
           const { paymentMethod } = await setupSponsoredFPC(acctWallet);
@@ -1894,7 +1895,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           const acctWallet = getActiveWallet();
           if (!acctWallet) throw new Error("No active account");
 
-          const { Contract } = await import("@aztec/aztec.js");
+
           const contract = Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
           const guardianSim = await contract.methods.is_guardian_configured().simulate();
           const guardianConfigured = guardianSim.result !== undefined ? guardianSim.result : guardianSim;
@@ -1907,7 +1908,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             if (!recoveryArtifact) return { active: false };
             const acctWallet = getActiveWallet();
             if (!acctWallet) return { active: false };
-            const { Contract } = await import("@aztec/aztec.js");
+  
             const contract = Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
             const result = await contract.methods.is_recovery_active().simulate();
             const active = result.result !== undefined ? result.result : result;
@@ -1923,7 +1924,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           const acctWallet = getActiveWallet();
           if (!acctWallet) throw new Error("No active account");
 
-          const { Contract } = await import("@aztec/aztec.js");
+
           const contract = Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
           const cidSim = await contract.methods.get_recovery_cid().simulate();
           const cidResult = cidSim.result !== undefined ? cidSim.result : cidSim;
