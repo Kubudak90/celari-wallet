@@ -760,17 +760,8 @@ async function executeTransfer(data) {
     console.log(`[PXE] Transfer: registering token contract from node...`);
     const onChainInstance = await nodeClient.getContract(tokenAddr);
     if (onChainInstance) {
-      // Register the contract class first, then the instance separately.
-      // This avoids MAX_NOTE_PACKED_LEN mismatches when on-chain contract
-      // was deployed with a different Token artifact than the SDK bundles.
-      try {
-        await wallet.registerContractClass(TokenContract.artifact);
-        console.log(`[PXE] Transfer: contract class registered OK`);
-      } catch (e) {
-        console.log(`[PXE] Transfer: registerContractClass: ${e.message?.slice(0, 100)}`);
-      }
-      await wallet.registerContract({ instance: onChainInstance });
-      console.log(`[PXE] Transfer: token contract instance registered OK`);
+      await wallet.registerContract(onChainInstance, TokenContract.artifact);
+      console.log(`[PXE] Transfer: token contract registered OK`);
     }
   }
 
@@ -907,12 +898,7 @@ async function getBalances(data) {
         console.log(`[PXE] Balance: registering ${tk.symbol} contract from node...`);
         const onChainInstance = await nodeClient.getContract(tokenAddr);
         if (onChainInstance) {
-          try {
-            await wallet.registerContractClass(TokenContract.artifact);
-          } catch (e) {
-            // Class may already be registered
-          }
-          await wallet.registerContract({ instance: onChainInstance });
+          await wallet.registerContract(onChainInstance, TokenContract.artifact);
           console.log(`[PXE] Balance: registered ${tk.symbol} contract OK`);
         } else {
           console.warn(`[PXE] Balance: contract ${tk.symbol} not found on-chain`);
@@ -1904,16 +1890,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
 
         case "PXE_IS_GUARDIAN_CONFIGURED": {
-          const recoveryArtifact = getRecoveryArtifact();
-          if (!recoveryArtifact) return { configured: false };
-          const acctWallet = getActiveWallet();
-          if (!acctWallet) throw new Error("No active account");
+          try {
+            const recoveryArtifact = getRecoveryArtifact();
+            if (!recoveryArtifact) return { configured: false };
+            const acctWallet = getActiveWallet();
+            if (!acctWallet) return { configured: false };
 
-
-          const contract = Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
-          const guardianSim = await contract.methods.is_guardian_configured().simulate();
-          const guardianConfigured = guardianSim.result !== undefined ? guardianSim.result : guardianSim;
-          return { configured: !!guardianConfigured };
+            // Check if the account is actually deployed as a recoverable account
+            // before attempting to simulate. If not, this will throw.
+            const contract = Contract.at(acctWallet.getAddress(), recoveryArtifact, acctWallet);
+            const guardianSim = await contract.methods.is_guardian_configured().simulate();
+            const guardianConfigured = guardianSim.result !== undefined ? guardianSim.result : guardianSim;
+            return { configured: !!guardianConfigured };
+          } catch (e) {
+            console.warn(`[PXE] is_guardian_configured check failed: ${e.message?.slice(0, 100)}`);
+            return { configured: false };
+          }
         }
 
         case "PXE_IS_RECOVERY_ACTIVE": {
