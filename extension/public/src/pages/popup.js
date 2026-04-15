@@ -165,7 +165,12 @@ async function init() {
   try {
     const stored = await chrome.storage.local.get("celari_accounts");
     if (stored.celari_accounts?.length) {
-      store.accounts = stored.celari_accounts;
+      // Purge any legacy placeholder accounts (address contains "_pending")
+      const clean = stored.celari_accounts.filter(a => !a.address?.includes("_pending"));
+      store.accounts = clean;
+      if (clean.length !== stored.celari_accounts.length) {
+        await chrome.storage.local.set({ celari_accounts: clean });
+      }
     }
   } catch (e) {}
 
@@ -504,6 +509,39 @@ function bindOnboarding() {
   document.getElementById("btn-demo")?.addEventListener("click", handleDemoMode);
 }
 
+// Wait for the offscreen PXE engine to finish initializing. Polls every 2s,
+// triggers PXE_INIT once if the engine is idle. Reports progress via `onProgress(text)`.
+async function waitForPxeReady(onProgress) {
+  const startTime = Date.now();
+  let triggered = false;
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("PXE initialization timed out after 5 min")), 300000);
+    const poll = () => {
+      chrome.runtime.sendMessage({ type: "PXE_STATUS" }, (res) => {
+        void chrome.runtime.lastError;
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+
+        if (res?.success && res.ready) { clearTimeout(timeout); resolve(); return; }
+        if (res?.success && res.error && !res?.initializing) {
+          clearTimeout(timeout); reject(new Error(res.error)); return;
+        }
+        if (!triggered && !res?.initializing) {
+          triggered = true;
+          onProgress?.("Connecting to Aztec network...");
+          chrome.runtime.sendMessage({ type: "PXE_INIT", nodeUrl: store.nodeUrl }, () => void chrome.runtime.lastError);
+        }
+        if (res?.initializing && res?.initStep) onProgress?.(`${res.initStep} (${elapsed}s)`);
+        else if (res?.initializing) onProgress?.(`PXE initializing... (${elapsed}s)`);
+        else if (!res) onProgress?.(`Starting background engine... (${elapsed}s)`);
+        else onProgress?.(`Waiting for PXE... (${elapsed}s)`);
+
+        setTimeout(poll, 2000);
+      });
+    };
+    poll();
+  });
+}
+
 async function handleCreatePasskey() {
   const btn = document.getElementById("btn-create-passkey");
   btn.disabled = true;
@@ -514,6 +552,9 @@ async function handleCreatePasskey() {
       throw new Error("This browser does not support Passkey");
     }
 
+    // 1. Create WebAuthn passkey (used for identity / UX — the actual signing key is
+    //    a separate P256 key generated in offscreen, because WebAuthn does not expose
+    //    private keys).
     const userId = crypto.getRandomValues(new Uint8Array(32));
     const createOptions = {
       publicKey: {
@@ -537,27 +578,44 @@ async function handleCreatePasskey() {
     const credential = await navigator.credentials.create(createOptions);
     if (!credential) throw new Error("Passkey creation cancelled");
 
-    const response = credential.response;
-    const spki = new Uint8Array(response.getPublicKey());
+    // 2. Wait for the offscreen PXE engine to be ready (this is what takes the longest)
+    btn.textContent = "Starting PXE engine...";
+    await waitForPxeReady((text) => { btn.textContent = text; });
 
-    let offset = -1;
-    for (let i = 0; i < spki.length - 64; i++) {
-      if (spki[i] === 0x04 && i + 65 <= spki.length) { offset = i; break; }
-    }
-    if (offset === -1) throw new Error("Could not extract public key");
+    // 3. Generate the on-chain signing keypair inside offscreen
+    btn.textContent = "Generating signing key...";
+    const keys = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: "PXE_GENERATE_KEYS" }, (res) => {
+        if (res?.success && res.pubKeyX) resolve(res);
+        else reject(new Error(res?.error || "Key generation failed"));
+      });
+    });
 
-    const pubKeyX = Array.from(spki.slice(offset + 1, offset + 33)).map(b => b.toString(16).padStart(2, "0")).join("");
-    const pubKeyY = Array.from(spki.slice(offset + 33, offset + 65)).map(b => b.toString(16).padStart(2, "0")).join("");
+    // 4. Deterministically compute the account address from the signing keys
+    btn.textContent = "Computing address...";
+    const computed = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({
+        type: "PXE_COMPUTE_ADDRESS",
+        data: {
+          publicKeyX: keys.pubKeyX,
+          publicKeyY: keys.pubKeyY,
+          privateKeyPkcs8: keys.privateKeyPkcs8,
+        },
+      }, (res) => {
+        if (res?.success && res.address) resolve(res);
+        else reject(new Error(res?.error || "Address computation failed"));
+      });
+    });
 
-    // Address will be determined on deployment — show placeholder until then
-    const address = "0x" + "0".repeat(40) + "_pending";
-
+    // 5. Save the account with the REAL pre-computed address.
+    //    `deployed: false` — deploy happens later via the Deploy banner, reusing these keys.
     const accountNum = store.accounts.length + 1;
     const account = {
-      address,
+      address: computed.address,
       credentialId: credential.id,
-      publicKeyX: "0x" + pubKeyX,
-      publicKeyY: "0x" + pubKeyY,
+      publicKeyX: keys.pubKeyX,
+      publicKeyY: keys.pubKeyY,
+      salt: computed.salt,
       type: "passkey",
       label: accountNum === 1 ? "Main Wallet" : `Wallet ${accountNum}`,
       deployed: false,
@@ -569,19 +627,23 @@ async function handleCreatePasskey() {
     await chrome.storage.local.set({ celari_accounts: store.accounts });
     chrome.runtime.sendMessage({ type: "SAVE_ACCOUNT", account });
 
-    // Store keys in session storage (cleared on browser close) for security
+    // 6. Persist signing keys + secret in session storage so the Deploy banner can
+    //    reuse them (same secret/salt → same address on deploy).
     await chrome.storage.session.set({
       celari_keys: {
-        publicKeyX: account.publicKeyX,
-        publicKeyY: account.publicKeyY,
-        credentialId: account.credentialId,
-      }
+        publicKeyX: keys.pubKeyX,
+        publicKeyY: keys.pubKeyY,
+        privateKeyPkcs8: keys.privateKeyPkcs8,
+        credentialId: credential.id,
+      },
+      celari_secret: computed.secretKey,
+      celari_private_key: keys.privateKeyPkcs8,
     });
 
     store.tokens = getEmptyTokens();
     store.activities = getEmptyActivities();
     setState({ screen: "dashboard" });
-    showToast("Passkey wallet created!", "success");
+    showToast(`Wallet created: ${computed.address.slice(0, 10)}...`, "success");
 
   } catch (e) {
     console.error("Passkey error:", e);
@@ -772,8 +834,8 @@ function renderDashboard() {
       <div class="balance-label">Total Balance</div>
       <div class="balance-amount">${escapeHtml(totalValue)}</div>
       <div class="balance-address">
-        ${isDeployed || !isPasskey ? `<code>${escapeHtml(shortAddr)}</code>
-        <button class="copy-btn" id="btn-copy-addr" title="Copy address">${icons.copy}</button>` : `<code style="color:var(--text-faint)">Deploy to get address</code>`}
+        ${account?.address ? `<code>${escapeHtml(shortAddr)}</code>
+        <button class="copy-btn" id="btn-copy-addr" title="Copy address">${icons.copy}</button>` : `<code style="color:var(--text-faint)">Preparing address...</code>`}
         <span style="margin-left:4px;font-family:IBM Plex Mono,monospace;font-size:8px;letter-spacing:2px;color:${isDeployed ? 'var(--green)' : isPasskey ? 'var(--copper)' : 'var(--text-dim)'}">${isDeployed ? 'DEPLOYED' : isPasskey ? 'PENDING' : 'DEMO'}</span>
       </div>
     </div>
@@ -921,97 +983,34 @@ function bindDashboard() {
     statusEl.textContent = "Initializing PXE...";
 
     try {
-      // --- Client-side deploy via PXE (fully decentralized) ---
+      // --- Client-side deploy via PXE (reuses keys + address computed at wallet creation) ---
 
-      // 1. Ensure PXE is ready (wait up to 180s for initialization)
+      // 1. Ensure PXE is ready (it usually already is, since handleCreatePasskey waited)
       statusEl.textContent = "Starting PXE engine...";
-      const pxeStartTime = Date.now();
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error("PXE initialization timed out after 5 min")), 300000);
-        let triggered = false;
+      await waitForPxeReady((text) => { statusEl.textContent = text; });
 
-        const poll = () => {
-          chrome.runtime.sendMessage({ type: "PXE_STATUS" }, (res) => {
-            void chrome.runtime.lastError; // Suppress port closed warnings
-            const elapsed = Math.round((Date.now() - pxeStartTime) / 1000);
-            console.log("[Deploy] PXE_STATUS:", JSON.stringify({ success: res?.success, ready: res?.ready, error: res?.error, initializing: res?.initializing, initStep: res?.initStep }));
+      // 2. Load the signing keys + secret saved at wallet creation
+      const session = await chrome.storage.session.get(["celari_keys", "celari_secret"]);
+      const savedKeys = session.celari_keys;
+      const savedSecret = session.celari_secret;
+      const account = getActiveAccount();
+      if (!savedKeys?.publicKeyX || !savedSecret || !account?.salt) {
+        throw new Error("Session expired — please create the wallet again to regenerate keys.");
+      }
 
-            if (res?.success && res.ready) {
-              clearTimeout(timeout);
-              resolve();
-              return;
-            }
+      statusEl.textContent = `Address: ${account.address.slice(0, 16)}... Deploying (60-180s)...`;
 
-            // If init returned a fatal error (not just "still initializing"), show it
-            if (res?.success && res.error && !res?.initializing) {
-              clearTimeout(timeout);
-              reject(new Error(res.error));
-              return;
-            }
-
-            // If not initializing and not ready, trigger PXE init (fire-and-forget)
-            if (!triggered && !res?.initializing) {
-              triggered = true;
-              statusEl.textContent = "Connecting to Aztec network...";
-              console.log("[Deploy] Triggering PXE_INIT with nodeUrl:", store.nodeUrl);
-              chrome.runtime.sendMessage({ type: "PXE_INIT", nodeUrl: store.nodeUrl }, () => {
-                void chrome.runtime.lastError;
-              });
-            }
-
-            // Show current init step from offscreen
-            if (res?.initializing && res?.initStep) {
-              statusEl.textContent = `${res.initStep} (${elapsed}s)`;
-            } else if (res?.initializing) {
-              statusEl.textContent = `PXE initializing... (${elapsed}s)`;
-            } else if (!res) {
-              statusEl.textContent = `Starting background engine... (${elapsed}s)`;
-            } else {
-              statusEl.textContent = `Waiting for PXE... (${elapsed}s)`;
-            }
-
-            setTimeout(poll, 2000);
-          });
-        };
-        poll();
-      });
-
-      // 2. Generate P256 key pair in browser
-      statusEl.textContent = "Generating keys (WebCrypto)...";
-      const keys = await new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({ type: "PXE_GENERATE_KEYS" }, (res) => {
-          if (res?.success && res.pubKeyX) resolve(res);
-          else reject(new Error(res?.error || "Key generation failed"));
-        });
-      });
-
-      // 2b. Pre-compute deterministic address (so it can be shown + used for Fee Juice bridge on mainnet)
-      statusEl.textContent = "Computing address...";
-      const computed = await new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({
-          type: "PXE_COMPUTE_ADDRESS",
-          data: {
-            publicKeyX: keys.pubKeyX,
-            publicKeyY: keys.pubKeyY,
-            privateKeyPkcs8: keys.privateKeyPkcs8,
-          },
-        }, (res) => {
-          if (res?.success && res.address) resolve(res);
-          else reject(new Error(res?.error || "Address computation failed"));
-        });
-      });
-      statusEl.textContent = `Address: ${computed.address.slice(0, 16)}... Deploying (60-180s)...`;
-
-      // 3. Deploy account on-chain via client-side PXE (reuse computed secret/salt so address matches)
+      // 3. Deploy with the SAME secret/salt used at address computation → deployed
+      //    address will match the one already shown on the dashboard.
       const deployResult = await new Promise((resolve, reject) => {
         chrome.runtime.sendMessage({
           type: "PXE_DEPLOY_ACCOUNT",
           data: {
-            publicKeyX: keys.pubKeyX,
-            publicKeyY: keys.pubKeyY,
-            privateKeyPkcs8: keys.privateKeyPkcs8,
-            secretKey: computed.secretKey,
-            salt: computed.salt,
+            publicKeyX: savedKeys.publicKeyX,
+            publicKeyY: savedKeys.publicKeyY,
+            privateKeyPkcs8: savedKeys.privateKeyPkcs8,
+            secretKey: savedSecret,
+            salt: account.salt,
           },
         }, (res) => {
           if (res?.success && res.address) resolve(res);
@@ -1019,14 +1018,15 @@ function bindDashboard() {
         });
       });
 
-      // 4. Apply deploy info
+      // 4. Persist deploy metadata (address should already match — we pass `address`
+      //    through so applyDeployInfo's validation accepts it).
       applyDeployInfo({
         address: deployResult.address,
-        publicKeyX: keys.pubKeyX,
-        publicKeyY: keys.pubKeyY,
-        secretKey: deployResult.secretKey,
-        salt: deployResult.salt,
-        privateKeyPkcs8: keys.privateKeyPkcs8,
+        publicKeyX: savedKeys.publicKeyX,
+        publicKeyY: savedKeys.publicKeyY,
+        secretKey: savedSecret,
+        salt: account.salt,
+        privateKeyPkcs8: savedKeys.privateKeyPkcs8,
         network: store.network,
         nodeUrl: store.nodeUrl,
         txHash: deployResult.txHash,
