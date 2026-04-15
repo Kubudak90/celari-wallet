@@ -65,6 +65,9 @@ function _wsB64urlToBytes(s) {
 function _wsFixedCoord(b64url) {
   const decoded = _wsB64urlToBytes(b64url);
   if (decoded.length === _WS_P256_SZ) return decoded;
+  if (decoded.length > _WS_P256_SZ) {
+    throw new Error(`Invalid P-256 coordinate: expected ${_WS_P256_SZ} bytes, got ${decoded.length}`);
+  }
   const padded = new Uint8Array(_WS_P256_SZ);
   padded.set(decoded, _WS_P256_SZ - decoded.length);
   return padded;
