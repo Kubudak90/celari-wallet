@@ -153,6 +153,8 @@ async function _wsHandleProtocolMessage(message, sender) {
       if (!requestId) return;
       const origin = sender.tab?.url ? new URL(sender.tab.url).origin : "unknown";
       _wsPendingDiscoveries.set(requestId, { tabId, origin, appId, chainInfo });
+      // Auto-expire discovery if key exchange never arrives (prevents unbounded growth)
+      setTimeout(() => _wsPendingDiscoveries.delete(requestId), 30_000);
 
       // Auto-approve: immediately send wallet info + trigger MessageChannel creation
       chrome.tabs.sendMessage(tabId, {
@@ -171,7 +173,7 @@ async function _wsHandleProtocolMessage(message, sender) {
 
     case "key-exchange-request": {
       const discovery = _wsPendingDiscoveries.get(sessionId);
-      if (!discovery) return;
+      if (!discovery || discovery.tabId !== tabId) return;
       try {
         const keyPair      = await _wsGenerateKeyPair();
         const peerPubKey   = await _wsImportPublicKey(content.publicKey);
@@ -215,7 +217,7 @@ async function _wsHandleProtocolMessage(message, sender) {
 
     case "secure-message": {
       const session = _wsActiveSessions.get(sessionId);
-      if (!session) return;
+      if (!session || session.tabId !== tabId) return;
 
       let decrypted;
       try {
@@ -259,8 +261,10 @@ async function _wsHandleProtocolMessage(message, sender) {
     }
 
     case "disconnect-request": {
-      _wsActiveSessions.delete(sessionId);
-      _wsPendingDiscoveries.delete(sessionId);
+      const session = _wsActiveSessions.get(sessionId);
+      const pending = _wsPendingDiscoveries.get(sessionId);
+      if (session && session.tabId === tabId) _wsActiveSessions.delete(sessionId);
+      if (pending && pending.tabId === tabId) _wsPendingDiscoveries.delete(sessionId);
       break;
     }
   }
