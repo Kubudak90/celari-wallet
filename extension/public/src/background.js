@@ -157,18 +157,24 @@ async function _wsHandleProtocolMessage(message, sender) {
       if (!requestId) return;
       const origin = sender.tab?.url ? new URL(sender.tab.url).origin : "unknown";
       _wsPendingDiscoveries.set(requestId, { tabId, origin, appId, chainInfo, createdAt: Date.now() });
-      // Auto-expire if user doesn't act in 2 min
-      setTimeout(() => _wsPendingDiscoveries.delete(requestId), 120_000);
+      // Auto-expire discovery if key exchange never arrives (prevents unbounded growth)
+      setTimeout(() => _wsPendingDiscoveries.delete(requestId), 30_000);
 
-      // Open approval popup — the user must click "Connect" before we send
-      // discovery-approved back to the content script.
-      chrome.windows.create({
-        url: `popup.html?wsapprove=${encodeURIComponent(requestId)}`,
-        type: "popup",
-        width: 380,
-        height: 560,
-        focused: true,
-      }).catch((e) => console.warn("[WalletSDK] approval popup create failed:", e?.message || e));
+      // Auto-approve discovery. A user confirmation popup here would exceed the
+      // dApp's discovery timeout (~3-5s in wallet-sdk). Real authorization is
+      // enforced at the sign-request step below via the wssign popup, where
+      // every sendTx / createAuthWit requires explicit user approval.
+      chrome.tabs.sendMessage(tabId, {
+        origin: _WS_BG,
+        type: "discovery-approved",
+        sessionId: requestId,
+        content: {
+          id: CELARI_WALLET_ID_WS,
+          name: "Celari Wallet",
+          version: "0.5.0",
+          icon: chrome.runtime.getURL("icons/icon-48.png"),
+        },
+      }).catch(() => {});
       break;
     }
 
