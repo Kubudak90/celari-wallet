@@ -715,7 +715,7 @@ async function registerAccount(data) {
   try {
     console.log(`[PXE] Triggering note sync for account contract...`);
     const t0 = Date.now();
-    await wallet.pxe.debug.getNotes({ contractAddress: accountAddr });
+    await wallet.pxe.getNotes({ contractAddress: accountAddr });
     console.log(`[PXE] Note sync completed OK (${Date.now() - t0}ms)`);
   } catch (err) {
     console.warn(`[PXE] Note sync warning (non-fatal): ${err.message}`);
