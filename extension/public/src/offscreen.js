@@ -1369,14 +1369,35 @@ function hexToBuffer(hex) {
 // Delegates to acctWallet (AccountWithSecretKey) for account-scoped methods,
 // and to wallet (EmbeddedWallet) for PXE-level methods.
 
+// Compatibility shim: v4.2+ dApps (e.g. bridge.human.tech) expect
+// `privateExecutionResult.entrypoint.taggingIndexRanges` on simulateTx results.
+// Our v4.1.3 SDK doesn't populate this field. Inject an empty array so the
+// dApp's Zod schema validates instead of rejecting the whole response.
+function _shimTxResult(result) {
+  try {
+    const ep = result?.privateExecutionResult?.entrypoint;
+    if (ep && !Array.isArray(ep.taggingIndexRanges)) {
+      ep.taggingIndexRanges = [];
+    }
+    // Recurse into nested execution results (some SDK versions nest these)
+    const nested = result?.privateExecutionResult?.nestedExecutionResults;
+    if (Array.isArray(nested)) {
+      for (const n of nested) {
+        if (n && !Array.isArray(n.taggingIndexRanges)) n.taggingIndexRanges = [];
+      }
+    }
+  } catch {}
+  return result;
+}
+
 async function handleWalletMethod(method, args) {
   if (!wallet) throw new Error("PXE not initialized");
 
   switch (method) {
     case "getAccounts":
       return Array.from(accountWallets.keys()).map(addr => ({
-        item: AztecAddress.fromString(addr),
         alias: "",
+        item: AztecAddress.fromString(addr),
       }));
 
     case "getChainInfo":
@@ -1384,7 +1405,7 @@ async function handleWalletMethod(method, args) {
 
     case "getAddressBook": {
       const senders = await wallet.getSenders();
-      return senders.map(s => ({ item: s, alias: "" }));
+      return senders.map(s => ({ alias: "", item: s }));
     }
 
     case "registerSender":
@@ -1402,8 +1423,44 @@ async function handleWalletMethod(method, args) {
     case "getTxReceipt":
       return await wallet.getTxReceipt(args[0]);
 
+    // Auto-approve whatever the dApp asks for. For v1 we echo the requested
+    // capabilities back as granted — Celari does not yet enforce per-method
+    // access control at the wallet-sdk layer.
+    case "requestCapabilities": {
+      const app = args[0] || {};
+      return {
+        version: "1.0",
+        granted: Array.isArray(app.capabilities) ? app.capabilities : [],
+        wallet: { name: "Celari Wallet", version: "0.5.0" },
+      };
+    }
+
+    // Unconstrained / read-only function call (balance_of_private, etc.).
+    // Wallet-sdk v4.1.3 renamed `simulateUtility` → `executeUtility`.
+    case "executeUtility":
+    case "simulateUtility": {
+      // Base-wallet impl forwards to pxe.executeUtility; our EmbeddedWallet
+      // inherits it. If the method name doesn't exist (older SDK), fall back
+      // to pxe.executeUtility directly.
+      if (typeof wallet.executeUtility === "function") {
+        return await wallet.executeUtility(...args);
+      }
+      const call = args[0];
+      const opts = args[1] || {};
+      return await wallet.pxe.executeUtility(call, {
+        authwits: opts.authWitnesses || [],
+        scopes: opts.scope ? [opts.scope] : undefined,
+      });
+    }
+
     // Account-scoped methods: delegate to active account wallet
-    case "simulateTx":
+    case "simulateTx": {
+      const acctWallet = getActiveWallet();
+      if (!acctWallet) throw new Error("No account registered in PXE");
+      const result = await acctWallet.simulateTx(...args);
+      return _shimTxResult(result);
+    }
+
     case "sendTx":
     case "profileTx":
     case "createAuthWit":
@@ -1415,10 +1472,6 @@ async function handleWalletMethod(method, args) {
       }
       return await acctWallet[method](...args);
     }
-
-    // simulateUtility: unconstrained function calls — use EmbeddedWallet (has PXE methods)
-    case "simulateUtility":
-      return await wallet.simulateUtility(...args);
 
     case "batch": {
       const batchedMethods = args[0];
