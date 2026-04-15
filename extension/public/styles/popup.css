@@ -1,4 +1,4 @@
-/* ─── Celari Wallet — Modern Dark Extension Theme ─── */
+/* ─── Celari Wallet — Light Theme (matches iOS V2) ─── */
 
 /* Self-hosted fonts — Inter Variable */
 @font-face {
@@ -9,37 +9,50 @@
 }
 
 :root {
-  --bg: #0a0c14;
-  --bg-card: #0f1119;
-  --bg-elevated: #161825;
-  --bg-section: #0c0e18;
-  --bg-input: #161825;
+  /* Backgrounds (iOS V2: FAFAFA / FFFFFF / F0F0F0 / F8F8F8) */
+  --bg: #FAFAFA;
+  --bg-card: #FFFFFF;
+  --bg-elevated: #F0F0F0;
+  --bg-section: #F8F8F8;
+  --bg-input: #FFFFFF;
 
-  --burgundy: #4dd4ac;
-  --burgundy-deep: #1a3d32;
-  --burgundy-light: #6ee8c4;
-  --copper: #e88c32;
-  --copper-light: #f0a850;
-  --copper-muted: #c07828;
-  --bronze: #5bc4d4;
+  /* Aztec palette — dark navy for primary actions / balance card */
+  --aztec-dark: #1B2A3D;
+  --aztec-darker: #0F1B2A;
+  --aztec-green: #D4FF28;
+  --teal: #0D6E6E;
 
-  --green: #4ade80;
-  --green-glow: rgba(74, 222, 128, 0.08);
-  --red: #ef4444;
+  /* Legacy aliases mapped to aztec palette (primary action) */
+  --burgundy: #1B2A3D;
+  --burgundy-deep: #0F1B2A;
+  --burgundy-light: #2A3F5A;
 
-  --text-warm: #f0f2f8;
-  --text-body: #b0b8cc;
-  --text-muted: #8891a5;
-  --text-dim: #4a5068;
-  --text-faint: #2a3050;
+  /* Accent — orange (iOS V2 soOrange #F48225) */
+  --copper: #F48225;
+  --copper-light: #FF9944;
+  --copper-muted: #D46D20;
+  --bronze: #0D6E6E;
 
-  --border: #1e2235;
-  --border-warm: #2a3050;
+  /* Semantic */
+  --green: #48A868;
+  --green-glow: rgba(72, 168, 104, 0.1);
+  --red: #D1383D;
+
+  /* Text (inverted — dark on light) */
+  --text-warm: #1A1A1A;
+  --text-body: #444444;
+  --text-muted: #666666;
+  --text-dim: #888888;
+  --text-faint: #CCCCCC;
+
+  /* Borders */
+  --border: #E5E5E5;
+  --border-warm: #D6D6D6;
 
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
-  --shadow: 0 4px 24px rgba(0,0,0,0.3);
+  --shadow: 0 4px 24px rgba(27, 42, 61, 0.08);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -51,7 +64,7 @@ body {
   background: var(--bg);
   color: var(--text-warm);
   font-family: 'Inter', system-ui, sans-serif;
-  font-weight: 300;
+  font-weight: 400;
   font-size: 13px;
   line-height: 1.6;
   overflow-x: hidden;
@@ -72,7 +85,7 @@ body {
   justify-content: space-between;
   padding: 14px 16px 10px;
   border-bottom: 1px solid var(--border);
-  background: rgba(10,12,20,0.9);
+  background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -90,7 +103,7 @@ body {
 
 .header-logo span {
   font-family: 'Inter', sans-serif;
-  font-weight: 300;
+  font-weight: 500;
   font-size: 14px;
   letter-spacing: 6px;
   text-transform: uppercase;
@@ -107,7 +120,7 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 9px;
   letter-spacing: 1px;
-  color: var(--text-dim);
+  color: var(--text-muted);
   cursor: pointer;
   transition: border-color 0.3s ease;
 }
@@ -122,15 +135,16 @@ body {
 
 .network-dot.disconnected { background: var(--red); }
 
-/* ─── Balance Card ─── */
+/* ─── Balance Card (dark aztec on light background) ─── */
 .balance-card {
   margin: 12px 16px;
   padding: 24px 22px;
-  background: linear-gradient(135deg, var(--burgundy-deep), #122a24, #0e1e1a);
+  background: linear-gradient(135deg, #1B2A3D, #0F1B2A, #0F1B2A);
   border-radius: var(--radius-lg);
   position: relative;
   overflow: hidden;
   box-shadow: var(--shadow);
+  color: #FFFFFF;
 }
 
 .balance-card::before {
@@ -138,8 +152,8 @@ body {
   position: absolute;
   top: 8px; left: 8px;
   width: 20px; height: 20px;
-  border-top: 1px solid rgba(232,216,204,0.1);
-  border-left: 1px solid rgba(232,216,204,0.1);
+  border-top: 1px solid rgba(212, 255, 40, 0.25);
+  border-left: 1px solid rgba(212, 255, 40, 0.25);
   pointer-events: none;
 }
 
@@ -148,15 +162,15 @@ body {
   position: absolute;
   bottom: 8px; right: 8px;
   width: 20px; height: 20px;
-  border-bottom: 1px solid rgba(232,216,204,0.1);
-  border-right: 1px solid rgba(232,216,204,0.1);
+  border-bottom: 1px solid rgba(212, 255, 40, 0.25);
+  border-right: 1px solid rgba(212, 255, 40, 0.25);
   pointer-events: none;
 }
 
 .balance-label {
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 8px;
-  color: rgba(232,216,204,0.35);
+  color: rgba(255, 255, 255, 0.5);
   text-transform: uppercase;
   letter-spacing: 3px;
   margin-bottom: 4px;
@@ -164,10 +178,10 @@ body {
 
 .balance-amount {
   font-family: 'Inter', sans-serif;
-  font-weight: 300;
+  font-weight: 500;
   font-size: 34px;
-  letter-spacing: 3px;
-  color: var(--text-warm);
+  letter-spacing: 2px;
+  color: #FFFFFF;
   position: relative;
 }
 
@@ -182,20 +196,20 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 9px;
   letter-spacing: 1px;
-  color: rgba(232,216,204,0.3);
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .balance-address .copy-btn {
   background: none;
   border: none;
-  color: var(--copper);
+  color: var(--aztec-green);
   cursor: pointer;
   font-size: 12px;
   padding: 2px;
   transition: color 0.2s;
 }
 
-.balance-address .copy-btn:hover { color: var(--copper-light); }
+.balance-address .copy-btn:hover { color: #E4FF55; }
 
 .privacy-badge {
   position: absolute;
@@ -204,14 +218,14 @@ body {
   align-items: center;
   gap: 4px;
   padding: 3px 10px;
-  background: var(--green-glow);
-  border: 1px solid rgba(74, 222, 128, 0.15);
+  background: rgba(212, 255, 40, 0.15);
+  border: 1px solid rgba(212, 255, 40, 0.35);
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 8px;
   letter-spacing: 2px;
   text-transform: uppercase;
-  color: var(--green);
-  font-weight: 500;
+  color: var(--aztec-green);
+  font-weight: 600;
 }
 
 /* ─── Action Buttons (Art Deco diamond style) ─── */
@@ -236,14 +250,15 @@ body {
   transition: all 0.3s ease;
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 8px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 3px;
   text-transform: uppercase;
 }
 
 .action-btn:hover {
-  border-color: var(--copper-muted);
+  border-color: var(--copper);
   background: var(--bg-elevated);
+  box-shadow: 0 2px 8px rgba(244, 130, 37, 0.12);
 }
 
 .action-btn .icon {
@@ -253,6 +268,7 @@ body {
   justify-content: center;
   border: 1px solid var(--border);
   transform: rotate(45deg);
+  color: var(--copper);
 }
 
 .action-btn .icon svg { transform: rotate(-45deg); }
@@ -273,7 +289,7 @@ body {
   text-align: center;
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 9px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 2px;
   text-transform: uppercase;
   color: var(--text-dim);
@@ -317,6 +333,7 @@ body {
   transform: rotate(45deg);
   flex-shrink: 0;
   font-size: 14px;
+  background: var(--bg-section);
 }
 
 .token-icon span { transform: rotate(-45deg); display: block; }
@@ -325,7 +342,7 @@ body {
 
 .token-name {
   font-family: 'Inter', system-ui, sans-serif;
-  font-weight: 400;
+  font-weight: 500;
   font-size: 12px;
   color: var(--text-warm);
 }
@@ -341,7 +358,7 @@ body {
 
 .token-balance .amount {
   font-family: 'Inter', system-ui, sans-serif;
-  font-weight: 400;
+  font-weight: 500;
   font-size: 12px;
   color: var(--text-warm);
   letter-spacing: 0.5px;
@@ -370,19 +387,20 @@ body {
   transform: rotate(45deg);
   flex-shrink: 0;
   font-size: 12px;
+  background: var(--bg-section);
 }
 
 .activity-icon span { transform: rotate(-45deg); display: block; }
-.activity-icon.send { border-color: var(--burgundy); }
+.activity-icon.send { border-color: var(--teal); }
 .activity-icon.receive { border-color: var(--copper); }
 
 .activity-info { flex: 1; }
-.activity-type { font-weight: 400; font-size: 12px; color: var(--text-warm); }
-.activity-detail { font-family: 'Inter', system-ui, sans-serif; font-size: 8px; color: var(--text-faint); letter-spacing: 1px; }
+.activity-type { font-weight: 500; font-size: 12px; color: var(--text-warm); }
+.activity-detail { font-family: 'Inter', system-ui, sans-serif; font-size: 8px; color: var(--text-dim); letter-spacing: 1px; }
 
-.activity-amount { text-align: right; font-family: 'Inter', system-ui, sans-serif; font-size: 11px; letter-spacing: 0.5px; }
-.activity-amount.negative { color: var(--burgundy-light); }
-.activity-amount.positive { color: var(--copper-light); }
+.activity-amount { text-align: right; font-family: 'Inter', system-ui, sans-serif; font-size: 11px; letter-spacing: 0.5px; font-weight: 500; }
+.activity-amount.negative { color: var(--red); }
+.activity-amount.positive { color: var(--green); }
 
 /* ─── Send Form ─── */
 .send-form {
@@ -397,8 +415,8 @@ body {
   display: block;
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 8px;
-  font-weight: 500;
-  color: var(--text-dim);
+  font-weight: 600;
+  color: var(--text-muted);
   margin-bottom: 6px;
   text-transform: uppercase;
   letter-spacing: 3px;
@@ -413,12 +431,13 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 13px;
   outline: none;
-  transition: border-color 0.3s ease;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  border-radius: var(--radius-sm);
 }
 
 .form-input:focus {
   border-color: var(--copper);
-  box-shadow: 0 0 0 3px rgba(232,140,50,0.08);
+  box-shadow: 0 0 0 3px rgba(244, 130, 37, 0.12);
 }
 
 .form-input::placeholder {
@@ -427,7 +446,7 @@ body {
 
 .form-input.amount {
   font-family: 'Inter', sans-serif;
-  font-weight: 300;
+  font-weight: 500;
   font-size: 28px;
   text-align: center;
   padding: 16px;
@@ -440,19 +459,19 @@ body {
   top: 50%;
   transform: translateY(-50%);
   padding: 3px 8px;
-  background: rgba(232,140,50,0.1);
-  border: 1px solid rgba(232,140,50,0.3);
+  background: rgba(244, 130, 37, 0.1);
+  border: 1px solid rgba(244, 130, 37, 0.3);
   color: var(--copper);
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 8px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 2px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .max-btn:hover {
-  background: rgba(232,140,50,0.2);
+  background: rgba(244, 130, 37, 0.2);
 }
 
 /* ─── Buttons ─── */
@@ -461,7 +480,7 @@ body {
   padding: 14px;
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 10px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 4px;
   text-transform: uppercase;
   cursor: pointer;
@@ -472,39 +491,42 @@ body {
   justify-content: center;
   gap: 8px;
   position: relative;
+  border-radius: var(--radius-sm);
 }
 
 .btn-primary {
-  background: var(--burgundy);
-  color: var(--text-warm);
+  background: var(--aztec-dark);
+  color: #FFFFFF;
 }
 
 .btn-primary::before {
   content: '';
   position: absolute;
   inset: -3px;
-  border: 1px solid var(--burgundy);
+  border: 1px solid var(--aztec-dark);
   opacity: 0;
   transition: all 0.3s ease;
+  border-radius: var(--radius-sm);
 }
 
-.btn-primary:hover { background: var(--burgundy-light); }
-.btn-primary:hover::before { opacity: 0.5; inset: -5px; }
+.btn-primary:hover { background: #263a52; box-shadow: 0 4px 14px rgba(27, 42, 61, 0.25); }
+.btn-primary:hover::before { opacity: 0.35; inset: -5px; }
 
 .btn-secondary {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  color: var(--text-dim);
+  color: var(--text-muted);
 }
 
 .btn-secondary:hover {
-  border-color: var(--copper-muted);
-  color: var(--copper-light);
+  border-color: var(--copper);
+  color: var(--copper);
+  background: rgba(244, 130, 37, 0.04);
 }
 
 .btn-passkey {
-  background: var(--burgundy);
-  color: var(--text-warm);
+  background: var(--aztec-dark);
+  color: #FFFFFF;
   position: relative;
 }
 
@@ -512,13 +534,14 @@ body {
   content: '';
   position: absolute;
   inset: -3px;
-  border: 1px solid var(--burgundy);
+  border: 1px solid var(--aztec-dark);
   opacity: 0;
   transition: all 0.3s ease;
+  border-radius: var(--radius-sm);
 }
 
-.btn-passkey:hover { background: var(--burgundy-light); }
-.btn-passkey:hover::before { opacity: 0.5; }
+.btn-passkey:hover { background: #263a52; box-shadow: 0 4px 14px rgba(27, 42, 61, 0.25); }
+.btn-passkey:hover::before { opacity: 0.35; }
 
 .btn:disabled {
   opacity: 0.4;
@@ -543,7 +566,7 @@ body {
   top: 45%; left: 50%;
   transform: translate(-50%, -50%);
   width: 280px; height: 280px;
-  background: radial-gradient(circle, rgba(77,212,172,0.06) 0%, transparent 60%);
+  background: radial-gradient(circle, rgba(244, 130, 37, 0.05) 0%, transparent 60%);
   pointer-events: none;
 }
 
@@ -556,7 +579,7 @@ body {
 .onboarding h2 {
   font-family: 'Inter', sans-serif;
   font-size: 24px;
-  font-weight: 300;
+  font-weight: 500;
   letter-spacing: 8px;
   text-transform: uppercase;
   margin-bottom: 6px;
@@ -566,7 +589,7 @@ body {
 .onboarding .subtitle {
   font-family: 'Inter', sans-serif;
   font-style: italic;
-  font-weight: 300;
+  font-weight: 400;
   font-size: 12px;
   color: var(--text-dim);
   letter-spacing: 2px;
@@ -612,6 +635,7 @@ body {
   border: 1px solid var(--border);
   transform: rotate(45deg);
   flex-shrink: 0;
+  background: var(--bg-section);
 }
 
 .feature-item .icon span { transform: rotate(-45deg); display: block; font-size: 12px; }
@@ -623,7 +647,7 @@ body {
 
 .feature-item .text strong {
   color: var(--text-warm);
-  font-weight: 500;
+  font-weight: 600;
   font-family: 'Inter', sans-serif;
 }
 
@@ -631,7 +655,7 @@ body {
 .back-btn {
   background: none;
   border: none;
-  color: var(--text-dim);
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 18px;
   padding: 4px;
@@ -651,22 +675,24 @@ body {
   padding: 12px 16px;
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 10px;
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: 1px;
   z-index: 100;
   animation: slideUp 0.3s ease;
   text-align: center;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 14px rgba(27, 42, 61, 0.12);
 }
 
 .toast.success {
-  background: var(--bg-card);
-  border: 1px solid rgba(74, 222, 128, 0.2);
+  background: #FFFFFF;
+  border: 1px solid rgba(72, 168, 104, 0.35);
   color: var(--green);
 }
 
 .toast.error {
-  background: var(--bg-card);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: #FFFFFF;
+  border: 1px solid rgba(209, 56, 61, 0.35);
   color: var(--red);
 }
 
@@ -695,7 +721,7 @@ body {
   background: var(--border-warm);
   border-radius: 0;
 }
-::-webkit-scrollbar-thumb:hover { background: var(--copper-muted); }
+::-webkit-scrollbar-thumb:hover { background: var(--copper); }
 
 /* ─── Settings Row ─── */
 .settings-row {
@@ -704,8 +730,6 @@ body {
 .settings-row:hover {
   background: var(--bg-elevated) !important;
 }
-
-/* Grain texture removed for cleaner modern look */
 
 /* ─── Add Token / Custom Token / Network Buttons ─── */
 #btn-add-token:hover { color: var(--copper) !important; }
@@ -719,7 +743,7 @@ body {
   width: 60px;
   padding: 2px 4px;
   border: 1px solid var(--copper);
-  background: var(--bg);
+  background: var(--bg-card);
   color: var(--copper);
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 8px;
@@ -748,6 +772,7 @@ body {
   justify-content: center;
   transform: rotate(45deg);
   flex-shrink: 0;
+  background: var(--bg-section);
 }
 .nft-info {
   flex: 1;
@@ -759,6 +784,7 @@ body {
   letter-spacing: 1px;
   color: var(--text-warm);
   text-transform: uppercase;
+  font-weight: 600;
 }
 .nft-id {
   font-family: 'Inter', system-ui, sans-serif;
@@ -773,16 +799,17 @@ body {
   letter-spacing: 1.5px;
   padding: 3px 6px;
   text-transform: uppercase;
+  font-weight: 600;
 }
 .nft-badge.private {
   color: var(--green);
-  border: 1px solid rgba(74, 222, 128, 0.2);
-  background: rgba(74, 222, 128, 0.05);
+  border: 1px solid rgba(72, 168, 104, 0.25);
+  background: rgba(72, 168, 104, 0.06);
 }
 .nft-badge.public {
   color: var(--copper);
-  border: 1px solid rgba(232, 140, 50, 0.2);
-  background: rgba(232, 140, 50, 0.05);
+  border: 1px solid rgba(244, 130, 37, 0.25);
+  background: rgba(244, 130, 37, 0.06);
 }
 
 /* ─── NFT Detail ─── */
@@ -790,8 +817,10 @@ body {
   margin: 16px;
   padding: 20px;
   border: 1px solid var(--border);
-  background: var(--bg-elevated);
+  background: var(--bg-card);
   text-align: center;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
 }
 .nft-detail-card .nft-detail-icon {
   width: 64px;
@@ -809,9 +838,11 @@ body {
   margin: 16px;
   padding: 16px;
   border: 1px solid var(--border);
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
 }
 .backup-section h3 {
-  font-family: 'Inter', sans-serif; font-weight: 500;
+  font-family: 'Inter', sans-serif; font-weight: 600;
   font-size: 14px;
   color: var(--text-warm);
   margin: 0 0 12px;
@@ -844,13 +875,14 @@ body {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  background: var(--bg-input, var(--bg));
+  background: var(--bg-input);
   color: var(--text-warm);
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 11px;
   letter-spacing: 1px;
   outline: none;
   transition: border-color 0.2s;
+  border-radius: var(--radius-sm);
 }
 .password-input:focus {
   border-color: var(--copper);
@@ -864,16 +896,18 @@ body {
   cursor: pointer;
   transition: border-color 0.2s, background 0.2s;
   margin-bottom: 12px;
+  background: var(--bg-section);
+  border-radius: var(--radius-md);
 }
 .file-drop-zone:hover,
 .file-drop-zone.dragover {
   border-color: var(--copper);
-  background: rgba(232, 140, 50, 0.04);
+  background: rgba(244, 130, 37, 0.04);
 }
 .file-drop-zone p {
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 9px;
-  color: var(--text-dim);
+  color: var(--text-muted);
   letter-spacing: 1px;
   text-transform: uppercase;
   margin: 0;
@@ -897,6 +931,7 @@ body {
   letter-spacing: 1px;
   color: var(--text-warm);
   text-transform: uppercase;
+  font-weight: 600;
 }
 .wc-session-url {
   font-family: 'Inter', system-ui, sans-serif;
@@ -911,13 +946,14 @@ body {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  background: var(--bg-input, var(--bg));
+  background: var(--bg-input);
   color: var(--text-warm);
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 9px;
   letter-spacing: 0.5px;
   outline: none;
   transition: border-color 0.2s;
+  border-radius: var(--radius-sm);
 }
 .wc-pair-input:focus {
   border-color: var(--copper);
@@ -925,11 +961,12 @@ body {
 .wc-proposal-card {
   margin: 16px;
   padding: 16px;
-  border: 1px solid rgba(232, 140, 50, 0.3);
-  background: rgba(232, 140, 50, 0.04);
+  border: 1px solid rgba(244, 130, 37, 0.35);
+  background: rgba(244, 130, 37, 0.06);
+  border-radius: var(--radius-md);
 }
 .wc-proposal-card h3 {
-  font-family: 'Inter', sans-serif; font-weight: 500;
+  font-family: 'Inter', sans-serif; font-weight: 600;
   font-size: 14px;
   color: var(--copper);
   margin: 0 0 8px;
@@ -941,8 +978,8 @@ body {
 .btn-delete-account {
   width: 100%;
   padding: 10px;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(209, 56, 61, 0.35);
+  background: rgba(209, 56, 61, 0.06);
   color: var(--red);
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 9px;
@@ -950,13 +987,15 @@ body {
   text-transform: uppercase;
   cursor: pointer;
   transition: background 0.2s, border-color 0.2s;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
 }
 .btn-delete-account:hover {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(209, 56, 61, 0.12);
+  border-color: rgba(209, 56, 61, 0.55);
 }
 
 ::selection {
-  background: var(--burgundy);
-  color: var(--text-warm);
+  background: var(--aztec-dark);
+  color: #FFFFFF;
 }
