@@ -40,8 +40,14 @@ const wsPorts = new Map();
 window.addEventListener("message", (event) => {
   if (event.source !== window) return;
 
+  // Legacy protocol uses object data, not JSON strings — hand off early.
+  if (typeof event.data !== "string") {
+    handleLegacyMessage(event);
+    return;
+  }
+
   let data;
-  try { data = JSON.parse(event.data); } catch { handleLegacyMessage(event); return; }
+  try { data = JSON.parse(event.data); } catch { return; }
 
   if (data?.type === "aztec-wallet-discovery") {
     // Forward discovery to background for approval
@@ -49,13 +55,9 @@ window.addEventListener("message", (event) => {
       origin: WS_ORIGIN_CS,
       type: INTERNAL.DISCOVERY_REQUEST,
       content: data,
-    }).catch(() => {});
+    }).catch((e) => console.warn("[Celari] discovery-request send failed:", e?.message || e));
     return;
   }
-
-  // Unknown JSON messages — try legacy handler
-  if (typeof event.data === "string") return; // skip unparseable
-  handleLegacyMessage(event);
 });
 
 // Listen for messages from background (session management responses)
@@ -91,7 +93,7 @@ chrome.runtime.onMessage.addListener((message) => {
           type: internalType,
           sessionId,
           content: data,
-        }).catch(() => {});
+        }).catch((e) => console.warn("[Celari] port relay send failed:", e?.message || e));
       };
       channel.port1.start();
 
@@ -125,6 +127,19 @@ chrome.runtime.onMessage.addListener((message) => {
       break;
     }
   }
+});
+
+// Clean up ports on page unload so background can reap the sessions
+window.addEventListener("pagehide", () => {
+  for (const [sessionId, port] of wsPorts) {
+    try { port.close(); } catch {}
+    chrome.runtime.sendMessage({
+      origin: WS_ORIGIN_CS,
+      type: INTERNAL.DISCONNECT_REQUEST,
+      sessionId,
+    }).catch(() => {});
+  }
+  wsPorts.clear();
 });
 
 // ─── Legacy Protocol: celari-content/celari-inpage ─────
