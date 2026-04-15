@@ -1033,22 +1033,97 @@ function bindDashboard() {
   });
   document.getElementById("btn-settings")?.addEventListener("click", () => setState({ screen: "settings" }));
 
-  // Claim Fee Juice from Nethermind faucet — opens a new tab, user solves
-  // captcha + clicks request, content script auto-captures the claim data.
+  // Claim Fee Juice from Nethermind — direct API call to the dev faucet
+  // (same endpoint the iOS wallet uses, no captcha required).
   document.getElementById("btn-claim-nethermind")?.addEventListener("click", async () => {
     const account = getActiveAccount();
     if (!account?.address) {
       showToast("Create a wallet first", "error");
       return;
     }
-    // Tell the content script on the faucet page to auto-fill this address
-    await chrome.storage.local.set({
-      celari_faucet_pending: { address: account.address, at: Date.now() },
-    });
-    // Copy to clipboard as a fallback if auto-fill doesn't catch
-    try { await navigator.clipboard.writeText(account.address); } catch {}
-    showToast("Opening Nethermind faucet — solve captcha then click Request", "success");
-    window.open("https://aztec-faucet.nethermind.io/", "_blank");
+    const btn = document.getElementById("btn-claim-nethermind");
+    const resultEl = document.getElementById("claim-parse-result");
+    if (!btn) return;
+    const origText = btn.textContent;
+    btn.disabled = true;
+    btn.style.opacity = "0.6";
+    btn.style.cursor = "wait";
+
+    const setStatus = (text, color) => {
+      btn.textContent = text;
+      if (resultEl) {
+        resultEl.style.color = color || "var(--copper)";
+        resultEl.textContent = text;
+      }
+    };
+
+    try {
+      setStatus("Requesting from Nethermind...", "var(--copper)");
+      const res = await fetch("https://aztec-faucet.dev-nethermind.xyz/api/drip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          address: account.address,
+          asset: "fee-juice",
+          network: store.network,
+        }),
+      });
+      if (!res.ok) {
+        let errMsg = `HTTP ${res.status}`;
+        try { const j = await res.json(); if (j?.error) errMsg = j.error; } catch {}
+        throw new Error(errMsg);
+      }
+      const json = await res.json();
+      if (!json?.success) throw new Error(json?.error || "Faucet rejected the request");
+
+      // claimData may be populated immediately (if the bridge already has
+      // a ready message) or we may need to poll /api/claim/[id].
+      let claimData = json.claimData;
+      const claimId = json.claimId;
+
+      if (!claimData && claimId) {
+        setStatus("Bridging L1 → L2...", "var(--copper)");
+        // Poll /api/claim/[id] until status="ready" or timeout (3 min).
+        const deadline = Date.now() + 3 * 60 * 1000;
+        while (Date.now() < deadline) {
+          await new Promise(r => setTimeout(r, 5000));
+          try {
+            const pr = await fetch(`https://aztec-faucet.dev-nethermind.xyz/api/claim/${encodeURIComponent(claimId)}`);
+            if (pr.ok) {
+              const pj = await pr.json();
+              if (pj?.status === "ready" && pj?.claimData) { claimData = pj.claimData; break; }
+              if (pj?.elapsedSeconds != null) setStatus(`Bridging... ${pj.elapsedSeconds}s`, "var(--copper)");
+            }
+          } catch (e) { /* retry */ }
+        }
+      }
+
+      if (!claimData) throw new Error("Claim didn't become ready in 3 min — try again.");
+
+      // Normalize: API uses claimSecretHex, offscreen expects claimSecret.
+      const normalized = {
+        claimSecret: claimData.claimSecretHex || claimData.claimSecret,
+        messageLeafIndex: String(claimData.messageLeafIndex),
+        claimAmount: String(claimData.claimAmount),
+      };
+      store.pendingClaim = normalized;
+      await chrome.storage.local.set({ celari_pending_claim: normalized });
+      setStatus("✓ Claim ready — click Deploy", "var(--green)");
+      showToast("Fee Juice claim ready", "success");
+      // Re-render so the deploy banner shows the new claim state
+      setState({});
+    } catch (e) {
+      btn.disabled = false;
+      btn.style.opacity = "1";
+      btn.style.cursor = "pointer";
+      btn.textContent = origText;
+      const msg = sanitizeError(e);
+      if (resultEl) {
+        resultEl.style.color = "var(--red)";
+        resultEl.textContent = `✗ ${msg}`;
+      }
+      showToast(`Faucet: ${msg}`, "error");
+    }
   });
 
   // Fee Juice claim — parse-on-input so users get immediate feedback
