@@ -200,6 +200,14 @@ async function init() {
     }
   } catch (e) {}
 
+  // Load any pending Fee Juice claim (auto-captured from Nethermind faucet)
+  try {
+    const pc = await chrome.storage.local.get("celari_pending_claim");
+    if (pc.celari_pending_claim?.claimSecret) {
+      store.pendingClaim = pc.celari_pending_claim;
+    }
+  } catch (e) {}
+
   store.screen = store.accounts.length > 0 ? "dashboard" : "onboarding";
 
   if (store.accounts.length > 0) {
@@ -758,9 +766,14 @@ function renderDeployBanner() {
         ${store.network === "mainnet" || store.network === "testnet" ? '<br/><span style="color:var(--copper);font-size:10px">Paste your Fee Juice claim JSON below (from bridge.human.tech or any L1→L2 bridge).</span>' : ''}
       </p>
 
+      ${(store.network === "testnet" || store.network === "mainnet") && !hasClaim ? `
+      <button id="btn-claim-nethermind" style="width:100%;padding:10px;margin-bottom:8px;border:1px solid var(--aztec-dark);background:var(--aztec-dark);color:#FFFFFF;font-family:IBM Plex Mono,monospace;font-size:9px;cursor:pointer;font-weight:600;letter-spacing:2px;text-transform:uppercase;border-radius:var(--radius-sm)">
+        ⚡ Claim Fee Juice from Nethermind
+      </button>` : ''}
+
       <details id="claim-details" style="margin-bottom:10px" ${hasClaim ? 'open' : ''}>
         <summary style="cursor:pointer;padding:8px 10px;border:1px solid ${hasClaim ? 'var(--green)' : 'var(--border)'};background:${hasClaim ? 'rgba(72,168,104,0.06)' : 'var(--bg-section)'};color:${hasClaim ? 'var(--green)' : 'var(--text-muted)'};font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;user-select:none;list-style:none">
-          ${hasClaim ? '✓ ' + escapeHtml(claimStatusText) : '+ Paste Fee Juice claim (JSON)'}
+          ${hasClaim ? '✓ ' + escapeHtml(claimStatusText) : '+ Paste Fee Juice claim (JSON) manually'}
         </summary>
         <textarea id="claim-input" rows="5" placeholder='Paste the bridge JSON here — e.g. { "claimSecret": "0x...", "claimAmount": "...", "messageLeafIndex": "0" }' style="width:100%;margin-top:8px;padding:10px;background:var(--bg-input);border:1px solid var(--border);color:var(--text-warm);font-family:IBM Plex Mono,monospace;font-size:9px;line-height:1.4;outline:none;resize:vertical;border-radius:var(--radius-sm)">${hasClaim ? escapeHtml(JSON.stringify(store.pendingClaim, null, 2)) : ''}</textarea>
         <div id="claim-parse-result" style="margin-top:6px;font-family:IBM Plex Mono,monospace;font-size:9px;min-height:12px"></div>
@@ -789,7 +802,7 @@ function parseClaimPayload(raw) {
   try { obj = JSON.parse(text); } catch (e) { return { ok: false, error: "Not valid JSON" }; }
   if (!obj || typeof obj !== "object") return { ok: false, error: "Expected a JSON object" };
 
-  const secret   = obj.claimSecret ?? obj.secret ?? obj.claim_secret;
+  const secret   = obj.claimSecret ?? obj.claimSecretHex ?? obj.secret ?? obj.claim_secret;
   const indexRaw = obj.messageLeafIndex ?? obj.leafIndex ?? obj.l1LeafIndex ?? obj.l1_leaf_index ?? obj.index;
   const amount   = obj.claimAmount ?? obj.amount ?? "1000000000000000000";
 
@@ -1020,6 +1033,24 @@ function bindDashboard() {
   });
   document.getElementById("btn-settings")?.addEventListener("click", () => setState({ screen: "settings" }));
 
+  // Claim Fee Juice from Nethermind faucet — opens a new tab, user solves
+  // captcha + clicks request, content script auto-captures the claim data.
+  document.getElementById("btn-claim-nethermind")?.addEventListener("click", async () => {
+    const account = getActiveAccount();
+    if (!account?.address) {
+      showToast("Create a wallet first", "error");
+      return;
+    }
+    // Tell the content script on the faucet page to auto-fill this address
+    await chrome.storage.local.set({
+      celari_faucet_pending: { address: account.address, at: Date.now() },
+    });
+    // Copy to clipboard as a fallback if auto-fill doesn't catch
+    try { await navigator.clipboard.writeText(account.address); } catch {}
+    showToast("Opening Nethermind faucet — solve captcha then click Request", "success");
+    window.open("https://aztec-faucet.nethermind.io/", "_blank");
+  });
+
   // Fee Juice claim — parse-on-input so users get immediate feedback
   const claimInput = document.getElementById("claim-input");
   const claimResultEl = document.getElementById("claim-parse-result");
@@ -1113,8 +1144,9 @@ function bindDashboard() {
         });
       });
 
-      // Clear the pasted claim — it's been consumed by the deploy tx.
+      // Clear the claim — it's been consumed by the deploy tx.
       store.pendingClaim = null;
+      try { await chrome.storage.local.remove("celari_pending_claim"); } catch {}
 
       // 4. Persist deploy metadata (address should already match — we pass `address`
       //    through so applyDeployInfo's validation accepts it).
@@ -2881,6 +2913,11 @@ chrome.runtime.onMessage.addListener((message) => {
       hostname = new URL(message.origin).hostname;
     } catch {}
     showToast(`Connected: ${hostname}`, "success");
+  }
+  if (message.type === "CLAIM_READY_REFRESH" && message.claim) {
+    store.pendingClaim = message.claim;
+    showToast("Fee Juice claim ready — click Deploy", "success");
+    if (store.screen === "dashboard") setState({});
   }
 });
 

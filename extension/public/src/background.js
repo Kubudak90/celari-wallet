@@ -399,6 +399,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: true });
       return;
 
+    // Nethermind Fee Juice faucet auto-claim: content.js intercepts the
+    // faucet's /api/drip or /api/claim response and forwards claimData here.
+    case "NETHERMIND_CLAIM_READY": {
+      const claim = message.claim;
+      if (!claim?.claimSecret || !claim?.messageLeafIndex) {
+        sendResponse({ success: false, error: "Missing claim fields" });
+        break;
+      }
+      chrome.storage.local.set({ celari_pending_claim: claim });
+      // Clear the pending-drip marker so the next page load doesn't re-fill
+      chrome.storage.local.remove("celari_faucet_pending");
+      // Notify user — popup may be closed
+      chrome.notifications.create("celari-claim-ready", {
+        type: "basic",
+        iconUrl: "icons/icon-48.png",
+        title: "Fee Juice Ready",
+        message: "Return to Celari — the claim is loaded. Click Deploy to finish.",
+        priority: 2,
+      });
+      // If the popup is open, tell it to re-render the deploy banner
+      chrome.runtime.sendMessage({ type: "CLAIM_READY_REFRESH", claim }).catch(() => {});
+      sendResponse({ success: true });
+      break;
+    }
+
     case "GET_STATE":
       sendResponse({ success: true, state });
       break;
