@@ -138,8 +138,12 @@ const CELARI_WALLET_ID_WS = "celari-wallet";
 const _WS_BG = "background";
 const _WS_CS = "content-script";
 
-const _wsPendingDiscoveries = new Map(); // requestId → { tabId, origin, appId, chainInfo }
-const _wsActiveSessions     = new Map(); // sessionId → { tabId, origin, appId, encryptionKey, verificationHash }
+const _wsPendingDiscoveries  = new Map(); // requestId → { tabId, origin, appId, chainInfo }
+const _wsActiveSessions      = new Map(); // sessionId → { tabId, origin, appId, encryptionKey, verificationHash }
+const _wsPendingSignRequests = new Map(); // signId → { sessionId, tabId, origin, method, decrypted, encryptionKey }
+
+// Methods that mutate wallet state and require explicit user confirmation
+const _WS_WRITE_METHODS = new Set(["sendTx", "createAuthWit"]);
 
 async function _wsHandleProtocolMessage(message, sender) {
   const tabId = sender.tab?.id;
@@ -152,22 +156,19 @@ async function _wsHandleProtocolMessage(message, sender) {
       const { requestId, appId, chainInfo } = content || {};
       if (!requestId) return;
       const origin = sender.tab?.url ? new URL(sender.tab.url).origin : "unknown";
-      _wsPendingDiscoveries.set(requestId, { tabId, origin, appId, chainInfo });
-      // Auto-expire discovery if key exchange never arrives (prevents unbounded growth)
-      setTimeout(() => _wsPendingDiscoveries.delete(requestId), 30_000);
+      _wsPendingDiscoveries.set(requestId, { tabId, origin, appId, chainInfo, createdAt: Date.now() });
+      // Auto-expire if user doesn't act in 2 min
+      setTimeout(() => _wsPendingDiscoveries.delete(requestId), 120_000);
 
-      // Auto-approve: immediately send wallet info + trigger MessageChannel creation
-      chrome.tabs.sendMessage(tabId, {
-        origin: _WS_BG,
-        type: "discovery-approved",
-        sessionId: requestId,
-        content: {
-          id: CELARI_WALLET_ID_WS,
-          name: "Celari Wallet",
-          version: "0.5.0",
-          icon: chrome.runtime.getURL("icons/icon-48.png"),
-        },
-      }).catch(() => {});
+      // Open approval popup — the user must click "Connect" before we send
+      // discovery-approved back to the content script.
+      chrome.windows.create({
+        url: `popup.html?wsapprove=${encodeURIComponent(requestId)}`,
+        type: "popup",
+        width: 380,
+        height: 560,
+        focused: true,
+      }).catch((e) => console.warn("[WalletSDK] approval popup create failed:", e?.message || e));
       break;
     }
 
@@ -227,36 +228,39 @@ async function _wsHandleProtocolMessage(message, sender) {
         return;
       }
 
-      let responsePayload;
-      try {
-        const pxeResult = await sendToPXE({
-          type: "PXE_WALLET_METHOD",
-          rawMessage: JSON.stringify(decrypted),
+      // Write-class methods (sendTx, createAuthWit) must show a user
+      // confirmation popup. Read-class methods go through immediately.
+      const methodName = decrypted?.type;
+      if (_WS_WRITE_METHODS.has(methodName)) {
+        const signId = `sign_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        _wsPendingSignRequests.set(signId, {
+          sessionId,
+          tabId: session.tabId,
+          origin: session.origin,
+          method: methodName,
+          decrypted,
+          encryptionKey: session.encryptionKey,
+          createdAt: Date.now(),
         });
-        responsePayload = pxeResult?.rawResponse || JSON.stringify({
-          messageId: decrypted.messageId,
-          error: pxeResult?.error || "PXE returned no result",
-          walletId: CELARI_WALLET_ID_WS,
-        });
-      } catch (e) {
-        responsePayload = JSON.stringify({
-          messageId: decrypted.messageId,
-          error: e.message,
-          walletId: CELARI_WALLET_ID_WS,
-        });
+        // Auto-expire after 5 min if user doesn't act
+        setTimeout(() => {
+          if (_wsPendingSignRequests.has(signId)) {
+            _wsPendingSignRequests.delete(signId);
+          }
+        }, 5 * 60_000);
+        chrome.windows.create({
+          url: `popup.html?wssign=${encodeURIComponent(signId)}`,
+          type: "popup",
+          width: 380,
+          height: 600,
+          focused: true,
+        }).catch((e) => console.warn("[WalletSDK] sign popup create failed:", e?.message || e));
+        // Response is sent later, after user acts (WS_APPROVE_SIGN / WS_REJECT_SIGN)
+        break;
       }
 
-      try {
-        const encrypted = await _wsEncrypt(session.encryptionKey, responsePayload);
-        chrome.tabs.sendMessage(session.tabId, {
-          origin: _WS_BG,
-          type: "secure-response",
-          sessionId,
-          content: encrypted,
-        }).catch(() => {});
-      } catch (e) {
-        console.warn("[WalletSDK] Encrypt response failed:", e.message);
-      }
+      // Read-class methods: run immediately
+      await _wsForwardToPxe(decrypted, session, sessionId);
       break;
     }
 
@@ -267,6 +271,60 @@ async function _wsHandleProtocolMessage(message, sender) {
       if (pending && pending.tabId === tabId) _wsPendingDiscoveries.delete(sessionId);
       break;
     }
+  }
+}
+
+// Shared helper: forward a decrypted wallet-sdk message to the offscreen PXE,
+// encrypt the response with the session key, and send it back to the dApp tab.
+async function _wsForwardToPxe(decrypted, session, sessionId) {
+  let responsePayload;
+  try {
+    const pxeResult = await sendToPXE({
+      type: "PXE_WALLET_METHOD",
+      rawMessage: JSON.stringify(decrypted),
+    });
+    responsePayload = pxeResult?.rawResponse || JSON.stringify({
+      messageId: decrypted.messageId,
+      error: pxeResult?.error || "PXE returned no result",
+      walletId: CELARI_WALLET_ID_WS,
+    });
+  } catch (e) {
+    responsePayload = JSON.stringify({
+      messageId: decrypted.messageId,
+      error: e.message,
+      walletId: CELARI_WALLET_ID_WS,
+    });
+  }
+  try {
+    const encrypted = await _wsEncrypt(session.encryptionKey, responsePayload);
+    chrome.tabs.sendMessage(session.tabId, {
+      origin: _WS_BG,
+      type: "secure-response",
+      sessionId,
+      content: encrypted,
+    }).catch(() => {});
+  } catch (e) {
+    console.warn("[WalletSDK] Encrypt response failed:", e.message);
+  }
+}
+
+// Send an encrypted error back to the dApp (used when a sign request is rejected).
+async function _wsSendSignError(pending, errorMsg) {
+  try {
+    const errPayload = JSON.stringify({
+      messageId: pending.decrypted.messageId,
+      error: errorMsg,
+      walletId: CELARI_WALLET_ID_WS,
+    });
+    const encrypted = await _wsEncrypt(pending.encryptionKey, errPayload);
+    chrome.tabs.sendMessage(pending.tabId, {
+      origin: _WS_BG,
+      type: "secure-response",
+      sessionId: pending.sessionId,
+      content: encrypted,
+    }).catch(() => {});
+  } catch (e) {
+    console.warn("[WalletSDK] sign error send failed:", e?.message || e);
   }
 }
 
@@ -401,6 +459,92 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     // Nethermind Fee Juice faucet auto-claim: content.js intercepts the
     // faucet's /api/drip or /api/claim response and forwards claimData here.
+    // Wallet-SDK v4.1.3: popup approval flow for dApp discovery
+    case "WS_GET_PENDING_DISCOVERY": {
+      const d = _wsPendingDiscoveries.get(message.requestId);
+      if (d) {
+        sendResponse({
+          success: true,
+          discovery: {
+            requestId: message.requestId,
+            origin: d.origin,
+            appId: d.appId,
+            chainInfo: d.chainInfo,
+            createdAt: d.createdAt,
+          },
+        });
+      } else {
+        sendResponse({ success: false, error: "No pending discovery" });
+      }
+      break;
+    }
+
+    case "WS_APPROVE_DISCOVERY": {
+      const d = _wsPendingDiscoveries.get(message.requestId);
+      if (!d) { sendResponse({ success: false, error: "Not found" }); break; }
+      chrome.tabs.sendMessage(d.tabId, {
+        origin: _WS_BG,
+        type: "discovery-approved",
+        sessionId: message.requestId,
+        content: {
+          id: CELARI_WALLET_ID_WS,
+          name: "Celari Wallet",
+          version: "0.5.0",
+          icon: chrome.runtime.getURL("icons/icon-48.png"),
+        },
+      }).catch(() => {});
+      sendResponse({ success: true });
+      break;
+    }
+
+    case "WS_REJECT_DISCOVERY": {
+      _wsPendingDiscoveries.delete(message.requestId);
+      sendResponse({ success: true });
+      break;
+    }
+
+    // Wallet-SDK v4.1.3: popup approval flow for sendTx / createAuthWit
+    case "WS_GET_PENDING_SIGN": {
+      const req = _wsPendingSignRequests.get(message.requestId);
+      if (!req) { sendResponse({ success: false, error: "No pending sign request" }); break; }
+      let summary = "";
+      try { summary = JSON.stringify(req.decrypted?.args || [], null, 2); }
+      catch { summary = "(args not serializable)"; }
+      if (summary.length > 3000) summary = summary.slice(0, 3000) + "\n… (truncated)";
+      sendResponse({
+        success: true,
+        request: {
+          id: message.requestId,
+          origin: req.origin,
+          method: req.method,
+          summary,
+          createdAt: req.createdAt,
+        },
+      });
+      break;
+    }
+
+    case "WS_APPROVE_SIGN": {
+      const req = _wsPendingSignRequests.get(message.requestId);
+      if (!req) { sendResponse({ success: false, error: "Not found" }); break; }
+      _wsPendingSignRequests.delete(message.requestId);
+      // Ack the popup immediately, run PXE async in background
+      sendResponse({ success: true });
+      const sessionForForward = { encryptionKey: req.encryptionKey, tabId: req.tabId };
+      _wsForwardToPxe(req.decrypted, sessionForForward, req.sessionId)
+        .catch((e) => console.warn("[WalletSDK] approved sign forward failed:", e?.message || e));
+      break;
+    }
+
+    case "WS_REJECT_SIGN": {
+      const req = _wsPendingSignRequests.get(message.requestId);
+      if (!req) { sendResponse({ success: false, error: "Not found" }); break; }
+      _wsPendingSignRequests.delete(message.requestId);
+      sendResponse({ success: true });
+      _wsSendSignError(req, "User rejected the request").catch(() => {});
+      break;
+    }
+
     case "NETHERMIND_CLAIM_READY": {
       const claim = message.claim;
       if (!claim?.claimSecret || !claim?.messageLeafIndex) {
@@ -1140,5 +1284,11 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   }
   for (const [rid, disc] of _wsPendingDiscoveries) {
     if (disc.tabId === tabId) _wsPendingDiscoveries.delete(rid);
+  }
+  for (const [signId, req] of _wsPendingSignRequests) {
+    if (req.tabId === tabId) {
+      _wsPendingSignRequests.delete(signId);
+      // No need to send error — the tab is gone
+    }
   }
 });

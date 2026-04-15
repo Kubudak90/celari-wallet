@@ -80,6 +80,12 @@ const store = {
   wcProposal: null,
   // Fee Juice claim (pasted from bridge.human.tech or any L1→L2 bridge)
   pendingClaim: null,
+  // Wallet-SDK v4.1.3 approval popup state (each only set when this popup
+  // window was launched specifically for approval — e.g. popup.html?wsapprove=X)
+  wsApproveId: null,
+  wsDiscovery: null,
+  wsSignId: null,
+  wsSignRequest: null,
 };
 
 function setState(updates) {
@@ -147,6 +153,40 @@ async function init() {
       }
     } catch (e) {}
     // If request not found, close the popup
+    window.close();
+    return;
+  }
+
+  // Wallet-SDK v4.1.3 connection approval popup (popup.html?wsapprove=<id>)
+  const wsApproveId = urlParams.get("wsapprove");
+  if (wsApproveId) {
+    store.wsApproveId = wsApproveId;
+    try {
+      const res = await chrome.runtime.sendMessage({ type: "WS_GET_PENDING_DISCOVERY", requestId: wsApproveId });
+      if (res?.success) {
+        store.wsDiscovery = res.discovery;
+        store.screen = "ws-approve";
+        render();
+        return;
+      }
+    } catch (e) {}
+    window.close();
+    return;
+  }
+
+  // Wallet-SDK v4.1.3 transaction signing popup (popup.html?wssign=<id>)
+  const wsSignId = urlParams.get("wssign");
+  if (wsSignId) {
+    store.wsSignId = wsSignId;
+    try {
+      const res = await chrome.runtime.sendMessage({ type: "WS_GET_PENDING_SIGN", requestId: wsSignId });
+      if (res?.success) {
+        store.wsSignRequest = res.request;
+        store.screen = "ws-sign";
+        render();
+        return;
+      }
+    } catch (e) {}
     window.close();
     return;
   }
@@ -431,6 +471,16 @@ function render() {
     case "confirm-tx":
       root.innerHTML = renderConfirmTx();
       bindConfirmTx();
+      break;
+    case "ws-approve":
+      root.replaceChildren();
+      root.insertAdjacentHTML("beforeend", renderWsApprove());
+      bindWsApprove();
+      break;
+    case "ws-sign":
+      root.replaceChildren();
+      root.insertAdjacentHTML("beforeend", renderWsSign());
+      bindWsSign();
       break;
     case "add-account":
       root.innerHTML = renderAddAccount();
@@ -2227,6 +2277,120 @@ function bindConfirmTx() {
     window.close();
   });
 }
+
+// ─── Screens: Wallet-SDK v4.1.3 Approval Popups ─────
+
+function renderWsApprove() {
+  const d = store.wsDiscovery || {};
+  let hostname = d.origin || "unknown";
+  try { hostname = new URL(d.origin).hostname; } catch {}
+  return `
+    <div class="onboarding" style="padding:24px 20px;gap:12px;justify-content:flex-start">
+      <div class="onboarding-icon" style="margin-bottom:4px">${LOGO_LARGE}</div>
+      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--copper);letter-spacing:3px;text-transform:uppercase">Connection Request</div>
+      <h2 style="font-size:18px;letter-spacing:4px;margin:4px 0 8px">Connect Wallet?</h2>
+      <div class="deco-separator" style="margin-bottom:8px">
+        <div class="line"></div><div class="diamond"></div><div class="line"></div>
+      </div>
+
+      <div style="background:var(--bg-card);border:1px solid var(--border);padding:14px;width:100%;border-radius:var(--radius-md);box-shadow:var(--shadow)">
+        <div style="font-size:8px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Site</div>
+        <div style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--text-warm);word-break:break-all;font-weight:500">${escapeHtml(hostname)}</div>
+      </div>
+
+      <div style="background:var(--bg-section);border:1px solid var(--border);padding:12px;width:100%;border-radius:var(--radius-md)">
+        <div style="font-size:10px;color:var(--text-muted);line-height:1.6">This site will be able to:</div>
+        <ul style="font-size:10px;color:var(--text-body);line-height:1.8;margin:8px 0 0 16px;padding:0">
+          <li>See your Aztec account address</li>
+          <li>Request transaction signatures</li>
+          <li>Read public contract state</li>
+        </ul>
+        <div style="font-size:9px;color:var(--text-dim);line-height:1.5;margin-top:8px">You will approve every transaction individually.</div>
+      </div>
+
+      <div style="display:flex;gap:10px;width:100%;margin-top:auto;padding-top:16px">
+        <button id="btn-ws-reject" class="btn btn-secondary" style="flex:1">Reject</button>
+        <button id="btn-ws-approve" class="btn btn-primary" style="flex:1">Connect</button>
+      </div>
+    </div>`;
+}
+
+function bindWsApprove() {
+  document.getElementById("btn-ws-approve")?.addEventListener("click", async () => {
+    try {
+      await chrome.runtime.sendMessage({ type: "WS_APPROVE_DISCOVERY", requestId: store.wsApproveId });
+    } catch (e) {}
+    window.close();
+  });
+  document.getElementById("btn-ws-reject")?.addEventListener("click", async () => {
+    try {
+      await chrome.runtime.sendMessage({ type: "WS_REJECT_DISCOVERY", requestId: store.wsApproveId });
+    } catch (e) {}
+    window.close();
+  });
+}
+
+function renderWsSign() {
+  const r = store.wsSignRequest || {};
+  let hostname = r.origin || "unknown";
+  try { hostname = new URL(r.origin).hostname; } catch {}
+  const methodLabel = r.method === "sendTx" ? "Send Transaction"
+    : r.method === "createAuthWit" ? "Create Authorization"
+    : (r.method || "Signature Request");
+  return `
+    <div style="padding:18px 20px;display:flex;flex-direction:column;gap:10px;height:100%">
+      <div style="text-align:center">
+        <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--copper);letter-spacing:3px;text-transform:uppercase;margin-bottom:4px">Review &amp; Sign</div>
+        <h2 style="font-size:18px;letter-spacing:3px;color:var(--text-warm);font-weight:500;margin:0 0 2px">${escapeHtml(methodLabel)}</h2>
+        <div style="font-size:10px;color:var(--text-dim);font-family:IBM Plex Mono,monospace">${escapeHtml(r.method || "")}</div>
+      </div>
+
+      <div style="background:var(--bg-card);border:1px solid var(--border);padding:10px 12px;border-radius:var(--radius-md)">
+        <div style="font-size:8px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Requested by</div>
+        <div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--text-warm);word-break:break-all;font-weight:500">${escapeHtml(hostname)}</div>
+      </div>
+
+      <div style="background:var(--bg-section);border:1px solid var(--border);padding:10px 12px;border-radius:var(--radius-md);flex:1;min-height:0;display:flex;flex-direction:column">
+        <div style="font-size:8px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">Payload</div>
+        <pre style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-body);white-space:pre-wrap;word-break:break-all;margin:0;flex:1;overflow-y:auto;line-height:1.4">${escapeHtml(r.summary || "(empty)")}</pre>
+      </div>
+
+      <div style="background:rgba(244,130,37,0.06);border:1px solid rgba(244,130,37,0.25);padding:8px 10px;border-radius:var(--radius-sm);font-size:9px;color:var(--copper);line-height:1.5">
+        Review the payload carefully. Once signed, the transaction cannot be undone.
+      </div>
+
+      <div style="display:flex;gap:10px">
+        <button id="btn-ws-sign-reject" class="btn btn-secondary" style="flex:1">Reject</button>
+        <button id="btn-ws-sign-approve" class="btn btn-primary" style="flex:1">Approve</button>
+      </div>
+    </div>`;
+}
+
+function bindWsSign() {
+  document.getElementById("btn-ws-sign-approve")?.addEventListener("click", async () => {
+    try {
+      await chrome.runtime.sendMessage({ type: "WS_APPROVE_SIGN", requestId: store.wsSignId });
+    } catch (e) {}
+    window.close();
+  });
+  document.getElementById("btn-ws-sign-reject")?.addEventListener("click", async () => {
+    try {
+      await chrome.runtime.sendMessage({ type: "WS_REJECT_SIGN", requestId: store.wsSignId });
+    } catch (e) {}
+    window.close();
+  });
+}
+
+// Close handler: if the user dismisses the approval popup without clicking
+// Approve/Reject, treat it as a reject so the dApp doesn't hang.
+window.addEventListener("beforeunload", () => {
+  if (store.wsApproveId) {
+    chrome.runtime.sendMessage({ type: "WS_REJECT_DISCOVERY", requestId: store.wsApproveId }).catch(() => {});
+  }
+  if (store.wsSignId) {
+    chrome.runtime.sendMessage({ type: "WS_REJECT_SIGN", requestId: store.wsSignId }).catch(() => {});
+  }
+});
 
 // ─── Screen: Add Account (Phase 1) ────────────────────
 
