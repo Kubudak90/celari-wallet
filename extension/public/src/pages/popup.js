@@ -78,6 +78,8 @@ const store = {
   // Phase 4: WalletConnect
   wcSessions: [],
   wcProposal: null,
+  // Fee Juice claim (pasted from bridge.human.tech or any L1→L2 bridge)
+  pendingClaim: null,
 };
 
 function setState(updates) {
@@ -739,6 +741,10 @@ function applyDeployInfo(info) {
 
 function renderDeployBanner() {
   const networkName = store.network === "devnet" ? "Devnet" : store.network === "mainnet" ? "Mainnet" : store.network === "local" ? "Sandbox" : "Testnet";
+  const hasClaim = !!store.pendingClaim;
+  const claimStatusText = hasClaim
+    ? `Fee Juice claim loaded · ${(Number(BigInt(store.pendingClaim.claimAmount)) / 1e18).toFixed(4)} ETH`
+    : "";
   return `
     <div style="margin:0 16px 12px;padding:14px;background:var(--bg-card);border:1px solid var(--border);position:relative">
       <div style="position:absolute;top:6px;left:6px;width:12px;height:12px;border-top:1px solid var(--border-warm);border-left:1px solid var(--border-warm);opacity:0.5"></div>
@@ -749,18 +755,66 @@ function renderDeployBanner() {
       </div>
       <p style="font-size:11px;color:var(--text-dim);margin:0 0 10px;line-height:1.5">
         Deploy your account on ${escapeHtml(networkName)}. This may take 30-120 seconds.
+        ${store.network === "mainnet" || store.network === "testnet" ? '<br/><span style="color:var(--copper);font-size:10px">Paste your Fee Juice claim JSON below (from bridge.human.tech or any L1→L2 bridge).</span>' : ''}
       </p>
+
+      <details id="claim-details" style="margin-bottom:10px" ${hasClaim ? 'open' : ''}>
+        <summary style="cursor:pointer;padding:8px 10px;border:1px solid ${hasClaim ? 'var(--green)' : 'var(--border)'};background:${hasClaim ? 'rgba(72,168,104,0.06)' : 'var(--bg-section)'};color:${hasClaim ? 'var(--green)' : 'var(--text-muted)'};font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;user-select:none;list-style:none">
+          ${hasClaim ? '✓ ' + escapeHtml(claimStatusText) : '+ Paste Fee Juice claim (JSON)'}
+        </summary>
+        <textarea id="claim-input" rows="5" placeholder='Paste the bridge JSON here — e.g. { "claimSecret": "0x...", "claimAmount": "...", "messageLeafIndex": "0" }' style="width:100%;margin-top:8px;padding:10px;background:var(--bg-input);border:1px solid var(--border);color:var(--text-warm);font-family:IBM Plex Mono,monospace;font-size:9px;line-height:1.4;outline:none;resize:vertical;border-radius:var(--radius-sm)">${hasClaim ? escapeHtml(JSON.stringify(store.pendingClaim, null, 2)) : ''}</textarea>
+        <div id="claim-parse-result" style="margin-top:6px;font-family:IBM Plex Mono,monospace;font-size:9px;min-height:12px"></div>
+      </details>
+
       <div id="deploy-status" style="display:none;margin-bottom:10px;padding:8px 10px;font-family:IBM Plex Mono,monospace;font-size:9px;line-height:1.6;border:1px solid var(--border)"></div>
       <div style="display:flex;gap:8px">
-        <button id="btn-deploy-account" style="flex:1;padding:10px;border:1px solid rgba(200,121,65,0.3);background:rgba(200,121,65,0.08);color:var(--copper);font-family:IBM Plex Mono,monospace;font-size:9px;cursor:pointer;font-weight:500;letter-spacing:2px;text-transform:uppercase">
+        <button id="btn-deploy-account" style="flex:1;padding:10px;border:1px solid rgba(244,130,37,0.35);background:rgba(244,130,37,0.08);color:var(--copper);font-family:IBM Plex Mono,monospace;font-size:9px;cursor:pointer;font-weight:600;letter-spacing:2px;text-transform:uppercase;border-radius:var(--radius-sm)">
           Deploy
         </button>
-        <button id="btn-import-deployed" style="padding:10px 14px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-dim);font-family:IBM Plex Mono,monospace;font-size:9px;cursor:pointer;letter-spacing:1px;text-transform:uppercase">
+        <button id="btn-import-deployed" style="padding:10px 14px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-muted);font-family:IBM Plex Mono,monospace;font-size:9px;cursor:pointer;letter-spacing:1px;text-transform:uppercase;border-radius:var(--radius-sm)">
           JSON
         </button>
       </div>
       <input type="file" id="file-import-deploy" accept=".json" style="display:none">
     </div>`;
+}
+
+// Parse a pasted Fee Juice claim payload. Accepts JSON in several field-name
+// variants the Aztec ecosystem uses (claimSecret / secret, messageLeafIndex /
+// leafIndex / l1LeafIndex / index, claimAmount / amount).
+function parseClaimPayload(raw) {
+  const text = (raw || "").trim();
+  if (!text) return { ok: false, error: "Empty input" };
+  let obj;
+  try { obj = JSON.parse(text); } catch (e) { return { ok: false, error: "Not valid JSON" }; }
+  if (!obj || typeof obj !== "object") return { ok: false, error: "Expected a JSON object" };
+
+  const secret   = obj.claimSecret ?? obj.secret ?? obj.claim_secret;
+  const indexRaw = obj.messageLeafIndex ?? obj.leafIndex ?? obj.l1LeafIndex ?? obj.l1_leaf_index ?? obj.index;
+  const amount   = obj.claimAmount ?? obj.amount ?? "1000000000000000000";
+
+  if (typeof secret !== "string" || !/^0x[0-9a-fA-F]+$/.test(secret)) {
+    return { ok: false, error: "Missing or invalid `claimSecret` (expected hex string)" };
+  }
+  if (indexRaw === undefined || indexRaw === null) {
+    return { ok: false, error: "Missing `messageLeafIndex`" };
+  }
+  let index;
+  try { index = BigInt(indexRaw).toString(); }
+  catch { return { ok: false, error: "`messageLeafIndex` is not a valid integer" }; }
+
+  let amountStr;
+  try { amountStr = BigInt(amount).toString(); }
+  catch { return { ok: false, error: "`claimAmount` is not a valid integer" }; }
+
+  return {
+    ok: true,
+    claim: {
+      claimSecret: secret,
+      messageLeafIndex: index,
+      claimAmount: amountStr,
+    },
+  };
 }
 
 // ─── Sync Bar ────────────────────────────────────────
@@ -966,6 +1020,35 @@ function bindDashboard() {
   });
   document.getElementById("btn-settings")?.addEventListener("click", () => setState({ screen: "settings" }));
 
+  // Fee Juice claim — parse-on-input so users get immediate feedback
+  const claimInput = document.getElementById("claim-input");
+  const claimResultEl = document.getElementById("claim-parse-result");
+  if (claimInput && claimResultEl) {
+    const parseAndShow = () => {
+      const text = claimInput.value.trim();
+      if (!text) {
+        store.pendingClaim = null;
+        claimResultEl.textContent = "";
+        claimResultEl.style.color = "";
+        return;
+      }
+      const result = parseClaimPayload(text);
+      if (result.ok) {
+        store.pendingClaim = result.claim;
+        const ethAmount = (Number(BigInt(result.claim.claimAmount)) / 1e18).toFixed(6);
+        claimResultEl.style.color = "var(--green)";
+        claimResultEl.textContent = `✓ Valid · amount=${ethAmount} ETH · leafIndex=${result.claim.messageLeafIndex}`;
+      } else {
+        store.pendingClaim = null;
+        claimResultEl.style.color = "var(--red)";
+        claimResultEl.textContent = `✗ ${result.error}`;
+      }
+    };
+    claimInput.addEventListener("input", parseAndShow);
+    // Parse pre-filled content (after re-render with existing claim)
+    if (claimInput.value.trim()) parseAndShow();
+  }
+
   // Deploy
   document.getElementById("btn-deploy-account")?.addEventListener("click", async () => {
     if (store.deploying) return;
@@ -998,25 +1081,40 @@ function bindDashboard() {
         throw new Error("Session expired — please create the wallet again to regenerate keys.");
       }
 
-      statusEl.textContent = `Address: ${account.address.slice(0, 16)}... Deploying (60-180s)...`;
+      const claim = store.pendingClaim;
+      if (claim) {
+        statusEl.textContent = `Claiming ${(Number(BigInt(claim.claimAmount)) / 1e18).toFixed(4)} ETH Fee Juice + deploying...`;
+      } else {
+        statusEl.textContent = `Address: ${account.address.slice(0, 16)}... Deploying (60-180s)...`;
+      }
 
       // 3. Deploy with the SAME secret/salt used at address computation → deployed
-      //    address will match the one already shown on the dashboard.
+      //    address matches the one already shown on the dashboard. If a Fee Juice
+      //    claim was pasted, include it — offscreen uses FeeJuicePaymentMethodWithClaim.
+      const deployData = {
+        publicKeyX: savedKeys.publicKeyX,
+        publicKeyY: savedKeys.publicKeyY,
+        privateKeyPkcs8: savedKeys.privateKeyPkcs8,
+        secretKey: savedSecret,
+        salt: account.salt,
+      };
+      if (claim) {
+        deployData.claimSecret = claim.claimSecret;
+        deployData.messageLeafIndex = claim.messageLeafIndex;
+        deployData.claimAmount = claim.claimAmount;
+      }
       const deployResult = await new Promise((resolve, reject) => {
         chrome.runtime.sendMessage({
           type: "PXE_DEPLOY_ACCOUNT",
-          data: {
-            publicKeyX: savedKeys.publicKeyX,
-            publicKeyY: savedKeys.publicKeyY,
-            privateKeyPkcs8: savedKeys.privateKeyPkcs8,
-            secretKey: savedSecret,
-            salt: account.salt,
-          },
+          data: deployData,
         }, (res) => {
           if (res?.success && res.address) resolve(res);
           else reject(new Error(res?.error || "Deploy failed"));
         });
       });
+
+      // Clear the pasted claim — it's been consumed by the deploy tx.
+      store.pendingClaim = null;
 
       // 4. Persist deploy metadata (address should already match — we pass `address`
       //    through so applyDeployInfo's validation accepts it).
