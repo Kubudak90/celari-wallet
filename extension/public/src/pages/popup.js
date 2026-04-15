@@ -676,7 +676,7 @@ function applyDeployInfo(info) {
 }
 
 function renderDeployBanner() {
-  const networkName = store.network === "devnet" ? "Devnet" : "Testnet";
+  const networkName = store.network === "devnet" ? "Devnet" : store.network === "mainnet" ? "Mainnet" : store.network === "local" ? "Sandbox" : "Testnet";
   return `
     <div style="margin:0 16px 12px;padding:14px;background:var(--bg-card);border:1px solid var(--border);position:relative">
       <div style="position:absolute;top:6px;left:6px;width:12px;height:12px;border-top:1px solid var(--border-warm);border-left:1px solid var(--border-warm);opacity:0.5"></div>
@@ -762,7 +762,7 @@ function renderDashboard() {
   const totalValue = computeTotalValue();
   const isPasskey = account?.type === "passkey";
   const isDeployed = account?.deployed === true;
-  const needsDeploy = isPasskey && !isDeployed && (store.network === "devnet" || store.network === "testnet");
+  const needsDeploy = isPasskey && !isDeployed && (store.network === "devnet" || store.network === "testnet" || store.network === "mainnet");
 
   return `
     ${renderHeader()}
@@ -985,8 +985,24 @@ function bindDashboard() {
         });
       });
 
-      // 3. Deploy account on-chain via client-side PXE
-      statusEl.textContent = "Deploying account on-chain (60-180s)...";
+      // 2b. Pre-compute deterministic address (so it can be shown + used for Fee Juice bridge on mainnet)
+      statusEl.textContent = "Computing address...";
+      const computed = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+          type: "PXE_COMPUTE_ADDRESS",
+          data: {
+            publicKeyX: keys.pubKeyX,
+            publicKeyY: keys.pubKeyY,
+            privateKeyPkcs8: keys.privateKeyPkcs8,
+          },
+        }, (res) => {
+          if (res?.success && res.address) resolve(res);
+          else reject(new Error(res?.error || "Address computation failed"));
+        });
+      });
+      statusEl.textContent = `Address: ${computed.address.slice(0, 16)}... Deploying (60-180s)...`;
+
+      // 3. Deploy account on-chain via client-side PXE (reuse computed secret/salt so address matches)
       const deployResult = await new Promise((resolve, reject) => {
         chrome.runtime.sendMessage({
           type: "PXE_DEPLOY_ACCOUNT",
@@ -994,6 +1010,8 @@ function bindDashboard() {
             publicKeyX: keys.pubKeyX,
             publicKeyY: keys.pubKeyY,
             privateKeyPkcs8: keys.privateKeyPkcs8,
+            secretKey: computed.secretKey,
+            salt: computed.salt,
           },
         }, (res) => {
           if (res?.success && res.address) resolve(res);
@@ -1565,6 +1583,7 @@ function renderSettings() {
         ${renderNetworkRow("local", "Local Sandbox", "localhost:8080")}
         ${renderNetworkRow("devnet", "Aztec Devnet", "devnet-6.aztec-labs.com")}
         ${renderNetworkRow("testnet", "Aztec Testnet", "rpc.testnet.aztec-labs.com")}
+        ${renderNetworkRow("mainnet", "Aztec Mainnet", "rpc.aztec.network")}
         ${store.customNetworks.map(n => {
           let host;
           try { host = new URL(n.url).host; } catch { host = n.url; }
@@ -1686,7 +1705,7 @@ function bindSettings() {
           connected: resp.state.connected,
           nodeInfo: resp.state.nodeInfo,
         });
-        const name = network === "local" ? "Local Sandbox" : network === "devnet" ? "Devnet" : "Testnet";
+        const name = network === "local" ? "Local Sandbox" : network === "devnet" ? "Devnet" : network === "mainnet" ? "Mainnet" : "Testnet";
         showToast(resp.state.connected ? `${name} connected` : `${name} connecting...`, resp.state.connected ? "success" : "error");
       }
     });
@@ -1695,6 +1714,7 @@ function bindSettings() {
   document.getElementById("btn-network-local")?.addEventListener("click", () => switchNetwork("local"));
   document.getElementById("btn-network-devnet")?.addEventListener("click", () => switchNetwork("devnet"));
   document.getElementById("btn-network-testnet")?.addEventListener("click", () => switchNetwork("testnet"));
+  document.getElementById("btn-network-mainnet")?.addEventListener("click", () => switchNetwork("mainnet"));
 
   // Custom network click handlers
   store.customNetworks.forEach(n => {
@@ -1853,7 +1873,7 @@ function renderHeader() {
       <div style="display:flex;align-items:center;gap:8px">
         <div class="header-network" id="btn-network-toggle">
           <div class="network-dot ${store.connected ? '' : 'disconnected'}"></div>
-          ${store.network === "devnet" ? "Devnet" : store.network === "testnet" ? "Testnet" : store.network === "local" ? "Sandbox" : escapeHtml(store.customNetworks.find(n => n.id === store.network)?.name || "Custom")}
+          ${store.network === "devnet" ? "Devnet" : store.network === "testnet" ? "Testnet" : store.network === "mainnet" ? "Mainnet" : store.network === "local" ? "Sandbox" : escapeHtml(store.customNetworks.find(n => n.id === store.network)?.name || "Custom")}
         </div>
         <button id="btn-walletconnect" title="WalletConnect" style="background:none;border:none;color:${store.wcSessions.length ? 'var(--green)' : 'var(--text-dim)'};cursor:pointer;padding:4px;display:flex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5.5 8.5c3.6-3.6 9.4-3.6 13 0"/><path d="M8 11c2.2-2.2 5.8-2.2 8 0"/><path d="M10.5 13.5c.8-.8 2.2-.8 3 0"/></svg></button>
         <button id="btn-settings" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:4px;display:flex">${icons.settings}</button>
