@@ -2757,6 +2757,13 @@ chrome.runtime.onMessage.addListener((message) => {
     // For now, auto-handle requests in offscreen — just show a toast
     showToast("dApp request processed", "success");
   }
+  if (message.type === "WS_SESSION_ESTABLISHED") {
+    let hostname = message.origin || "dApp";
+    try {
+      hostname = new URL(message.origin).hostname;
+    } catch {}
+    showToast(`Connected: ${hostname}`, "success");
+  }
 });
 
 // ─── Boot ─────────────────────────────────────────────
