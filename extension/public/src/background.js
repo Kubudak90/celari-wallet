@@ -133,6 +133,139 @@ async function _wsDecrypt(key, payload) {
   return JSON.parse(new TextDecoder().decode(decrypted));
 }
 
+// ─── Wallet-SDK v4.1.3: Session State ──────────────────────────────────
+const CELARI_WALLET_ID_WS = "celari-wallet";
+const _WS_BG = "background";
+const _WS_CS = "content-script";
+
+const _wsPendingDiscoveries = new Map(); // requestId → { tabId, origin, appId, chainInfo }
+const _wsActiveSessions     = new Map(); // sessionId → { tabId, origin, appId, encryptionKey, verificationHash }
+
+async function _wsHandleProtocolMessage(message, sender) {
+  const tabId = sender.tab?.id;
+  if (!tabId) return;
+  const { type, sessionId, content } = message;
+
+  switch (type) {
+
+    case "discovery-request": {
+      const { requestId, appId, chainInfo } = content || {};
+      if (!requestId) return;
+      const origin = sender.tab?.url ? new URL(sender.tab.url).origin : "unknown";
+      _wsPendingDiscoveries.set(requestId, { tabId, origin, appId, chainInfo });
+
+      // Auto-approve: immediately send wallet info + trigger MessageChannel creation
+      chrome.tabs.sendMessage(tabId, {
+        origin: _WS_BG,
+        type: "discovery-approved",
+        sessionId: requestId,
+        content: {
+          id: CELARI_WALLET_ID_WS,
+          name: "Celari Wallet",
+          version: "0.5.0",
+          icon: chrome.runtime.getURL("icons/icon-48.png"),
+        },
+      }).catch(() => {});
+      break;
+    }
+
+    case "key-exchange-request": {
+      const discovery = _wsPendingDiscoveries.get(sessionId);
+      if (!discovery) return;
+      try {
+        const keyPair      = await _wsGenerateKeyPair();
+        const peerPubKey   = await _wsImportPublicKey(content.publicKey);
+        const { encryptionKey, verificationHash } = await _wsDeriveSessionKeys(keyPair, peerPubKey, false);
+        const walletPubKey = await _wsExportPublicKey(keyPair.publicKey);
+
+        _wsActiveSessions.set(sessionId, {
+          tabId: discovery.tabId,
+          origin: discovery.origin,
+          appId: discovery.appId,
+          encryptionKey,
+          verificationHash,
+        });
+        _wsPendingDiscoveries.delete(sessionId);
+
+        chrome.tabs.sendMessage(discovery.tabId, {
+          origin: _WS_BG,
+          type: "key-exchange-response",
+          sessionId,
+          content: {
+            type: "aztec-wallet-key-exchange-response",
+            requestId: sessionId,
+            publicKey: walletPubKey,
+          },
+        }).catch(() => {});
+
+        // Notify popup (for toast + optional emoji display)
+        chrome.runtime.sendMessage({
+          type: "WS_SESSION_ESTABLISHED",
+          sessionId,
+          origin: discovery.origin,
+          verificationHash,
+        }).catch(() => {});
+
+      } catch (e) {
+        console.warn("[WalletSDK] Key exchange failed:", e.message);
+        _wsPendingDiscoveries.delete(sessionId);
+      }
+      break;
+    }
+
+    case "secure-message": {
+      const session = _wsActiveSessions.get(sessionId);
+      if (!session) return;
+
+      let decrypted;
+      try {
+        decrypted = await _wsDecrypt(session.encryptionKey, content);
+      } catch (e) {
+        console.warn("[WalletSDK] Decrypt failed:", e.message);
+        return;
+      }
+
+      let responsePayload;
+      try {
+        const pxeResult = await sendToPXE({
+          type: "PXE_WALLET_METHOD",
+          rawMessage: JSON.stringify(decrypted),
+        });
+        responsePayload = pxeResult?.rawResponse || JSON.stringify({
+          messageId: decrypted.messageId,
+          error: pxeResult?.error || "PXE returned no result",
+          walletId: CELARI_WALLET_ID_WS,
+        });
+      } catch (e) {
+        responsePayload = JSON.stringify({
+          messageId: decrypted.messageId,
+          error: e.message,
+          walletId: CELARI_WALLET_ID_WS,
+        });
+      }
+
+      try {
+        const encrypted = await _wsEncrypt(session.encryptionKey, responsePayload);
+        chrome.tabs.sendMessage(session.tabId, {
+          origin: _WS_BG,
+          type: "secure-response",
+          sessionId,
+          content: encrypted,
+        }).catch(() => {});
+      } catch (e) {
+        console.warn("[WalletSDK] Encrypt response failed:", e.message);
+      }
+      break;
+    }
+
+    case "disconnect-request": {
+      _wsActiveSessions.delete(sessionId);
+      _wsPendingDiscoveries.delete(sessionId);
+      break;
+    }
+  }
+}
+
 // --- Offscreen Document (PXE WASM Engine) ----------------------------
 
 let offscreenReady = false;
@@ -240,6 +373,12 @@ let state = {
 // --- Message Handler -------------------------------------------------
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Wallet-SDK v4.1.3 internal protocol (content script → background)
+  if (message?.origin === _WS_CS) {
+    _wsHandleProtocolMessage(message, sender).catch(e => console.warn("[WalletSDK]", e.message));
+    return false; // fire-and-forget, no sendResponse needed
+  }
+
   // Skip messages tagged for offscreen document (prevents routing loop)
   if (message._target === "offscreen") return false;
 
@@ -962,5 +1101,15 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     } catch (e) {
       console.warn("Celari: keep-alive cycle failed —", e.message || e);
     }
+  }
+});
+
+// Clean up wallet-sdk sessions when a tab closes
+chrome.tabs.onRemoved.addListener((tabId) => {
+  for (const [sid, session] of _wsActiveSessions) {
+    if (session.tabId === tabId) _wsActiveSessions.delete(sid);
+  }
+  for (const [rid, disc] of _wsPendingDiscoveries) {
+    if (disc.tabId === tabId) _wsPendingDiscoveries.delete(rid);
   }
 });
