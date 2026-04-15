@@ -41,6 +41,7 @@
   ],
   "host_permissions": [
     "https://*.aztec-labs.com/*",
+    "https://*.aztec.network/*",
     "wss://relay.walletconnect.com/*",
     "wss://relay.walletconnect.org/*"
   ],
