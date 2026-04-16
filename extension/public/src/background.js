@@ -1231,17 +1231,32 @@ async function initPXEAndAccounts() {
     sendToPXE({ type: "PXE_INIT", nodeUrl: state.nodeUrl })
       .then(async (res) => {
         console.log("PXE initialized:", res);
+
+        // Retrieve session-only keys (available in current browser session only)
+        let sessionSecret = null;
+        let sessionPrivateKey = null;
+        try {
+          const sessionData = await chrome.storage.session.get(["celari_secret", "celari_private_key"]);
+          sessionSecret = sessionData.celari_secret || null;
+          sessionPrivateKey = sessionData.celari_private_key || null;
+        } catch {}
+
         for (const account of state.accounts) {
-          if (account.deployed && account.secretKey && account.salt) {
+          // Determine where the secret key comes from: local storage (deployed)
+          // or session storage (just created, not yet deployed).
+          const secretKey = account.secretKey || sessionSecret;
+          const privateKey = account.privateKeyPkcs8 || sessionPrivateKey || "";
+
+          if (secretKey && account.salt && account.publicKeyX) {
             try {
               const regRes = await sendToPXE({
                 type: "PXE_REGISTER_ACCOUNT",
                 data: {
                   publicKeyX: account.publicKeyX,
                   publicKeyY: account.publicKeyY,
-                  secretKey: account.secretKey,
+                  secretKey,
                   salt: account.salt,
-                  privateKeyPkcs8: account.privateKeyPkcs8 || "",
+                  privateKeyPkcs8: privateKey,
                 },
               });
               console.log(`PXE account registered: ${account.address?.slice(0, 16)}...`, regRes);

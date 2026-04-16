@@ -700,6 +700,29 @@ async function handleCreatePasskey() {
       celari_private_key: keys.privateKeyPkcs8,
     });
 
+    // 7. Register the account with the offscreen PXE so that getAccounts
+    //    returns it to dApps BEFORE deploy (bridge.human.tech needs this).
+    btn.textContent = "Registering account...";
+    try {
+      await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+          type: "PXE_REGISTER_ACCOUNT",
+          data: {
+            publicKeyX: keys.pubKeyX,
+            publicKeyY: keys.pubKeyY,
+            secretKey: computed.secretKey,
+            salt: computed.salt,
+            privateKeyPkcs8: keys.privateKeyPkcs8,
+          },
+        }, (res) => {
+          if (res?.success || res?.address) resolve(res);
+          else reject(new Error(res?.error || "Account registration failed"));
+        });
+      });
+    } catch (e) {
+      console.warn("[Celari] PXE_REGISTER_ACCOUNT warning (non-fatal):", e.message);
+    }
+
     store.tokens = getEmptyTokens();
     store.activities = getEmptyActivities();
     setState({ screen: "dashboard" });

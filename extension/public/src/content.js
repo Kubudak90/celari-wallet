@@ -254,79 +254,39 @@ function handleLegacyMessage(event) {
 // we patch window.fetch in the page's main world to capture the /api/drip and
 // /api/claim responses. When claimData is available we forward it to the
 // background so the Celari popup's Deploy banner auto-fills the claim payload.
+// ─── Nethermind Fee Juice Faucet — Address auto-fill ─────
+// No inline script injection (faucet's CSP blocks it). The popup now calls
+// the Nethermind API directly, so the fetch-patch is no longer needed. We
+// only auto-fill the address field if the user opened the faucet manually.
 if (location.hostname === "aztec-faucet.nethermind.io") {
   try {
-    // Inject a main-world script that patches fetch and posts responses back
-    const patcher = document.createElement("script");
-    patcher.textContent = `
-      (() => {
-        const origFetch = window.fetch;
-        window.fetch = async function(input, init) {
-          const url = typeof input === "string" ? input : (input && input.url) || "";
-          const resp = await origFetch.apply(this, arguments);
-          try {
-            if (/\\/api\\/(drip|claim)/.test(url)) {
-              resp.clone().json().then((data) => {
-                window.postMessage({ __celari: true, url, data }, location.origin);
-              }).catch(() => {});
-            }
-          } catch {}
-          return resp;
-        };
-      })();
-    `;
-    (document.head || document.documentElement).appendChild(patcher);
-    patcher.remove();
-
-    // Receive intercepted faucet responses and forward claimData to background
-    window.addEventListener("message", (event) => {
+    chrome.storage.local.get("celari_faucet_pending", (result) => {
       try {
-        if (event.source !== window || event.data?.__celari !== true) return;
-        const { data } = event.data;
-        const cd = data?.claimData;
-        if (!cd) return;
-        const normalized = {
-          claimSecret: cd.claimSecretHex || cd.claimSecret,
-          messageLeafIndex: String(cd.messageLeafIndex),
-          claimAmount: String(cd.claimAmount),
-        };
-        if (!normalized.claimSecret || !normalized.messageLeafIndex) return;
-        safeRuntimeSend({ type: "NETHERMIND_CLAIM_READY", claim: normalized });
-      } catch (e) {
-        if (_celariIsCtxInvalidError(e)) _celariCtxInvalid = true;
-      }
-    });
-
-    // Auto-fill the address field if Celari asked for a drip for a specific account
-    try {
-      chrome.storage.local.get("celari_faucet_pending", (result) => {
-        try {
-          const req = result?.celari_faucet_pending;
-          if (!req?.address) return;
-          const fill = () => {
-            const inputs = document.querySelectorAll("input");
-            for (const el of inputs) {
-              const ph = (el.placeholder || "").toLowerCase();
-              const nm = (el.name || "").toLowerCase();
-              if ((ph.includes("aztec") || ph.includes("address") || nm.includes("address")) && !el.value) {
-                const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value")?.set;
-                setter?.call(el, req.address);
-                el.dispatchEvent(new Event("input", { bubbles: true }));
-                el.dispatchEvent(new Event("change", { bubbles: true }));
-                return true;
-              }
+        const req = result?.celari_faucet_pending;
+        if (!req?.address) return;
+        const fill = () => {
+          const inputs = document.querySelectorAll("input");
+          for (const el of inputs) {
+            const ph = (el.placeholder || "").toLowerCase();
+            const nm = (el.name || "").toLowerCase();
+            if ((ph.includes("aztec") || ph.includes("address") || nm.includes("address")) && !el.value) {
+              const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value")?.set;
+              setter?.call(el, req.address);
+              el.dispatchEvent(new Event("input", { bubbles: true }));
+              el.dispatchEvent(new Event("change", { bubbles: true }));
+              return true;
             }
-            return false;
-          };
-          let tries = 0;
-          const tick = () => {
-            if (fill() || ++tries > 20) return;
-            setTimeout(tick, 300);
-          };
-          setTimeout(tick, 200);
-        } catch {}
-      });
-    } catch {}
+          }
+          return false;
+        };
+        let tries = 0;
+        const tick = () => {
+          if (fill() || ++tries > 20) return;
+          setTimeout(tick, 300);
+        };
+        setTimeout(tick, 200);
+      } catch {}
+    });
   } catch (e) {
     if (_celariIsCtxInvalidError(e)) _celariCtxInvalid = true;
   }
