@@ -777,26 +777,11 @@ async function executeTransfer(data) {
     paymentMethod = fpc.paymentMethod;
     console.log("[PXE] Transfer: SponsoredFPC OK");
   } catch (e) {
-    console.warn(`[PXE] Transfer: SponsoredFPC unavailable (${e.message}), trying FeeJuice fallback...`);
-    // Fallback: Use FeeJuicePaymentMethod if user has Fee Juice balance
-    try {
-      const { FeeJuicePaymentMethod } = await import("@aztec/aztec.js/fee");
-      const { FeeJuiceAddress } = await import("@aztec/protocol-contracts/fee-juice");
-      const feeJuice = TokenContract.at(FeeJuiceAddress, acctWallet);
-      const bal = await feeJuice.methods.balance_of_public(acctWallet.getAddress()).simulate();
-      const balResult = bal.result !== undefined ? bal.result : bal;
-      if (BigInt(balResult.toString()) <= 0n) {
-        throw new Error("NO_FEE_JUICE");
-      }
-      paymentMethod = new FeeJuicePaymentMethod(acctWallet.getAddress());
-      console.log(`[PXE] Transfer: FeeJuicePaymentMethod OK (balance: ${balResult.toString()})`);
-    } catch (feeErr) {
-      if (feeErr.message === "NO_FEE_JUICE") {
-        throw new Error("Fee payment unavailable: No Fee Juice balance. Bridge Fee Juice from L1 or request from faucet to pay for transactions.");
-      }
-      console.warn(`[PXE] Transfer: FeeJuice fallback failed (${feeErr.message})`);
-      throw new Error("Fee payment unavailable: SponsoredFPC is not deployed and Fee Juice check failed. You need Fee Juice to pay for transactions.");
-    }
+    // v4.2.0: FeeJuicePaymentMethod removed. If SponsoredFPC is unavailable,
+    // pass no paymentMethod — the wallet will use the account's Fee Juice balance
+    // automatically via completeFeeOptions().
+    console.warn(`[PXE] Transfer: SponsoredFPC unavailable (${e.message}), using account Fee Juice balance`);
+    paymentMethod = undefined;
   }
   const senderAddr = acctWallet.getAddress();
 
@@ -807,7 +792,9 @@ async function executeTransfer(data) {
   console.log(`[PXE] acctWallet.getAddress(): ${acctWallet.getAddress().toString().slice(0, 22)}...`);
 
   let sendResult;
-  const sendOpts = { from: senderAddr, fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 600_000 } };
+  const feeOpts = { estimateGas: true, estimatedGasPadding: 0.1 };
+  if (paymentMethod) feeOpts.paymentMethod = paymentMethod;
+  const sendOpts = { from: senderAddr, fee: feeOpts, wait: { timeout: 600_000 } };
   reportProgress("Blok onayı bekleniyor...");
   switch (transferType) {
     case "private":
@@ -1080,13 +1067,10 @@ async function deployAccountClientSide(data) {
     } catch (e) {
       console.warn(`[PXE] Deploy Step 2: SponsoredFPC unavailable (${e.message})`);
       // Priority 3: Use FeeJuicePaymentMethod if user has Fee Juice balance
-      try {
-        const { FeeJuicePaymentMethod } = await import("@aztec/aztec.js/fee");
-        paymentMethod = new FeeJuicePaymentMethod(address);
-        console.log(`[PXE] Deploy Step 2: FeeJuicePaymentMethod fallback OK`);
-      } catch (feeErr) {
-        throw new Error("Fee payment unavailable: Request Fee Juice from the faucet or bridge from L1, then try deploying again.");
-      }
+      // v4.2.0: FeeJuicePaymentMethod removed. For deploy, the account isn't
+      // on-chain yet so we can't fall back to the account's own Fee Juice.
+      // User MUST bridge/claim Fee Juice first (use the Nethermind faucet button).
+      throw new Error("Fee payment unavailable: Use 'Claim Fee Juice from Nethermind' in the Deploy banner, then try deploying again.");
     }
   }
 
@@ -1756,10 +1740,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             ]);
             nftPaymentMethod = fpc.paymentMethod;
           } catch (e) {
-            const { FeeJuicePaymentMethod } = await import("@aztec/aztec.js/fee");
-            nftPaymentMethod = new FeeJuicePaymentMethod(activeWallet.getAddress());
+            // v4.2.0: no explicit FeeJuicePaymentMethod — wallet uses account balance automatically
+            nftPaymentMethod = undefined;
           }
-          const sendOpts = { from: fromAddr, fee: { paymentMethod: nftPaymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 600_000 } };
+          const nftFeeOpts = { estimateGas: true, estimatedGasPadding: 0.1 };
+          if (nftPaymentMethod) nftFeeOpts.paymentMethod = nftPaymentMethod;
+          const sendOpts = { from: fromAddr, fee: nftFeeOpts, wait: { timeout: 600_000 } };
           let nftResult;
           switch (mode) {
             case "private":
@@ -2032,9 +2018,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           const acctWallet = getActiveWallet();
           if (!acctWallet) throw new Error("No active account");
           try {
-            const { FeeJuiceAddress } = await import("@aztec/protocol-contracts/fee-juice");
+            const { getCanonicalFeeJuice } = await import("@aztec/protocol-contracts/fee-juice");
             const { TokenContract } = await import("@aztec/noir-contracts.js/Token");
-            const feeJuice = TokenContract.at(FeeJuiceAddress, acctWallet);
+            const feeJuiceContract = await getCanonicalFeeJuice();
+            const feeJuice = TokenContract.at(feeJuiceContract.address, acctWallet);
             const bal = await feeJuice.methods.balance_of_public(acctWallet.getAddress()).simulate();
             const balResult = bal.result !== undefined ? bal.result : bal;
             return { balance: balResult.toString() };
