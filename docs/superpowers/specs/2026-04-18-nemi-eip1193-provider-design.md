@@ -224,12 +224,12 @@ Origin full form (protokol dahil) — http/https ayrılır. Wildcard yok.
 
 **URL:** `popup.html?nemi-connect=<requestId>` (400x600 window)
 
-**UI elemanları:**
+**UI elemanları (v1 MVP):**
 - Origin header (favicon + origin)
 - "Celari Wallet'ınızı bu siteye bağlayın" başlığı
-- Hesap seçim listesi (multi-select, default: aktif hesap)
+- Tek aktif hesap gösterimi (adres short form, multi-select v2'ye ertelendi — bkz. §9)
 - Chain info: "Aztec Testnet (chainId: …)"
-- İzin listesi: "Hesap adreslerini görmek / Onayınızla tx göndermek / Public state okumak"
+- İzin listesi: "Hesap adresini görmek / Onayınızla tx göndermek / Public state okumak"
 - Butonlar: **Reddet** | **Bağlan**
 
 **Akış:**
@@ -276,7 +276,7 @@ Zaman aşımı: 5 dakika.
 
 ### 6.6 Origin yönetimi
 
-Mevcut popup.html'e yeni sekme: **"Bağlı Siteler"**
+Popup.html'e **"Bağlı Siteler"** erişimi (mevcut popup yapısına bağlı: yeni sekme ya da settings modal — plan task'ında popup mimarisine göre karar verilir):
 - `celari_nemi_perms`'ten origin listesi
 - Her origin için "Bağlantıyı Kes" → `revoked:true` + `accountsChanged:[]` emit
 
@@ -394,8 +394,9 @@ Popup'ta opsiyonel "Activity" sekmesi (v1 sonrası) — son 50 RPC çağrısı.
 1. **`ContractArtifactSchema` import path 4.2.0'da değişti mi?** — plan task #1'de runtime doğrulanacak
 2. **Popup UX: multi-account expose mu, tek aktif hesap mı?** — plan'da MVP: aktif hesap only; multi-select v2
 3. **`aztec_call` popup'sız mı kalsın?** — evet, read-only (mevcut `executeUtility` zaten auto-register yapıyor); PII sızıntı riski kabul edilebilir (dApp contract'ı zaten on-chain görebilir)
-4. **Origin yönetimi popup'ta mı sidepanel'de mi?** — popup.html'de yeni sekme (hızlı erişim)
+4. **Origin yönetimi popup'ta mı sidepanel'de mi?** — popup.html'de (sekme veya settings modal — mevcut popup yapısına göre plan task'ında netleşir)
 5. **Bridge artifact URL formatı (url vs literal) ilk test sonucu** — implementation sırasında Tier 2 harness'ında ölçülür
+6. **Offscreen document'ten dış URL fetch CSP/network izinleri** — `content_security_policy.extension_pages` offscreen'i de kapsıyor mu, manifest güncellemesi gerekiyor mu? Implementation task'ında runtime kontrol edilir
 
 ---
 
