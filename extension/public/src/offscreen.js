@@ -1369,25 +1369,27 @@ function hexToBuffer(hex) {
 // Delegates to acctWallet (AccountWithSecretKey) for account-scoped methods,
 // and to wallet (EmbeddedWallet) for PXE-level methods.
 
-// Compatibility shim: v4.2+ dApps (e.g. bridge.human.tech) expect
-// `privateExecutionResult.entrypoint.taggingIndexRanges` on simulateTx results.
-// Our v4.1.3 SDK doesn't populate this field. Inject an empty array so the
-// dApp's Zod schema validates instead of rejecting the whole response.
-function _shimTxResult(result) {
+// Fallback account list: returns PXE-registered accounts, or — if PXE
+// registration hasn't happened yet this session (SW just woke / browser
+// restart) — the deployed accounts persisted in chrome.storage.local.
+// dApps need the address immediately for discovery/balance UI; account-
+// scoped write methods (sendTx, createAuthWit) still require a real
+// registered wallet and will surface a clear error on their own.
+async function listKnownAccounts() {
+  const registered = Array.from(accountWallets.keys());
+  if (registered.length > 0) {
+    return registered.map(addr => ({ alias: "", item: AztecAddress.fromString(addr) }));
+  }
   try {
-    const ep = result?.privateExecutionResult?.entrypoint;
-    if (ep && !Array.isArray(ep.taggingIndexRanges)) {
-      ep.taggingIndexRanges = [];
-    }
-    // Recurse into nested execution results (some SDK versions nest these)
-    const nested = result?.privateExecutionResult?.nestedExecutionResults;
-    if (Array.isArray(nested)) {
-      for (const n of nested) {
-        if (n && !Array.isArray(n.taggingIndexRanges)) n.taggingIndexRanges = [];
-      }
-    }
-  } catch {}
-  return result;
+    const stored = await new Promise((resolve) => {
+      chrome.storage.local.get("celari_accounts", (r) => resolve(r?.celari_accounts || []));
+    });
+    return stored
+      .filter(a => a?.deployed && a?.address)
+      .map(a => ({ alias: "", item: AztecAddress.fromString(a.address) }));
+  } catch {
+    return [];
+  }
 }
 
 async function handleWalletMethod(method, args) {
@@ -1395,10 +1397,7 @@ async function handleWalletMethod(method, args) {
 
   switch (method) {
     case "getAccounts":
-      return Array.from(accountWallets.keys()).map(addr => ({
-        alias: "",
-        item: AztecAddress.fromString(addr),
-      }));
+      return await listKnownAccounts();
 
     case "getChainInfo":
       return await wallet.getChainInfo();
@@ -1423,44 +1422,43 @@ async function handleWalletMethod(method, args) {
     case "getTxReceipt":
       return await wallet.getTxReceipt(args[0]);
 
-    // Auto-approve whatever the dApp asks for. For v1 we echo the requested
-    // capabilities back as granted — Celari does not yet enforce per-method
-    // access control at the wallet-sdk layer.
+    // Auto-approve whatever the dApp asks for. For v1 we grant what the app
+    // requested — Celari does not yet enforce per-method access control at
+    // the wallet-sdk layer. We must shape the response per GrantedCapability
+    // schemas: the "accounts" capability additionally requires a populated
+    // `accounts: [{alias, item}]` array, otherwise the dApp's Zod parseAsync
+    // rejects the response and falls back to getAccounts.
     case "requestCapabilities": {
       const app = args[0] || {};
+      const requested = Array.isArray(app.capabilities) ? app.capabilities : [];
+      const accountsList = await listKnownAccounts();
+      const granted = requested.map((cap) => {
+        if (cap?.type === "accounts") {
+          return {
+            type: "accounts",
+            canGet: cap.canGet,
+            canCreateAuthWit: cap.canCreateAuthWit,
+            accounts: accountsList,
+          };
+        }
+        // Other capability types (contracts, contractClasses, simulation,
+        // transaction, data) use the same schema for requested and granted.
+        return cap;
+      });
       return {
         version: "1.0",
-        granted: Array.isArray(app.capabilities) ? app.capabilities : [],
+        granted,
         wallet: { name: "Celari Wallet", version: "0.5.0" },
       };
     }
 
     // Unconstrained / read-only function call (balance_of_private, etc.).
-    // Wallet-sdk v4.1.3 renamed `simulateUtility` → `executeUtility`.
-    case "executeUtility":
-    case "simulateUtility": {
-      // Base-wallet impl forwards to pxe.executeUtility; our EmbeddedWallet
-      // inherits it. If the method name doesn't exist (older SDK), fall back
-      // to pxe.executeUtility directly.
-      if (typeof wallet.executeUtility === "function") {
-        return await wallet.executeUtility(...args);
-      }
-      const call = args[0];
-      const opts = args[1] || {};
-      return await wallet.pxe.executeUtility(call, {
-        authwits: opts.authWitnesses || [],
-        scopes: opts.scope ? [opts.scope] : undefined,
-      });
+    case "executeUtility": {
+      return await wallet.executeUtility(...args);
     }
 
     // Account-scoped methods: delegate to active account wallet
-    case "simulateTx": {
-      const acctWallet = getActiveWallet();
-      if (!acctWallet) throw new Error("No account registered in PXE");
-      const result = await acctWallet.simulateTx(...args);
-      return _shimTxResult(result);
-    }
-
+    case "simulateTx":
     case "sendTx":
     case "profileTx":
     case "createAuthWit":
@@ -1600,7 +1598,27 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             }
           }
 
-          const result = await handleWalletMethod(method, typedArgs);
+          let result;
+          try {
+            result = await handleWalletMethod(method, typedArgs);
+          } catch (e) {
+            // Wallet-sdk failures show up as opaque toString errors in the
+            // dApp UI; log the full picture here so service-worker console
+            // pinpoints where the throw actually originated.
+            let argsPreview = "";
+            try {
+              argsPreview = jsonStringify(typedArgs).slice(0, 400);
+            } catch {
+              try { argsPreview = JSON.stringify(rawArgs).slice(0, 400); }
+              catch { argsPreview = "(unserializable)"; }
+            }
+            console.error(`[PXE] wallet-sdk method "${method}" threw:`, e?.message || e);
+            console.error(`[PXE] "${method}" args:`, argsPreview);
+            if (e?.stack) console.error(`[PXE] "${method}" stack:\n${e.stack}`);
+            const wrapped = new Error(`[${method}] ${e?.message || String(e)}`);
+            wrapped.stack = e?.stack || wrapped.stack;
+            throw wrapped;
+          }
 
           // Serialize response with Aztec-aware JSON (handles bigint, Buffer, etc.)
           const responseJson = jsonStringify({
