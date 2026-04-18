@@ -1454,6 +1454,25 @@ async function handleWalletMethod(method, args) {
 
     // Unconstrained / read-only function call (balance_of_private, etc.).
     case "executeUtility": {
+      // Auto-register the target contract if PXE doesn't know about it.
+      // dApps call executeUtility to read balances etc. from arbitrary
+      // contracts; PXE throws "No contract instance found" unless we
+      // register the on-chain instance first.
+      const euCall = args[0];
+      if (euCall?.to && nodeClient) {
+        try {
+          const { contractInstance: existing } = await wallet.getContractMetadata(euCall.to);
+          if (!existing) {
+            const onChain = await nodeClient.getContract(euCall.to);
+            if (onChain) {
+              console.log(`[PXE] executeUtility: auto-registering contract ${euCall.to.toString().slice(0, 20)}...`);
+              await wallet.registerContract(onChain);
+            }
+          }
+        } catch (e) {
+          console.warn(`[PXE] executeUtility: auto-register warning: ${e.message?.slice(0, 80)}`);
+        }
+      }
       return await wallet.executeUtility(...args);
     }
 
