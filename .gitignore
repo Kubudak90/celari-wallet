@@ -5,6 +5,7 @@ store/
 target/
 src/artifacts/
 web-ext-artifacts/
+.worktrees/
 
 # CRITICAL: Files below contain private keys - NEVER remove from .gitignore
 # Sensitive keys and deploy info
