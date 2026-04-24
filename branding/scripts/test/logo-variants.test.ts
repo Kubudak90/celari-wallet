@@ -21,3 +21,11 @@ describe("generate-logo-variants.mjs", () => {
     expect(statSync(p).size).toBeGreaterThan(100);
   });
 });
+
+describe("generate-logo-variants.mjs — light theme sizes", () => {
+  test.each(SIZES)("writes light-%ipx.png", (size) => {
+    const p = resolve(OUT, `light-${size}.png`);
+    expect(existsSync(p)).toBe(true);
+    expect(statSync(p).size).toBeGreaterThan(100);
+  });
+});
