@@ -1,7 +1,7 @@
 {
   "name": "celari-wallet",
   "version": "0.5.0",
-  "description": "Celari Wallet \u2014 Faz 1: Passkey Auth + Browser Extension",
+  "description": "Celari Wallet — Faz 1: Passkey Auth + Browser Extension",
   "private": true,
   "type": "module",
   "scripts": {
@@ -39,8 +39,8 @@
     "@aztec/pxe": "4.2.0",
     "@aztec/simulator": "4.2.0",
     "@aztec/stdlib": "4.2.0",
-    "@aztec/wallets": "4.2.0",
     "@aztec/wallet-sdk": "4.2.0",
+    "@aztec/wallets": "4.2.0",
     "@walletconnect/sign-client": "^2.17.0"
   },
   "devDependencies": {
@@ -53,6 +53,7 @@
     "events": "^3.3.0",
     "jest": "^29.7.0",
     "path-browserify": "^1.0.1",
+    "png-to-ico": "^3.0.1",
     "prettier": "^3.2.0",
     "sharp": "^0.34.5",
     "stream-browserify": "^3.0.0",
