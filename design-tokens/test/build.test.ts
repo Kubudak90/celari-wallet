@@ -45,3 +45,27 @@ describe("design-tokens/build.mjs — CSS output", () => {
     expect(a).toEqual(b);
   });
 });
+
+const IOS_SWIFT = resolve(ROOT, "ios/CelariWallet/CelariWallet/Resources/Generated/Tokens.swift");
+
+describe("design-tokens/build.mjs — Swift output", () => {
+  test("writes Tokens.swift", () => {
+    expect(existsSync(IOS_SWIFT)).toBe(true);
+  });
+
+  test("Tokens.swift exposes SwiftUI Color extensions for dark/light", () => {
+    const swift = readFileSync(IOS_SWIFT, "utf8");
+    expect(swift).toMatch(/import SwiftUI/);
+    expect(swift).toMatch(/extension Color\s*\{/);
+    expect(swift).toMatch(/static let celariBgBase\s*=\s*Color\(/);
+    expect(swift).toMatch(
+      /static let celariGoldPrimary\s*=\s*Color\(red:\s*0\.831,\s*green:\s*0\.659,\s*blue:\s*0\.325\)/,
+    );
+  });
+
+  test("Tokens.swift defines radius + motion constants", () => {
+    const swift = readFileSync(IOS_SWIFT, "utf8");
+    expect(swift).toMatch(/enum CelariRadius\s*\{[\s\S]*static let card:\s*CGFloat\s*=\s*16/);
+    expect(swift).toMatch(/enum CelariMotion\s*\{[\s\S]*static let base:\s*Double\s*=\s*0\.2/);
+  });
+});
