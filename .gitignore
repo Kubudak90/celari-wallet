@@ -66,3 +66,6 @@ backup-before-fixes/
 Thumbs.db
 .vscode/
 .idea/
+
+# Generated brand tokens (rebuilt via npm run tokens)
+ios/CelariWallet/CelariWallet/Resources/Generated/
