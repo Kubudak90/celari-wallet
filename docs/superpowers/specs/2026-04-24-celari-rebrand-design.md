@@ -463,3 +463,12 @@ ios/CelariWallet/CelariWallet/
 - Existing wallet flows (create / restore / send / receive / WC connect / backup) complete without regression.
 - Design tokens flow from `tokens.json` to all three platforms via a single `npm run tokens` step.
 - Pencil master document `branding/celari-brand-system.pen` is the authoritative visual reference.
+
+---
+
+## Implementation Status
+
+- [x] **Brand System Foundation** (plan: `2026-04-24-brand-system-foundation.md`, branch: `feat/rebrand-foundation`) — tokens pipeline, hand-coded logo SVGs, asset generator scripts. Pencil master deferred: Pencil MCP was unreachable during implementation, so logo and icon masters were authored directly as SVG. A `.pen` document can be reconstructed later by importing the committed SVGs if/when Pencil becomes available.
+- [ ] iOS Rebrand — plan to be written.
+- [ ] Website Rebrand — plan to be written.
+- [ ] Extension Rebrand — plan to be written.
