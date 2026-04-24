@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Celari">
+  <defs>
+    <linearGradient id="celari-gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#E8C878"/>
+      <stop offset="1" stop-color="#B8924A"/>
+    </linearGradient>
+  </defs>
+  <!-- C body: open on the right (approx 90°), outer r=380, inner r=260, thickness 120 -->
+  <path fill="url(#celari-gold)"
+        d="M 781 243
+           A 380 380 0 1 0 781 781
+           L 696 696
+           A 260 260 0 1 1 696 328
+           Z"/>
+  <!-- Leaf: almond shape tilted up-right, sits inside the C opening -->
+  <g transform="translate(720 512) rotate(-22)">
+    <path fill="url(#celari-gold)"
+          d="M -130 0 Q 0 -52 130 0 Q 0 52 -130 0 Z"/>
+  </g>
+</svg>

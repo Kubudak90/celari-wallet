@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 800" role="img" aria-label="Celari — Privacy First Wallet">
+  <g transform="translate(540 40) scale(0.31)">
+    <path fill="#141416"
+          d="M 781 243
+             A 380 380 0 1 0 781 781
+             L 696 696
+             A 260 260 0 1 1 696 328
+             Z"/>
+    <g transform="translate(720 512) rotate(-22)">
+      <path fill="#141416"
+            d="M -130 0 Q 0 -52 130 0 Q 0 52 -130 0 Z"/>
+    </g>
+  </g>
+  <text x="700" y="620"
+        text-anchor="middle"
+        font-family="Outfit, system-ui, sans-serif"
+        font-weight="300"
+        font-size="140"
+        letter-spacing="42"
+        fill="#141416">CELARI</text>
+  <text x="700" y="710"
+        text-anchor="middle"
+        font-family="Outfit, system-ui, sans-serif"
+        font-weight="300"
+        font-size="28"
+        letter-spacing="9.8"
+        fill="#141416">PRIVACY FIRST WALLET</text>
+</svg>
