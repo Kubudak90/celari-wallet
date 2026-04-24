@@ -195,6 +195,8 @@ backup-before-fixes/branding-v1/  # old assets preserved before migration
 
 ## 6. Pencil Document Structure
 
+> **Status (2026-04-24):** Deferred. Pencil MCP was unreachable during Brand System Foundation implementation, so logo and icon masters were authored directly as hand-coded SVG under `branding/exports/`. The structure below describes the intended master document if Pencil becomes available later — see Implementation Status at the bottom of this spec. The iOS / Website / Extension rebrand plans reference SVG exports, not the `.pen`, so nothing downstream depends on this document.
+
 Single file: `branding/celari-brand-system.pen`, 4 pages.
 
 **Page 1 — Brand System Foundation**
