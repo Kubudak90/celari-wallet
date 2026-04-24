@@ -190,3 +190,47 @@ for (const { path, leaf } of walk(TOKENS.color)) {
 }
 
 console.log("tokens: wrote xcassets output");
+
+function swatch(name, hex) {
+  return `<div class="swatch"><div class="chip" style="background:${hex}"></div><code>${name}</code><code>${hex}</code></div>`;
+}
+function buildPreview() {
+  const darkSwatches = [];
+  const lightSwatches = [];
+  for (const { path, leaf } of walk(TOKENS.color)) {
+    const name = ["color", ...path].join("-");
+    if ("$value" in leaf) {
+      darkSwatches.push(swatch(name, leaf.$value));
+      lightSwatches.push(swatch(name, leaf.$value));
+    } else {
+      darkSwatches.push(swatch(name, leaf.$dark));
+      lightSwatches.push(swatch(name, leaf.$light));
+    }
+  }
+  return `<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Celari Tokens Preview</title>
+<style>
+  body { margin: 0; font-family: Inter, system-ui, sans-serif; }
+  .theme-dark  { background: #0A0A0B; color: #fff; padding: 32px; }
+  .theme-light { background: #F7F6F1; color: #0A0A0B; padding: 32px; }
+  .swatch { display: inline-flex; align-items: center; gap: 8px; margin: 6px 12px 6px 0; }
+  .chip { width: 28px; height: 28px; border-radius: 6px; border: 1px solid rgba(127,127,127,0.25); }
+  code { font-size: 11px; font-family: ui-monospace, monospace; }
+  h1 { font-family: Outfit, sans-serif; font-weight: 300; letter-spacing: 0.3em; margin: 0 0 16px; }
+</style></head>
+<body>
+  <div class="theme-dark">
+    <h1>CELARI — Dark</h1>
+    ${darkSwatches.join("")}
+  </div>
+  <div class="theme-light">
+    <h1>CELARI — Light</h1>
+    ${lightSwatches.join("")}
+  </div>
+</body>
+</html>`;
+}
+
+write(resolve(ROOT, "branding/exports/tokens-preview.html"), buildPreview());
+console.log("tokens: wrote preview");

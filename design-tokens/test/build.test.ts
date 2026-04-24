@@ -96,3 +96,18 @@ describe("design-tokens/build.mjs — xcassets output", () => {
     expect(cs.colors[0].color.components.red).toMatch(/^0\.8[0-9]+$/);
   });
 });
+
+const PREVIEW = resolve(ROOT, "branding/exports/tokens-preview.html");
+
+describe("design-tokens/build.mjs — preview output", () => {
+  test("writes tokens-preview.html with swatches and type specimen", () => {
+    const html = readFileSync(PREVIEW, "utf8");
+    expect(html).toMatch(/<!doctype html>/i);
+    expect(html).toMatch(/bg-base/);
+    expect(html).toMatch(/gold-primary/);
+    expect(html).toMatch(/Outfit/);
+    expect(html).toMatch(/Inter/);
+    expect(html).toMatch(/class="theme-dark"/);
+    expect(html).toMatch(/class="theme-light"/);
+  });
+});
