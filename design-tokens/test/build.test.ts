@@ -69,3 +69,30 @@ describe("design-tokens/build.mjs — Swift output", () => {
     expect(swift).toMatch(/enum CelariMotion\s*\{[\s\S]*static let base:\s*Double\s*=\s*0\.2/);
   });
 });
+
+const COLORS_DIR = resolve(ROOT, "ios/CelariWallet/CelariWallet/Assets.xcassets/Colors");
+
+describe("design-tokens/build.mjs — xcassets output", () => {
+  test("Colors/ has a Contents.json group manifest", () => {
+    const manifest = JSON.parse(readFileSync(resolve(COLORS_DIR, "Contents.json"), "utf8"));
+    expect(manifest.info.author).toBe("xcode");
+    expect(manifest.properties?.["provides-namespace"]).toBe(true);
+  });
+
+  test("BgBase.colorset has universal + dark appearances", () => {
+    const p = resolve(COLORS_DIR, "BgBase.colorset/Contents.json");
+    const cs = JSON.parse(readFileSync(p, "utf8"));
+    expect(cs.colors).toHaveLength(2);
+    const hasDark = cs.colors.some(
+      (c: any) => c.appearances?.[0]?.appearance === "luminosity" && c.appearances?.[0]?.value === "dark",
+    );
+    expect(hasDark).toBe(true);
+  });
+
+  test("GoldPrimary.colorset is theme-agnostic (single color entry)", () => {
+    const p = resolve(COLORS_DIR, "GoldPrimary.colorset/Contents.json");
+    const cs = JSON.parse(readFileSync(p, "utf8"));
+    expect(cs.colors).toHaveLength(1);
+    expect(cs.colors[0].color.components.red).toMatch(/^0\.8[0-9]+$/);
+  });
+});

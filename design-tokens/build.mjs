@@ -130,3 +130,63 @@ function buildSwift() {
 
 write(resolve(ROOT, "ios/CelariWallet/CelariWallet/Resources/Generated/Tokens.swift"), buildSwift());
 console.log("tokens: wrote Swift output");
+
+function xcassetsColor(rgb) {
+  return {
+    "color-space": "srgb",
+    components: {
+      red:   rgb.r.toFixed(3),
+      green: rgb.g.toFixed(3),
+      blue:  rgb.b.toFixed(3),
+      alpha: "1.000",
+    },
+  };
+}
+function pascal(parts) {
+  return parts
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join("")
+    .replace(/[-_]([a-zA-Z])/g, (_, c) => c.toUpperCase());
+}
+
+function writeColorset(dir, tokenPath, leaf) {
+  const name = pascal(tokenPath);
+  const entryDir = resolve(dir, `${name}.colorset`);
+  let colors;
+  if ("$value" in leaf) {
+    colors = [{ idiom: "universal", color: xcassetsColor(hexToRGB(leaf.$value)) }];
+  } else {
+    colors = [
+      { idiom: "universal", color: xcassetsColor(hexToRGB(leaf.$light)) },
+      {
+        idiom: "universal",
+        appearances: [{ appearance: "luminosity", value: "dark" }],
+        color: xcassetsColor(hexToRGB(leaf.$dark)),
+      },
+    ];
+  }
+  write(
+    resolve(entryDir, "Contents.json"),
+    JSON.stringify({ colors, info: { author: "xcode", version: 1 } }, null, 2),
+  );
+}
+
+const xcassetsColorsDir = resolve(
+  ROOT,
+  "ios/CelariWallet/CelariWallet/Assets.xcassets/Colors",
+);
+
+write(
+  resolve(xcassetsColorsDir, "Contents.json"),
+  JSON.stringify(
+    { info: { author: "xcode", version: 1 }, properties: { "provides-namespace": true } },
+    null,
+    2,
+  ),
+);
+
+for (const { path, leaf } of walk(TOKENS.color)) {
+  writeColorset(xcassetsColorsDir, path, leaf);
+}
+
+console.log("tokens: wrote xcassets output");
