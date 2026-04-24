@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Celari">
+  <defs>
+    <linearGradient id="celari-gold-fav" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#E8C878"/>
+      <stop offset="1" stop-color="#B8924A"/>
+    </linearGradient>
+  </defs>
+  <!-- Thicker-stroked C for 16px legibility: outer r=26, inner r=14, thickness 12 -->
+  <path fill="url(#celari-gold-fav)"
+        d="M 51 14
+           A 26 26 0 1 0 51 50
+           L 45 44
+           A 14 14 0 1 1 45 20
+           Z"/>
+  <g transform="translate(46 32) rotate(-22)">
+    <path fill="url(#celari-gold-fav)"
+          d="M -10 0 Q 0 -4.5 10 0 Q 0 4.5 -10 0 Z"/>
+  </g>
+</svg>
