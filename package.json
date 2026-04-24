@@ -13,7 +13,7 @@
     "deploy:token": "npx tsx scripts/deploy-token.ts",
     "test": "NODE_NO_WARNINGS=1 npx jest --forceExit",
     "tokens": "node design-tokens/build.mjs",
-    "brand:export": "npm run tokens && node branding/scripts/generate-logo-variants.mjs && node branding/scripts/generate-favicon.mjs && node branding/scripts/generate-extension-icons.mjs && node branding/scripts/generate-og.mjs && node branding/scripts/copy-to-extension.mjs",
+    "brand:export": "npm run tokens && node branding/scripts/render-masters.mjs && node branding/scripts/generate-logo-variants.mjs && node branding/scripts/generate-favicon.mjs && node branding/scripts/generate-extension-icons.mjs && node branding/scripts/generate-og.mjs && node branding/scripts/copy-to-extension.mjs",
     "test:txe": "cd contracts/celari_passkey_account && aztec test",
     "ext:dev": "node extension/build.mjs --dev && cd extension && npx web-ext run --source-dir dist",
     "ext:build": "node extension/build.mjs && cd extension && npx web-ext build --source-dir dist",
