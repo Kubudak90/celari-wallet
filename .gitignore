@@ -67,3 +67,7 @@ Thumbs.db
 .vscode/
 .idea/
 
+
+# Local Swoirenberg.xcframework (built / extracted, not tracked)
+fork/output/
+fork/build/

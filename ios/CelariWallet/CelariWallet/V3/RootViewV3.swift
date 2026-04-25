@@ -32,6 +32,18 @@ struct RootViewV3: View {
                     BackupViewV2()
                 case .addAccount:
                     AddAccountViewV2()
+                case .confirmTx:
+                    ConfirmTxView()
+                case .walletConnect:
+                    WalletConnectView()
+                case .wcApprove:
+                    WcApproveView()
+                case .addToken:
+                    AddTokenView()
+                case .addNftContract:
+                    AddNftContractView()
+                case .nftDetail:
+                    NftDetailView()
                 default:
                     dashboardShell
                 }
