@@ -119,10 +119,12 @@ struct CelariCardModifier: ViewModifier {
 }
 
 extension View {
-    func celariCard() -> some View { modifier(CelariCardModifier()) }
+    /// V3 card chrome (rounded panel + hairline border on V3Colors.bgElevated).
+    /// Named `v3Card` to avoid colliding with the V1 `celariCard()` extension.
+    func v3Card() -> some View { modifier(CelariCardModifier()) }
 
     /// Subtle gold glow for featured CTAs and the logo.
-    func goldGlow(radius: CGFloat = 24, opacity: Double = 0.18) -> some View {
+    func v3GoldGlow(radius: CGFloat = 24, opacity: Double = 0.18) -> some View {
         self.shadow(color: V3Colors.goldPrimary.opacity(opacity), radius: radius, x: 0, y: 0)
     }
 }
