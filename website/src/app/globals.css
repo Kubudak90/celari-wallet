@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/* ===== CELARI DESIGN SYSTEM (Tailwind v4 @theme) ===== */
+@theme inline {
+  /* Backgrounds — deep navy */
+  --color-bg: #0a0c14;
+  --color-bg-card: #0f1119;
+  --color-bg-elevated: #161825;
+  --color-bg-section: #0c0e18;
+
+  /* Primary accent: Teal */
+  --color-burgundy: #4dd4ac;
+  --color-burgundy-deep: #2a8a6e;
+  --color-burgundy-light: #6ee8c4;
+
+  /* Secondary: Orange */
+  --color-copper: #e88c32;
+  --color-copper-light: #f0a850;
+  --color-copper-muted: #c07828;
+  --color-bronze: #5bc4d4;
+
+  /* Text — cool neutrals */
+  --color-text-warm: #f0f2f8;
+  --color-text-body: #b0b8cc;
+  --color-text-muted: #8891a5;
+  --color-text-dim: #4a5068;
+  --color-text-faint: #2a3050;
+
+  /* Borders */
+  --color-border-default: #1e2235;
+  --color-border-warm: #2a3050;
+
+  /* Fonts — Inter for everything */
+  --font-display: var(--font-inter), system-ui, sans-serif;
+  --font-heading: var(--font-inter), system-ui, sans-serif;
+  --font-mono: var(--font-inter-mono), ui-monospace, monospace;
+  --font-body: var(--font-inter), system-ui, sans-serif;
+
+  /* Animations */
+  --animate-fade-up: fade-up 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  --animate-fade-in: fade-in 1s ease forwards;
+  --animate-rotate-slow: rotate-slow 60s linear infinite;
+  --animate-breathe: breathe 3s ease-in-out infinite;
+  --animate-pulse-glow: pulse-glow 3s ease-in-out infinite;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes rotate-slow {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(77, 212, 172, 0.2); }
+  50% { box-shadow: 0 0 30px 4px rgba(77, 212, 172, 0.08); }
+}
+
+/* ===== BASE STYLES ===== */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: #1e3a4a;
+  color: #f0f2f8;
+}

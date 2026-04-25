@@ -32,8 +32,12 @@ ios/**/gzip-backup/
 ios/CelariWallet/CelariWallet/Resources/offscreen.js
 ios/CelariWallet/CelariWallet/Resources/offscreen.js.gz
 
-# Website (separate repo)
-website/
+# Website — tracked. Build artifacts and local-only files excluded below.
+website/.next/
+website/node_modules/
+website/out/
+website/.env*.local
+website/next-env.d.ts
 
 # Reports & internal docs
 WALLET_REPORT.md
