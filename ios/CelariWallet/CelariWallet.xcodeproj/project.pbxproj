@@ -55,6 +55,7 @@
 		7C9393E64CE72E20D6326751 /* GuardianManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A69D6029F882ACB2454C29D3 /* GuardianManager.swift */; };
 		89FA1B301AB77C96A7CD7485 /* ActivityViewV3.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28A3DE5F6A8770EC2A3722EA /* ActivityViewV3.swift */; };
 		8BCBD92780D647874A5AFD5F /* PercentChangePill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C7FD743B80A54A8BDF58837 /* PercentChangePill.swift */; };
+		8C11F38406498D6B9D66B5C7 /* offscreen.js in Resources */ = {isa = PBXBuildFile; fileRef = 6F706ACEF49E33ED0EE7D922 /* offscreen.js */; };
 		8E0D67AA5755B7FF1D577885 /* Outfit-Light.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 2148D10FEC1D314C710698B3 /* Outfit-Light.ttf */; };
 		8EA150ED9DB0856A711B0257 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66EA9ECC8A13674820AA2138 /* NotificationManager.swift */; };
 		8FE8795CEAA9C0EF29D77908 /* SubHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E508B419A1BD6F16BFF3AE4F /* SubHeaderView.swift */; };
@@ -73,6 +74,7 @@
 		A772065956A6ED077D61771C /* CelariThemeV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF05EC8C3D3FDA45FD16FAA1 /* CelariThemeV2.swift */; };
 		A950FFBFA85968BDA2D8D33C /* LoadingViewV3.swift in Sources */ = {isa = PBXBuildFile; fileRef = A56FEAC8159429503503CD1A /* LoadingViewV3.swift */; };
 		AEE9FE1D716BAAEFC87186DE /* OnboardingViewV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88784F92044A09214A63F361 /* OnboardingViewV2.swift */; };
+		B047F655FAE43E02C740A91F /* offscreen.js.gz in Resources */ = {isa = PBXBuildFile; fileRef = C9148D6C734D5513F0A3ADFB /* offscreen.js.gz */; };
 		B3BC07E6FD5A9B77E7BF4CA8 /* BackupViewV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94D727A70FB5ADE92C391D79 /* BackupViewV2.swift */; };
 		B5E6E885D64EDEFADE51E2BB /* PXENativeProver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 874081DAAE5E388572933296 /* PXENativeProver.swift */; };
 		B9B619645521D1AB70D0FFE3 /* SettingsViewV3.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AFAC52DDB82040516EB6258 /* SettingsViewV3.swift */; };
@@ -173,6 +175,7 @@
 		62F8879152F0EFAE6E717295 /* noirc_abi_wasm_bg.wasm */ = {isa = PBXFileReference; path = noirc_abi_wasm_bg.wasm; sourceTree = "<group>"; };
 		66EA9ECC8A13674820AA2138 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		6D8B6592C9F20321409CB45B /* Tokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tokens.swift; sourceTree = "<group>"; };
+		6F706ACEF49E33ED0EE7D922 /* offscreen.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = offscreen.js; sourceTree = "<group>"; };
 		73295B87A168099441E86FA8 /* BalanceHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceHeader.swift; sourceTree = "<group>"; };
 		742BC9A31737916149703E46 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		7AC912ABDBE0882794F85EBD /* SendViewV3.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendViewV3.swift; sourceTree = "<group>"; };
@@ -206,6 +209,7 @@
 		BF3BD49E260BABE22A69DFAD /* NetworkPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkPickerSheet.swift; sourceTree = "<group>"; };
 		BF6C29C20C338FFEA7D20585 /* WalletStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletStore.swift; sourceTree = "<group>"; };
 		C428710021C7A4822BFC7389 /* AmountInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmountInput.swift; sourceTree = "<group>"; };
+		C9148D6C734D5513F0A3ADFB /* offscreen.js.gz */ = {isa = PBXFileReference; lastKnownFileType = archive.gzip; path = offscreen.js.gz; sourceTree = "<group>"; };
 		C97F64009C6B45AE0199C1C4 /* test_circuit.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = test_circuit.json; sourceTree = "<group>"; };
 		CC45D382801E1523A1D24372 /* buffer-polyfill.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "buffer-polyfill.js"; sourceTree = "<group>"; };
 		D4308D5D6762F1B71BC6F608 /* ScreenHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenHeader.swift; sourceTree = "<group>"; };
@@ -365,6 +369,8 @@
 				F72F558BDDE1AA2E6F1D7084 /* acvm_js_bg.wasm */,
 				CC45D382801E1523A1D24372 /* buffer-polyfill.js */,
 				62F8879152F0EFAE6E717295 /* noirc_abi_wasm_bg.wasm */,
+				6F706ACEF49E33ED0EE7D922 /* offscreen.js */,
+				C9148D6C734D5513F0A3ADFB /* offscreen.js.gz */,
 				EC1E195A46FCEA880E968FE4 /* pxe-bridge-shim.js */,
 				F7065F5128DC1B0829AA4587 /* pxe-bridge.html */,
 				C97F64009C6B45AE0199C1C4 /* test_circuit.json */,
@@ -637,6 +643,8 @@
 				A3E4F987F4D5CBC6169FA96D /* acvm_js_bg.wasm in Resources */,
 				A05FF2B47D9473500DA5985A /* buffer-polyfill.js in Resources */,
 				E82BEF0725CC078F9951E1D7 /* noirc_abi_wasm_bg.wasm in Resources */,
+				8C11F38406498D6B9D66B5C7 /* offscreen.js in Resources */,
+				B047F655FAE43E02C740A91F /* offscreen.js.gz in Resources */,
 				5F010F5D3FE91B99EACA3215 /* pxe-bridge-shim.js in Resources */,
 				5E627A9AE0DD6C1DE4840010 /* pxe-bridge.html in Resources */,
 				4381D19614DBF1A2D4627CC5 /* test_circuit.json in Resources */,
