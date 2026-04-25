@@ -420,14 +420,14 @@ const LOGO_SVG = `<img src="icons/icon-48.png" width="24" height="24" style="bor
 const LOGO_LARGE = `<img src="icons/icon-128.png" width="70" height="70" style="border-radius:22%" alt="Celari"/>`;
 
 const icons = {
-  send: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e88c32" stroke-width="1.5"><path d="M12 5l0 14M5 12l7-7 7 7"/></svg>`,
-  download: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e88c32" stroke-width="1.5"><path d="M12 19l0-14M19 12l-7 7-7-7"/></svg>`,
-  shield: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e88c32" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+  send: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold-primary)" stroke-width="1.5"><path d="M12 5l0 14M5 12l7-7 7 7"/></svg>`,
+  download: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold-primary)" stroke-width="1.5"><path d="M12 19l0-14M19 12l-7 7-7-7"/></svg>`,
+  shield: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold-primary)" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
   copy: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`,
   back: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>`,
   settings: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>`,
   lock: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`,
-  check: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e88c32" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>`,
+  check: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold-primary)" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>`,
 };
 
 // ─── Render Engine ────────────────────────────────────
@@ -840,7 +840,7 @@ function renderDeployBanner() {
       </p>
 
       ${(store.network === "testnet" || store.network === "mainnet") && !hasClaim ? `
-      <button id="btn-claim-nethermind" style="width:100%;padding:10px;margin-bottom:8px;border:1px solid var(--aztec-dark);background:var(--aztec-dark);color:#FFFFFF;font-family:IBM Plex Mono,monospace;font-size:9px;cursor:pointer;font-weight:600;letter-spacing:2px;text-transform:uppercase;border-radius:var(--radius-sm)">
+      <button id="btn-claim-nethermind" style="width:100%;padding:10px;margin-bottom:8px;border:1px solid var(--aztec-dark);background:var(--aztec-dark);color:var(--bg);font-family:IBM Plex Mono,monospace;font-size:9px;cursor:pointer;font-weight:600;letter-spacing:2px;text-transform:uppercase;border-radius:var(--radius-sm)">
         ⚡ Claim Fee Juice from Nethermind
       </button>` : ''}
 
@@ -1643,7 +1643,7 @@ function renderReceive() {
       <div style="width:200px;height:200px;margin:0 auto 8px;background:#E8D8CC;display:flex;align-items:center;justify-content:center;position:relative">
         ${renderSimpleQR(address)}
         <div style="position:absolute;background:#1C1616;width:36px;height:36px;display:flex;align-items:center;justify-content:center;">
-          <span style="font-family:Inter,system-ui,sans-serif;font-weight:300;font-size:18px;color:#e88c32">C</span>
+          <span style="font-family:Inter,system-ui,sans-serif;font-weight:300;font-size:18px;color:var(--gold-primary)">C</span>
         </div>
       </div>
       <div style="font-family:IBM Plex Mono,monospace;font-size:7px;color:var(--text-faint);margin-bottom:12px;letter-spacing:1px;opacity:0.6">DECORATIVE ONLY — USE COPY BUTTON BELOW</div>

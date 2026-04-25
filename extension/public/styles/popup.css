@@ -1,4 +1,4 @@
-/* ─── Celari Wallet — Light Theme (matches iOS V2) ─── */
+/* ─── Celari Wallet — V3 gold-on-dark (matches iOS V3) ─── */
 
 /* Self-hosted fonts — Inter Variable */
 @font-face {
@@ -9,50 +9,92 @@
 }
 
 :root {
-  /* Backgrounds (iOS V2: FAFAFA / FFFFFF / F0F0F0 / F8F8F8) */
-  --bg: #FAFAFA;
-  --bg-card: #FFFFFF;
-  --bg-elevated: #F0F0F0;
-  --bg-section: #F8F8F8;
-  --bg-input: #FFFFFF;
+  /* Surfaces — gold-on-dark default */
+  --bg: #0A0A0B;
+  --bg-card: #141416;
+  --bg-elevated: #1C1C1F;
+  --bg-section: #0A0A0B;
+  --bg-input: #1C1C1F;
 
-  /* Aztec palette — dark navy for primary actions / balance card */
-  --aztec-dark: #1B2A3D;
-  --aztec-darker: #0F1B2A;
-  --aztec-green: #D4FF28;
-  --teal: #0D6E6E;
+  /* Brand accent — Celari gold. Legacy aztec/burgundy/copper aliases retained
+     so existing CSS rules keep compiling without mass rename. */
+  --aztec-dark: #D4A853;
+  --aztec-darker: #B8924A;
+  --aztec-green: #E8C878;
+  --teal: #8A6F38;
 
-  /* Legacy aliases mapped to aztec palette (primary action) */
-  --burgundy: #1B2A3D;
-  --burgundy-deep: #0F1B2A;
-  --burgundy-light: #2A3F5A;
+  --burgundy: #D4A853;
+  --burgundy-deep: #B8924A;
+  --burgundy-light: #E8C878;
 
-  /* Accent — orange (iOS V2 soOrange #F48225) */
-  --copper: #F48225;
-  --copper-light: #FF9944;
-  --copper-muted: #D46D20;
-  --bronze: #0D6E6E;
+  --copper: #B8924A;
+  --copper-light: #E8C878;
+  --copper-muted: #8A6F38;
+  --bronze: #B8924A;
+
+  /* Direct gold tokens (preferred for new code). */
+  --gold-primary: #D4A853;
+  --gold-soft: #B8924A;
+  --gold-glow: #E8C878;
+  --gold-deep: #8A6F38;
 
   /* Semantic */
-  --green: #48A868;
-  --green-glow: rgba(72, 168, 104, 0.1);
-  --red: #D1383D;
+  --green: #34D399;
+  --green-glow: rgba(52, 211, 153, 0.10);
+  --red: #F87171;
 
-  /* Text (inverted — dark on light) */
-  --text-warm: #1A1A1A;
-  --text-body: #444444;
-  --text-muted: #666666;
-  --text-dim: #888888;
-  --text-faint: #CCCCCC;
+  /* Text — light on dark */
+  --text-warm: #FFFFFF;
+  --text-body: #A8A8B0;
+  --text-muted: #6B6B73;
+  --text-dim: #6B6B73;
+  --text-faint: #26262A;
 
   /* Borders */
-  --border: #E5E5E5;
-  --border-warm: #D6D6D6;
+  --border: #26262A;
+  --border-warm: #26262A;
 
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
-  --shadow: 0 4px 24px rgba(27, 42, 61, 0.08);
+  --shadow: 0 0 40px rgba(212, 168, 83, 0.12);
+}
+
+/* Light theme — toggled via <html data-theme="light"> */
+[data-theme="light"] {
+  --bg: #F7F6F1;
+  --bg-card: #FFFFFF;
+  --bg-elevated: #ECEBE5;
+  --bg-section: #F7F6F1;
+  --bg-input: #FFFFFF;
+
+  --aztec-dark: #8A6F38;
+  --aztec-darker: #6B5526;
+  --aztec-green: #B8924A;
+  --teal: #6B5526;
+
+  --burgundy: #8A6F38;
+  --burgundy-deep: #6B5526;
+  --burgundy-light: #B8924A;
+
+  --copper: #8A6F38;
+  --copper-light: #B8924A;
+  --copper-muted: #6B5526;
+  --bronze: #8A6F38;
+
+  --green: #059669;
+  --red: #DC2626;
+
+  --text-warm: #0A0A0B;
+  --text-body: #525258;
+  --text-muted: #8A8A92;
+  --text-dim: #8A8A92;
+  --text-faint: #E0DFD9;
+
+  --border: #E0DFD9;
+  --border-warm: #E0DFD9;
+
+  --shadow: 0 0 24px rgba(212, 168, 83, 0.18);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -135,16 +177,17 @@ body {
 
 .network-dot.disconnected { background: var(--red); }
 
-/* ─── Balance Card (dark aztec on light background) ─── */
+/* ─── Balance Card (gold gradient on dark background) ─── */
 .balance-card {
   margin: 12px 16px;
   padding: 24px 22px;
-  background: linear-gradient(135deg, #1B2A3D, #0F1B2A, #0F1B2A);
+  background: linear-gradient(135deg, var(--bg-card), var(--bg-elevated), var(--bg-card));
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   position: relative;
   overflow: hidden;
   box-shadow: var(--shadow);
-  color: #FFFFFF;
+  color: var(--text-warm);
 }
 
 .balance-card::before {
