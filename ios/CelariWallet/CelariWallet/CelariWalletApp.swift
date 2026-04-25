@@ -6,12 +6,22 @@ struct CelariWalletApp: App {
     @State private var pxeBridge = PXEBridge()
     @Environment(\.scenePhase) private var scenePhase
 
+    @AppStorage("themePreference") private var themePreferenceRaw: String = "system"
+
+    private var preferredColorScheme: ColorScheme? {
+        switch themePreferenceRaw {
+        case "dark":  return .dark
+        case "light": return .light
+        default:      return nil
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
-            RootViewV2()
+            RootViewV3()
                 .environment(store)
                 .environment(pxeBridge)
-                .preferredColorScheme(.light)
+                .preferredColorScheme(preferredColorScheme)
                 .onAppear {
                     pxeBridge.store = store
                     pxeBridge.setupWebView()
