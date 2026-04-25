@@ -13,7 +13,11 @@ class PXEBridge: NSObject {
     weak var store: WalletStore?
 
     let messageBus = PXEMessageBus()
-    private lazy var nativeProver = PXENativeProver(messageBus: messageBus)
+    private var _nativeProver: PXENativeProver?
+    private var nativeProver: PXENativeProver {
+        if _nativeProver == nil { _nativeProver = PXENativeProver(messageBus: messageBus) }
+        return _nativeProver!
+    }
     private var webView: WKWebView?
     private var storageData: [String: Any] = [:]
 

@@ -338,7 +338,11 @@ class WalletStore {
     let networkManager = NetworkManager()
     let walletNetworkManager = WalletNetworkManager()
     let passkeyManager = PasskeyManager()
-    lazy var guardianManager = GuardianManager(persistence: persistence)
+    private var _guardianManager: GuardianManager?
+    var guardianManager: GuardianManager {
+        if _guardianManager == nil { _guardianManager = GuardianManager(persistence: persistence) }
+        return _guardianManager!
+    }
     weak var pxeBridge: PXEBridge?
 
     // MARK: - Initialization
