@@ -63,7 +63,7 @@ export default function Roadmap() {
                   </p>
                   {status === "current" && (
                     <span className="inline-block mt-3 font-mono text-[8px] tracking-[3px] uppercase text-burgundy-light border border-burgundy/30 px-3 py-1 rounded">
-                      In Progress
+                      {t("inProgress")}
                     </span>
                   )}
                 </div>

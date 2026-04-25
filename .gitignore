@@ -41,6 +41,7 @@ website/node_modules/
 website/out/
 website/.env*.local
 website/next-env.d.ts
+website/tsconfig.tsbuildinfo
 
 # Reports & internal docs
 WALLET_REPORT.md

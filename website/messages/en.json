@@ -7,6 +7,7 @@
   },
   "nav": {
     "features": "Features",
+    "privacy": "Privacy",
     "howItWorks": "How It Works",
     "aztec": "Aztec",
     "roadmap": "Roadmap",
@@ -83,6 +84,29 @@
       }
     }
   },
+  "privacy": {
+    "eyebrow": "Why Celari",
+    "title": "Privacy You Can Verify",
+    "subtitle": "Most wallets ask for your trust. Celari is built so you don't have to give it.",
+    "pillars": {
+      "noMetadata": {
+        "title": "We collect nothing.",
+        "description": "No IP addresses. No request logs. No analytics beacons. The wallet talks to the chain, not to us."
+      },
+      "shieldedDefault": {
+        "title": "Encrypted at the protocol layer.",
+        "description": "Aztec's rollup encrypts state on-chain by default. Your balance is private to you, not because we promise — because the network can't read it."
+      },
+      "auditable": {
+        "title": "Open source, top to bottom.",
+        "description": "Every line of the wallet, the contracts, and the bridge is on GitHub under MIT. You can read it, build it, fork it."
+      },
+      "selfCustody": {
+        "title": "You hold the keys.",
+        "description": "Passkeys live in your device's secure enclave. We can't sign for you. We can't freeze your funds. We can't recover them either — that's the trade."
+      }
+    }
+  },
   "aztec": {
     "badge": "Built on Aztec",
     "title": "The First Encrypted Rollup Deserves the First Private Wallet",
@@ -96,6 +120,7 @@
   "roadmap": {
     "eyebrow": "Timeline",
     "title": "The Path Forward",
+    "inProgress": "In Progress",
     "phases": {
       "phase0": {
         "name": "Phase 0",

@@ -7,6 +7,7 @@
   },
   "nav": {
     "features": "Özellikler",
+    "privacy": "Gizlilik",
     "howItWorks": "Nasıl Çalışır",
     "aztec": "Aztec",
     "roadmap": "Yol Haritası",
@@ -83,6 +84,29 @@
       }
     }
   },
+  "privacy": {
+    "eyebrow": "Neden Celari",
+    "title": "Doğrulayabileceğiniz Gizlilik",
+    "subtitle": "Çoğu cüzdan size güvenmenizi söyler. Celari ise güvenmek zorunda kalmayacağınız şekilde inşa edildi.",
+    "pillars": {
+      "noMetadata": {
+        "title": "Hiçbir şey toplamıyoruz.",
+        "description": "IP adresi yok. İstek logu yok. Analitik beacon yok. Cüzdan zincirle konuşur, bizimle değil."
+      },
+      "shieldedDefault": {
+        "title": "Protokol katmanında şifreli.",
+        "description": "Aztec'in rollup'ı zincir üstündeki durumu varsayılan olarak şifreler. Bakiyeniz size özeldir — biz söz verdiğimiz için değil, ağ okuyamadığı için."
+      },
+      "auditable": {
+        "title": "Baştan sona açık kaynak.",
+        "description": "Cüzdanın, kontratların ve köprünün her satırı MIT lisansıyla GitHub'da. Okuyabilir, derleyebilir, fork edebilirsiniz."
+      },
+      "selfCustody": {
+        "title": "Anahtarlar sizde.",
+        "description": "Passkey'ler cihazınızın güvenli alanında durur. Sizin yerinize imza atamayız. Fonlarınızı donduramayız. Geri de getiremeyiz — bu da işin tarafı."
+      }
+    }
+  },
   "aztec": {
     "badge": "Aztec Üzerine İnşa Edildi",
     "title": "İlk Şifreli Rollup, İlk Özel Cüzdanı Hak Ediyor",
@@ -96,6 +120,7 @@
   "roadmap": {
     "eyebrow": "Zaman Çizelgesi",
     "title": "İleriye Giden Yol",
+    "inProgress": "Devam Ediyor",
     "phases": {
       "phase0": {
         "name": "Faz 0",

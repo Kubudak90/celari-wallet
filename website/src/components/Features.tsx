@@ -6,17 +6,17 @@ import AnimateOnScroll from "./ScrollAnimation";
 
 const featureIcons = [
   // 01 - Shield (Private)
-  <svg key="shield" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e88c32" strokeWidth="1.2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>,
+  <svg key="shield" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>,
   // 02 - Login (Passkey)
-  <svg key="login" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e88c32" strokeWidth="1.2"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4m-5-4l5-5-5-5m5 5H3" /></svg>,
+  <svg key="login" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4m-5-4l5-5-5-5m5 5H3" /></svg>,
   // 03 - Globe (Metadata)
-  <svg key="globe" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e88c32" strokeWidth="1.2"><circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" /><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" /></svg>,
+  <svg key="globe" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"><circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" /><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" /></svg>,
   // 04 - Lock (Account Abstraction)
-  <svg key="lock" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e88c32" strokeWidth="1.2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>,
+  <svg key="lock" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>,
   // 05 - Code (Open Source)
-  <svg key="code" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e88c32" strokeWidth="1.2"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>,
+  <svg key="code" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>,
   // 06 - Pen (Crafted UX)
-  <svg key="pen" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e88c32" strokeWidth="1.2"><path d="M20.24 12.24a6 6 0 00-8.49-8.49L5 10.5V19h8.5z" /><line x1="16" y1="8" x2="2" y2="22" /></svg>,
+  <svg key="pen" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2"><path d="M20.24 12.24a6 6 0 00-8.49-8.49L5 10.5V19h8.5z" /><line x1="16" y1="8" x2="2" y2="22" /></svg>,
 ];
 
 const featureKeys = [
@@ -43,8 +43,8 @@ export default function Features() {
               <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-burgundy via-copper to-burgundy opacity-0 group-hover:opacity-100 transition-opacity duration-400" />
 
               {/* Icon container */}
-              <div className="w-11 h-11 flex items-center justify-center mb-6 relative">
-                <div className="absolute inset-0 border border-border-default rounded-lg rotate-45 group-hover:border-copper transition-colors duration-300" />
+              <div className="w-11 h-11 flex items-center justify-center mb-6 relative text-burgundy">
+                <div className="absolute inset-0 border border-border-default rounded-lg rotate-45 group-hover:border-burgundy transition-colors duration-300" />
                 {featureIcons[i]}
               </div>
 

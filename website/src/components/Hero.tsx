@@ -1,7 +1,8 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import Logo from "./Logo";
+import PhoneMockup from "./PhoneMockup";
+import RadialRings from "./RadialRings";
 
 export default function Hero() {
   const t = useTranslations("hero");
@@ -9,14 +10,7 @@ export default function Hero() {
   return (
     <section className="min-h-[90vh] flex items-center px-6 md:px-12 pt-32 pb-20 relative overflow-hidden">
       {/* Background — gold radial rings (right side, behind phone) */}
-      <div className="absolute right-[-200px] top-1/2 -translate-y-1/2 w-[800px] h-[800px] pointer-events-none opacity-[0.18]">
-        <svg viewBox="0 0 800 800" fill="none" className="w-full h-full">
-          <circle cx="400" cy="400" r="380" stroke="#D4A853" strokeWidth="1" />
-          <circle cx="400" cy="400" r="300" stroke="#D4A853" strokeWidth="1" />
-          <circle cx="400" cy="400" r="220" stroke="#D4A853" strokeWidth="1" />
-          <circle cx="400" cy="400" r="140" stroke="#D4A853" strokeWidth="1" />
-        </svg>
-      </div>
+      <RadialRings />
 
       {/* Center radial gold glow */}
       <div className="absolute right-[10%] top-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[radial-gradient(circle,rgba(212,168,83,0.10)_0%,transparent_60%)] pointer-events-none" />
@@ -78,39 +72,11 @@ export default function Hero() {
         </div>
 
         {/* Right column — phone mockup with lockup */}
-        <div className="hidden lg:flex justify-center items-center opacity-0 animate-fade-up" style={{ animationDelay: "0.35s" }}>
-          <div className="relative">
-            {/* iPhone bezel */}
-            <div className="w-[300px] h-[610px] rounded-[44px] bg-bg-card border border-border-default shadow-[0_0_60px_rgba(212,168,83,0.15)] p-3">
-              <div className="w-full h-full rounded-[36px] bg-bg flex flex-col items-center justify-center gap-6 relative overflow-hidden">
-                {/* Notch */}
-                <div className="absolute top-3 left-1/2 -translate-x-1/2 w-24 h-6 rounded-full bg-black/80" />
-
-                {/* Inner lockup */}
-                <div className="mt-12 mb-2 opacity-0 animate-fade-up" style={{ animationDelay: "0.55s" }}>
-                  <Logo variant="lockup" size="lg" />
-                </div>
-
-                <div className="text-center px-6 opacity-0 animate-fade-up" style={{ animationDelay: "0.7s" }}>
-                  <p className="font-body text-text-muted text-[11px] tracking-[2px] uppercase mb-1">Total Balance</p>
-                  <p className="font-mono text-text-warm text-2xl font-semibold">$12,458.73</p>
-                  <p className="font-body text-status-up text-[11px] mt-1">▲ 2.35% Today</p>
-                </div>
-
-                {/* Quick action circles */}
-                <div className="flex gap-3 mt-2">
-                  {["↑", "↓", "⇄", "+"].map((icon, i) => (
-                    <div
-                      key={i}
-                      className="w-12 h-12 rounded-full border border-burgundy flex items-center justify-center text-burgundy text-lg"
-                    >
-                      {icon}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+        <div
+          className="hidden lg:flex justify-center items-center opacity-0 animate-fade-up"
+          style={{ animationDelay: "0.35s" }}
+        >
+          <PhoneMockup />
         </div>
       </div>
     </section>

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Header from "@/components/Header";
 import Hero from "@/components/Hero";
 import Features from "@/components/Features";
+import PrivacySection from "@/components/PrivacySection";
 import HowItWorks from "@/components/HowItWorks";
 import AztecSection from "@/components/AztecSection";
 import Roadmap from "@/components/Roadmap";
@@ -51,6 +52,7 @@ export default async function HomePage({
       <Header />
       <Hero />
       <Features />
+      <PrivacySection />
       <HowItWorks />
       <AztecSection />
       <Roadmap />
