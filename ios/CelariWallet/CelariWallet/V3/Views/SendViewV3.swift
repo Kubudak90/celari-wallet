@@ -1,9 +1,8 @@
 // V3/Views/SendViewV3.swift
 //
-// Phase B: chrome and form layout match the reference mockup. The Review
-// Transaction CTA is intentionally a stub — Phase B+ wires it to
-// PXEBridge.transfer(to:amount:tokenAddress:transferType:) the way
-// SendViewV2 does today.
+// Phase B+ wiring: Review Transaction CTA invokes PXEBridge.transfer the
+// way SendViewV2 does. State seeds from `store.sendForm` so the Shield
+// quick action on Home can pre-fill recipient + transferType.
 
 import SwiftUI
 
@@ -14,8 +13,16 @@ struct SendViewV3: View {
 
     @State private var amount: String = ""
     @State private var recipient: String = ""
+    @State private var selectedSymbol: String? = nil
+    @State private var transferMode: TransferType = .privateTransfer
+    @State private var sending = false
 
-    private var selectedToken: Token? { store.tokens.first }
+    private var selectedToken: Token? {
+        if let sym = selectedSymbol, let t = store.tokens.first(where: { $0.symbol == sym }) {
+            return t
+        }
+        return store.tokens.first
+    }
 
     private var parsedAmountUSD: Double? {
         guard let v = Double(amount), let token = selectedToken else { return nil }
@@ -24,6 +31,13 @@ struct SendViewV3: View {
             .replacingOccurrences(of: ",", with: "")
         let priceUSD = (Double(cleaned) ?? 0) / max(Double(token.balance) ?? 1, 0.000001)
         return v * priceUSD
+    }
+
+    private var canSubmit: Bool {
+        !sending
+            && !recipient.trimmingCharacters(in: .whitespaces).isEmpty
+            && (Double(amount) ?? 0) > 0
+            && selectedToken != nil
     }
 
     var body: some View {
@@ -38,6 +52,7 @@ struct SendViewV3: View {
                         usdSubtotal: parsedAmountUSD
                     )
 
+                    transferModeRow
                     toCard
                     networkCard
                     feeCard
@@ -48,15 +63,53 @@ struct SendViewV3: View {
                 .padding(.bottom, 24)
             }
 
-            PrimaryButton(title: "Review Transaction") {
-                store.showToast("Review flow ships in Phase B+ wiring", type: .success)
-                dismiss()
-            }
+            PrimaryButton(
+                title: sending ? "Sending…" : "Review Transaction",
+                action: performSend,
+                isEnabled: canSubmit
+            )
             .padding(.horizontal, 24)
             .padding(.bottom, 24)
         }
         .background(V3Colors.bgBase)
         .navigationBarBackButtonHidden(true)
+        .onAppear(perform: seedFromSendForm)
+    }
+
+    /// Pre-fill from `store.sendForm` (set by Home's Shield action, etc.)
+    private func seedFromSendForm() {
+        let form = store.sendForm
+        if !form.to.isEmpty { recipient = form.to }
+        if !form.amount.isEmpty { amount = form.amount }
+        if !form.token.isEmpty { selectedSymbol = form.token }
+        transferMode = form.transferType
+        // Reset the form so a future Send tap from Home starts clean.
+        store.sendForm = SendForm()
+    }
+
+    private var transferModeRow: some View {
+        HStack(spacing: 8) {
+            ForEach(TransferType.allCases, id: \.self) { mode in
+                Button {
+                    transferMode = mode
+                } label: {
+                    Text(mode.label)
+                        .font(V3Fonts.caption(11))
+                        .tracking(1.0)
+                        .foregroundColor(transferMode == mode ? V3Colors.bgBase : V3Colors.textSecondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: V3Radius.pill)
+                                .fill(transferMode == mode ? V3Colors.goldGradient
+                                                           : LinearGradient(colors: [V3Colors.bgRaised],
+                                                                            startPoint: .top, endPoint: .bottom))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+        }
     }
 
     private var toCard: some View {
@@ -70,6 +123,8 @@ struct SendViewV3: View {
                     .textFieldStyle(.plain)
                     .font(V3Fonts.body(15))
                     .foregroundColor(V3Colors.textPrimary)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
                 Button {
                     // Reserved for QR scanner integration (Phase B+)
                 } label: {
@@ -103,9 +158,6 @@ struct SendViewV3: View {
                     .foregroundColor(V3Colors.textPrimary)
             }
             Spacer()
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(V3Colors.textMuted)
         }
         .v3Card()
     }
@@ -116,17 +168,14 @@ struct SendViewV3: View {
                 Text("Estimated fee")
                     .font(V3Fonts.caption(12))
                     .foregroundColor(V3Colors.textSecondary)
-                Text("$1.42")
+                Text("Sponsored")
                     .font(V3Fonts.bodyMedium(15))
-                    .foregroundColor(V3Colors.textPrimary)
-                Text("0.000492 ETH")
+                    .foregroundColor(V3Colors.statusUp)
+                Text("Gas paid by SponsoredFPC")
                     .font(V3Fonts.caption(12))
                     .foregroundColor(V3Colors.textMuted)
             }
             Spacer()
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(V3Colors.textMuted)
         }
         .v3Card()
     }
@@ -134,11 +183,12 @@ struct SendViewV3: View {
     private var summaryCard: some View {
         VStack(spacing: 10) {
             summaryRow("You send",
-                       value: "\(amount.isEmpty ? "0" : amount) \(selectedToken?.symbol ?? "ETH")")
-            summaryRow("Estimated fee", value: "$1.42")
+                       value: "\(amount.isEmpty ? "0" : amount) \(selectedToken?.symbol ?? "")")
+            summaryRow("Mode", value: transferMode.label)
+            summaryRow("Estimated fee", value: "Sponsored")
             Divider().background(V3Colors.border)
             summaryRow("Total",
-                       value: parsedAmountUSD.map { String(format: "$%.2f", $0 + 1.42) } ?? "—",
+                       value: "\(amount.isEmpty ? "0" : amount) \(selectedToken?.symbol ?? "")",
                        emphasised: true)
         }
         .v3Card()
@@ -153,6 +203,36 @@ struct SendViewV3: View {
             Text(value)
                 .font(V3Fonts.bodyMedium(15))
                 .foregroundColor(V3Colors.textPrimary)
+        }
+    }
+
+    private func performSend() {
+        guard canSubmit, let token = selectedToken else { return }
+        let symbol = token.symbol
+        guard let tokenAddr = store.tokenAddresses[symbol] ?? token.contractAddress else {
+            store.showToast("Token address not found for \(symbol)", type: .error)
+            return
+        }
+        sending = true
+        Task {
+            UIApplication.shared.isIdleTimerDisabled = true
+            defer {
+                sending = false
+                UIApplication.shared.isIdleTimerDisabled = false
+            }
+            do {
+                _ = try await pxeBridge.transfer(
+                    to: recipient,
+                    amount: amount,
+                    tokenAddress: tokenAddr,
+                    transferType: transferMode.rawValue
+                )
+                store.showToast("Transfer sent", type: .success)
+                await store.fetchBalances()
+                await MainActor.run { dismiss() }
+            } catch {
+                store.showToast("Send failed: \(error.localizedDescription)", type: .error)
+            }
         }
     }
 }
