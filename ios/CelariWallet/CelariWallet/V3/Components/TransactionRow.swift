@@ -11,8 +11,23 @@ struct TransactionRow: View {
     let direction: Direction
     let amount: String           // "0.5 ETH"
     let counterparty: String     // truncated address or contact name
-    let timestamp: Date
+    let timestamp: Date?         // when the activity has a real Date; pass nil if only a preformatted label is available
+    let timeLabel: String?       // pre-formatted time string (Activity model stores this)
     let valueUSD: Double?
+
+    init(direction: Direction,
+         amount: String,
+         counterparty: String,
+         timestamp: Date? = nil,
+         timeLabel: String? = nil,
+         valueUSD: Double? = nil) {
+        self.direction = direction
+        self.amount = amount
+        self.counterparty = counterparty
+        self.timestamp = timestamp
+        self.timeLabel = timeLabel
+        self.valueUSD = valueUSD
+    }
 
     private var symbol: String {
         direction == .sent ? "arrow.up.right" : "arrow.down.left"
@@ -69,8 +84,12 @@ struct TransactionRow: View {
                     Text(v)
                         .font(V3Fonts.caption(12))
                         .foregroundColor(V3Colors.textSecondary)
-                } else {
-                    Text(Self.timeFmt.localizedString(for: timestamp, relativeTo: Date()))
+                } else if let label = timeLabel {
+                    Text(label)
+                        .font(V3Fonts.caption(12))
+                        .foregroundColor(V3Colors.textMuted)
+                } else if let ts = timestamp {
+                    Text(Self.timeFmt.localizedString(for: ts, relativeTo: Date()))
                         .font(V3Fonts.caption(12))
                         .foregroundColor(V3Colors.textMuted)
                 }
@@ -92,8 +111,7 @@ struct TransactionRow: View {
         TransactionRow(
             direction: .received, amount: "0.215 BTC",
             counterparty: "alex.celari",
-            timestamp: Date().addingTimeInterval(-86400),
-            valueUSD: nil
+            timeLabel: "2h ago"
         )
     }
     .padding(.horizontal, 12)
