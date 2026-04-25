@@ -1,10 +1,16 @@
 /* ─── Celari Wallet — V3 gold-on-dark (matches iOS V3) ─── */
 
-/* Self-hosted fonts — Inter Variable */
+/* Self-hosted fonts — Inter Variable + Outfit Light (wordmark) */
 @font-face {
   font-family: 'Inter';
   src: url('../fonts/inter-variable.ttf') format('truetype');
   font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Outfit';
+  src: url('../fonts/Outfit-Light.ttf') format('truetype');
+  font-weight: 300;
   font-display: swap;
 }
 
@@ -127,9 +133,13 @@ body {
   justify-content: space-between;
   padding: 14px 16px 10px;
   border-bottom: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(10, 10, 11, 0.85);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+}
+
+[data-theme="light"] .header {
+  background: rgba(247, 246, 241, 0.85);
 }
 
 .header-logo {
@@ -138,14 +148,20 @@ body {
   gap: 10px;
 }
 
+.header-logo img {
+  height: 22px;
+  width: auto;
+  display: block;
+}
+
 .header-logo svg {
   width: 22px;
   height: 24px;
 }
 
 .header-logo span {
-  font-family: 'Inter', sans-serif;
-  font-weight: 500;
+  font-family: 'Outfit', system-ui, sans-serif;
+  font-weight: 300;
   font-size: 14px;
   letter-spacing: 6px;
   text-transform: uppercase;
@@ -212,19 +228,19 @@ body {
 
 .balance-label {
   font-family: 'Inter', system-ui, sans-serif;
-  font-size: 8px;
-  color: rgba(255, 255, 255, 0.5);
+  font-size: 9px;
+  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 3px;
+  letter-spacing: 2px;
   margin-bottom: 4px;
 }
 
 .balance-amount {
   font-family: 'Inter', sans-serif;
-  font-weight: 500;
-  font-size: 34px;
-  letter-spacing: 2px;
-  color: #FFFFFF;
+  font-weight: 600;
+  font-size: 32px;
+  letter-spacing: 0.5px;
+  color: var(--text-warm);
   position: relative;
 }
 
@@ -238,21 +254,21 @@ body {
 .balance-address code {
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 9px;
-  letter-spacing: 1px;
-  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.5px;
+  color: var(--text-body);
 }
 
 .balance-address .copy-btn {
   background: none;
   border: none;
-  color: var(--aztec-green);
+  color: var(--gold-primary);
   cursor: pointer;
   font-size: 12px;
   padding: 2px;
   transition: color 0.2s;
 }
 
-.balance-address .copy-btn:hover { color: #E4FF55; }
+.balance-address .copy-btn:hover { color: var(--gold-glow); }
 
 .privacy-badge {
   position: absolute;
@@ -272,51 +288,57 @@ body {
 }
 
 /* ─── Action Buttons (Art Deco diamond style) ─── */
+/* ─── Quick Actions row (V3 reference: gold-bordered circles) ─── */
 .actions {
   display: flex;
-  gap: 10px;
-  padding: 0 16px;
-  margin-bottom: 14px;
+  gap: 8px;
+  padding: 4px 16px 18px 16px;
+  margin-bottom: 4px;
+  justify-content: space-between;
 }
 
 .action-btn {
-  flex: 1;
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  padding: 14px 8px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  padding: 0;
+  background: transparent;
+  border: none;
   color: var(--text-warm);
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: transform 0.15s ease;
   font-family: 'Inter', system-ui, sans-serif;
-  font-size: 8px;
-  font-weight: 600;
-  letter-spacing: 3px;
-  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
-.action-btn:hover {
-  border-color: var(--copper);
-  background: var(--bg-elevated);
-  box-shadow: 0 2px 8px rgba(244, 130, 37, 0.12);
-}
+.action-btn:hover { transform: translateY(-1px); }
+.action-btn:active { transform: scale(0.96); }
 
 .action-btn .icon {
-  width: 32px; height: 32px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border);
-  transform: rotate(45deg);
-  color: var(--copper);
+  border: 1.5px solid var(--gold-primary);
+  border-radius: 50%;
+  background: var(--bg-card);
+  color: var(--gold-primary);
+  transform: none;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 
-.action-btn .icon svg { transform: rotate(-45deg); }
+.action-btn .icon svg { transform: none; }
 
-.action-btn:hover .icon { border-color: var(--copper); }
+.action-btn:hover .icon {
+  background: var(--bg-elevated);
+  box-shadow: 0 0 16px rgba(212, 168, 83, 0.18);
+}
 
 /* ─── Tab Navigation ─── */
 .tabs {

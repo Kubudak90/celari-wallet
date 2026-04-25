@@ -86,7 +86,46 @@ const store = {
   wsDiscovery: null,
   wsSignId: null,
   wsSignRequest: null,
+  // V3 theme preference: "system" | "dark" | "light" — persisted in chrome.storage.local
+  themePref: "system",
 };
+
+// ─── V3 Theme handling ────────────────────────────────
+
+function applyTheme(pref) {
+  const html = document.documentElement;
+  if (pref === "dark") {
+    html.removeAttribute("data-theme"); // dark is default in popup.css :root
+  } else if (pref === "light") {
+    html.setAttribute("data-theme", "light");
+  } else {
+    // "system" — follow prefers-color-scheme
+    const prefersLight =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: light)").matches;
+    if (prefersLight) html.setAttribute("data-theme", "light");
+    else html.removeAttribute("data-theme");
+  }
+}
+
+async function setTheme(pref) {
+  store.themePref = pref;
+  applyTheme(pref);
+  try {
+    await chrome.storage.local.set({ celari_theme: pref });
+  } catch (e) {}
+  render();
+}
+
+// Watch system appearance changes when on "system" preference
+if (typeof window !== "undefined" && window.matchMedia) {
+  window
+    .matchMedia("(prefers-color-scheme: light)")
+    .addEventListener("change", () => {
+      if (store.themePref === "system") applyTheme("system");
+    });
+}
 
 function setState(updates) {
   Object.assign(store, updates);
@@ -138,6 +177,16 @@ function getEmptyActivities() {
 // ─── Initialize ───────────────────────────────────────
 
 async function init() {
+  // Apply theme preference before rendering to avoid a flash.
+  try {
+    const themeData = await chrome.storage.local.get("celari_theme");
+    const pref = themeData?.celari_theme || "system";
+    store.themePref = pref;
+    applyTheme(pref);
+  } catch (e) {
+    applyTheme("system");
+  }
+
   // Check if opened for dApp transaction confirmation
   const urlParams = new URLSearchParams(window.location.search);
   const confirmId = urlParams.get("confirm");
@@ -415,9 +464,11 @@ async function handleFaucet() {
 
 // ─── SVG Icons ────────────────────────────────────────
 
-const LOGO_SVG = `<img src="icons/icon-48.png" width="24" height="24" style="border-radius:22%" alt="Celari"/>`;
+const LOGO_SVG = `<img src="icons/logo-mark.svg" width="24" height="24" alt="Celari"/>`;
 
-const LOGO_LARGE = `<img src="icons/icon-128.png" width="70" height="70" style="border-radius:22%" alt="Celari"/>`;
+const LOGO_LARGE = `<img src="icons/logo-mark.svg" width="70" height="70" alt="Celari"/>`;
+
+const LOGO_LOCKUP = `<img src="icons/logo-lockup.svg" height="22" alt="Celari" style="display:block"/>`;
 
 const icons = {
   send: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold-primary)" stroke-width="1.5"><path d="M12 5l0 14M5 12l7-7 7 7"/></svg>`,
@@ -1856,6 +1907,13 @@ function renderSettings() {
         </div>
       </div>
 
+      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Appearance</div>
+      <div style="background:var(--bg-card);border:1px solid var(--border);margin-bottom:16px;display:flex;border-radius:var(--radius-md);overflow:hidden">
+        ${["system","dark","light"].map(p => `
+          <button data-theme-pref="${p}" style="flex:1;padding:10px 8px;background:${store.themePref===p ? 'linear-gradient(180deg,var(--gold-glow),var(--gold-soft))' : 'transparent'};color:${store.themePref===p ? 'var(--bg)' : 'var(--text-muted)'};border:none;cursor:pointer;font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;font-weight:${store.themePref===p ? '600' : '400'};transition:all 0.15s">${p}</button>
+        `).join("")}
+      </div>
+
       <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Network</div>
       <div style="background:var(--bg-card);border:1px solid var(--border);margin-bottom:16px;overflow:hidden">
         ${renderNetworkRow("local", "Local Sandbox", "localhost:8080")}
@@ -2035,6 +2093,14 @@ function bindSettings() {
     });
   });
 
+  // Theme preference picker (V3 Appearance)
+  document.querySelectorAll("[data-theme-pref]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const pref = btn.getAttribute("data-theme-pref");
+      if (pref) setTheme(pref);
+    });
+  });
+
   // Toggle add-rpc form
   document.getElementById("btn-toggle-add-rpc")?.addEventListener("click", () => {
     const form = document.getElementById("add-rpc-form");
@@ -2144,10 +2210,7 @@ function bindSettings() {
 function renderHeader() {
   return `
     <div class="header">
-      <div class="header-logo">
-        ${LOGO_SVG}
-        <span>Celari</span>
-      </div>
+      <div class="header-logo" style="display:flex;align-items:center">${LOGO_LOCKUP}</div>
       <div style="display:flex;align-items:center;gap:8px">
         <div class="header-network" id="btn-network-toggle">
           <div class="network-dot ${store.connected ? '' : 'disconnected'}"></div>
