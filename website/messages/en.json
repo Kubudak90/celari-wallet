@@ -17,6 +17,13 @@
   "hero": {
     "title": "CELARI",
     "subtitle": "Privacy is not a feature. It's architecture.",
+    "headlineLine1": "Your crypto.",
+    "headlineLine2": "Your privacy.",
+    "headlineLine3": "Always.",
+    "tagline": "Celari Wallet is a privacy-first, non-custodial wallet built for the new internet.",
+    "downloadIos": "Download for iOS",
+    "downloadAndroid": "Download for Android",
+    "privacyBadge": "Privacy by design. Built on zero-knowledge principles.",
     "tags": {
       "seedPhrases": "Zero Seed Phrases",
       "metadata": "Zero Metadata",

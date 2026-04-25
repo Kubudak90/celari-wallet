@@ -17,6 +17,13 @@
   "hero": {
     "title": "CELARI",
     "subtitle": "Gizlilik bir özellik değil. Mimaridir.",
+    "headlineLine1": "Kriptonuz.",
+    "headlineLine2": "Gizliliğiniz.",
+    "headlineLine3": "Her zaman.",
+    "tagline": "Celari Wallet, yeni internet için inşa edilmiş, gizlilik-öncelikli ve self-custody bir cüzdandır.",
+    "downloadIos": "iOS için İndir",
+    "downloadAndroid": "Android için İndir",
+    "privacyBadge": "Tasarımda gizlilik. Sıfır bilgi prensipleri üzerine kurulu.",
     "tags": {
       "seedPhrases": "Seed Phrase Yok",
       "metadata": "Metadata Yok",

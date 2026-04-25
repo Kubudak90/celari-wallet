@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Celari">
+  <path fill="#141416"
+        d="M 781 243
+           A 380 380 0 1 0 781 781
+           L 696 696
+           A 260 260 0 1 1 696 328
+           Z"/>
+  <g transform="translate(720 512) rotate(-22)">
+    <path fill="#141416"
+          d="M -130 0 Q 0 -52 130 0 Q 0 52 -130 0 Z"/>
+  </g>
+</svg>
