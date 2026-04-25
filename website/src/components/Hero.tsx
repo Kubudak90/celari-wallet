@@ -36,7 +36,7 @@ export default function Hero() {
             {t("tagline")}
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-3 mb-8">
+          <div className="flex flex-col sm:flex-row gap-3 mb-8 flex-wrap">
             <a
               href="#download"
               className="inline-flex items-center justify-center gap-2 font-body font-medium text-[15px] text-bg bg-gradient-to-b from-burgundy-light to-burgundy px-7 py-3.5 rounded-xl hover:opacity-90 transition-opacity shadow-[0_0_24px_rgba(212,168,83,0.18)]"
@@ -54,6 +54,18 @@ export default function Hero() {
                 <path d="M3 20.5v-17c0-.59.34-1.11.84-1.35L13.69 12 3.84 21.85c-.5-.25-.84-.76-.84-1.35zM16.81 15.12L6.05 21.34l8.49-8.49 2.27 2.27zM20.16 10.81c.34.27.54.69.54 1.19s-.2.91-.54 1.18l-2.41 1.39-2.51-2.51 2.51-2.51 2.41 1.41v.85zM6.05 2.66l10.76 6.22-2.27 2.27-8.49-8.49z" />
               </svg>
               {t("downloadAndroid")}
+            </a>
+            <a
+              href="#download"
+              className="inline-flex items-center justify-center gap-2 font-body font-medium text-[15px] text-burgundy border border-burgundy/60 px-7 py-3.5 rounded-xl hover:bg-burgundy/[0.06] transition-colors"
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden>
+                <circle cx="12" cy="12" r="9" />
+                <circle cx="12" cy="12" r="3" fill="var(--color-bg)" />
+                <path d="M12 3 L20 7.5 L12 12 Z" />
+                <path d="M3.5 7.5 L12 12 L7.5 19.5 Z" />
+              </svg>
+              {t("chromeExtension")}
             </a>
           </div>
 
