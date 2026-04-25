@@ -57,6 +57,7 @@
 		7FEEA1405DF7BCD65816E577 /* TokenListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44E5EE7D5B98EB2EEFE3F34C /* TokenListView.swift */; };
 		8BC4D30C9F92F9AA7F78ED0A /* AccountSelectorV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9BF01A8E4E2F5FDA0CC63DB /* AccountSelectorV2.swift */; };
 		8BF9F486D6FBDFB2CA36166C /* SendView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8547681D32D98869036A7C4 /* SendView.swift */; };
+		8C11F38406498D6B9D66B5C7 /* offscreen.js in Resources */ = {isa = PBXBuildFile; fileRef = 6F706ACEF49E33ED0EE7D922 /* offscreen.js */; };
 		8DD792B0750FA582ECE266DD /* AddAccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06BF18DF2C8CDE17C2A5A58F /* AddAccountView.swift */; };
 		8E0D67AA5755B7FF1D577885 /* Outfit-Light.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 2148D10FEC1D314C710698B3 /* Outfit-Light.ttf */; };
 		8EA150ED9DB0856A711B0257 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66EA9ECC8A13674820AA2138 /* NotificationManager.swift */; };
@@ -79,6 +80,7 @@
 		A7DCF9A596209143B63BBE67 /* AccountSelectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9A02C9A7D1EB0F7F138FF62 /* AccountSelectorView.swift */; };
 		ADFDCC5C7B6A6A5C18293821 /* ReceiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CA468F66730A808DBC4D41C /* ReceiveView.swift */; };
 		AEE9FE1D716BAAEFC87186DE /* OnboardingViewV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88784F92044A09214A63F361 /* OnboardingViewV2.swift */; };
+		B047F655FAE43E02C740A91F /* offscreen.js.gz in Resources */ = {isa = PBXBuildFile; fileRef = C9148D6C734D5513F0A3ADFB /* offscreen.js.gz */; };
 		B092C4FD26097093B575A7D4 /* RootViewV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04B220C54CC30A404B795CF3 /* RootViewV2.swift */; };
 		B3BC07E6FD5A9B77E7BF4CA8 /* BackupViewV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94D727A70FB5ADE92C391D79 /* BackupViewV2.swift */; };
 		B5E6E885D64EDEFADE51E2BB /* PXENativeProver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 874081DAAE5E388572933296 /* PXENativeProver.swift */; };
@@ -195,6 +197,7 @@
 		62F8879152F0EFAE6E717295 /* noirc_abi_wasm_bg.wasm */ = {isa = PBXFileReference; path = noirc_abi_wasm_bg.wasm; sourceTree = "<group>"; };
 		66EA9ECC8A13674820AA2138 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		6D8B6592C9F20321409CB45B /* Tokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tokens.swift; sourceTree = "<group>"; };
+		6F706ACEF49E33ED0EE7D922 /* offscreen.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = offscreen.js; sourceTree = "<group>"; };
 		742BC9A31737916149703E46 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		7835AE78C2D0A99B82A61A0C /* RestoreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreView.swift; sourceTree = "<group>"; };
 		7BA625C017C6FC46CB0B0C51 /* AddNftContractView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddNftContractView.swift; sourceTree = "<group>"; };
@@ -233,6 +236,7 @@
 		BF6C29C20C338FFEA7D20585 /* WalletStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletStore.swift; sourceTree = "<group>"; };
 		C10921F1CFC56BD4355FCE76 /* ActivityListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityListView.swift; sourceTree = "<group>"; };
 		C1CBA9C764D311F85FA09C9C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		C9148D6C734D5513F0A3ADFB /* offscreen.js.gz */ = {isa = PBXFileReference; lastKnownFileType = archive.gzip; path = offscreen.js.gz; sourceTree = "<group>"; };
 		C97F64009C6B45AE0199C1C4 /* test_circuit.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = test_circuit.json; sourceTree = "<group>"; };
 		CC45D382801E1523A1D24372 /* buffer-polyfill.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "buffer-polyfill.js"; sourceTree = "<group>"; };
 		D4FF242E882D42654BEF6186 /* NftDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NftDetailView.swift; sourceTree = "<group>"; };
@@ -408,6 +412,8 @@
 				F72F558BDDE1AA2E6F1D7084 /* acvm_js_bg.wasm */,
 				CC45D382801E1523A1D24372 /* buffer-polyfill.js */,
 				62F8879152F0EFAE6E717295 /* noirc_abi_wasm_bg.wasm */,
+				6F706ACEF49E33ED0EE7D922 /* offscreen.js */,
+				C9148D6C734D5513F0A3ADFB /* offscreen.js.gz */,
 				EC1E195A46FCEA880E968FE4 /* pxe-bridge-shim.js */,
 				F7065F5128DC1B0829AA4587 /* pxe-bridge.html */,
 				C97F64009C6B45AE0199C1C4 /* test_circuit.json */,
@@ -679,6 +685,8 @@
 				A3E4F987F4D5CBC6169FA96D /* acvm_js_bg.wasm in Resources */,
 				A05FF2B47D9473500DA5985A /* buffer-polyfill.js in Resources */,
 				E82BEF0725CC078F9951E1D7 /* noirc_abi_wasm_bg.wasm in Resources */,
+				8C11F38406498D6B9D66B5C7 /* offscreen.js in Resources */,
+				B047F655FAE43E02C740A91F /* offscreen.js.gz in Resources */,
 				5F010F5D3FE91B99EACA3215 /* pxe-bridge-shim.js in Resources */,
 				5E627A9AE0DD6C1DE4840010 /* pxe-bridge.html in Resources */,
 				4381D19614DBF1A2D4627CC5 /* test_circuit.json in Resources */,
