@@ -54,4 +54,13 @@ await renderIcon({
   outPath: resolve(OUT_DIR, "app-icon-light-1024.png"),
 });
 
-console.log("render-masters: wrote app-icon-dark-1024.png + app-icon-light-1024.png");
+// iOS 18 tinted variant: single-tone white mark on opaque black.
+// iOS extracts luminance and blends with the user's accent color.
+// Background must NOT be transparent (system applies its own gradient).
+await renderIcon({
+  markPath: resolve(ROOT, "branding/exports/logo-mark-mono-light.svg"),
+  bg: { r: 0, g: 0, b: 0, alpha: 1 },
+  outPath: resolve(OUT_DIR, "app-icon-tinted-1024.png"),
+});
+
+console.log("render-masters: wrote app-icon-{dark,light,tinted}-1024.png");
