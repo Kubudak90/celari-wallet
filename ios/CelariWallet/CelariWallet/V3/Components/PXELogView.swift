@@ -1,3 +1,8 @@
+// V3/Components/PXELogView.swift
+//
+// Replaces V2 PXELogViewV2. Same scrollable log feed with timestamp,
+// level icon, message — V3 chrome.
+
 import SwiftUI
 
 struct PXELogView: View {
@@ -5,49 +10,42 @@ struct PXELogView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
             HStack {
-                Text("PXE LOG")
-                    .font(CelariTypography.monoTiny)
-                    .tracking(2)
-                    .foregroundColor(CelariColors.copper)
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(V3Colors.statusUp)
+                        .frame(width: 6, height: 6)
+                    Text("PXE LOG")
+                        .font(V3Fonts.caption(10))
+                        .tracking(1.5)
+                        .foregroundColor(V3Colors.textSecondary)
+                }
                 Spacer()
                 Text("\(store.pxeLogs.count)")
-                    .font(CelariTypography.monoTiny)
-                    .foregroundColor(CelariColors.textDim)
-                Button {
-                    store.clearPXELogs()
-                } label: {
+                    .font(V3Fonts.mono(10))
+                    .foregroundColor(V3Colors.textSecondary)
+                Button { store.clearPXELogs() } label: {
                     Image(systemName: "trash")
-                        .font(.system(size: 10))
-                        .foregroundColor(CelariColors.textDim)
+                        .font(.system(size: 11))
+                        .foregroundColor(V3Colors.textSecondary)
                 }
                 .padding(.leading, 8)
-                Button {
-                    store.showLogs = false
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10))
-                        .foregroundColor(CelariColors.textDim)
-                }
-                .padding(.leading, 4)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(CelariColors.bg.opacity(0.95))
+            .padding(.vertical, 10)
+            .background(V3Colors.bgElevated)
             .overlay(alignment: .bottom) {
-                Rectangle().fill(CelariColors.border).frame(height: 0.5)
+                Rectangle().fill(V3Colors.border).frame(height: 0.5)
             }
 
-            // Log entries
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
+                    LazyVStack(alignment: .leading, spacing: 1) {
                         ForEach(store.pxeLogs) { entry in
                             HStack(alignment: .top, spacing: 4) {
                                 Text(entry.timeString)
                                     .font(.system(size: 9, weight: .regular, design: .monospaced))
-                                    .foregroundColor(CelariColors.textDim.opacity(0.5))
+                                    .foregroundColor(V3Colors.textMuted)
                                 Text(entry.levelIcon)
                                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                                     .foregroundColor(colorForLevel(entry.level))
@@ -55,8 +53,10 @@ struct PXELogView: View {
                                     .font(.system(size: 9, weight: .regular, design: .monospaced))
                                     .foregroundColor(colorForLevel(entry.level))
                                     .lineLimit(3)
+                                    .textSelection(.enabled)
                             }
                             .padding(.horizontal, 8)
+                            .padding(.vertical, 1)
                             .id(entry.id)
                         }
                     }
@@ -71,16 +71,14 @@ struct PXELogView: View {
                 }
             }
         }
-        .frame(maxHeight: 260)
-        .background(CelariColors.bg.opacity(0.98))
-        .overlay(Rectangle().stroke(CelariColors.border, lineWidth: 0.5))
+        .background(V3Colors.bgElevated)
     }
 
     private func colorForLevel(_ level: String) -> Color {
         switch level {
-        case "error": return .red
-        case "warn": return CelariColors.copper
-        default: return CelariColors.textBody
+        case "error": return V3Colors.statusDown
+        case "warn":  return V3Colors.goldPrimary
+        default:      return V3Colors.textSecondary
         }
     }
 

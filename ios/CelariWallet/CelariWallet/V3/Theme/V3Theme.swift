@@ -118,9 +118,37 @@ struct CelariCardModifier: ViewModifier {
     }
 }
 
+// MARK: - Color hex initializer
+//
+// Consumed by AssetRow / token icon backgrounds where Token.color is a hex
+// string ("FF7700" / "627EEA" etc). Inline here so V3 has no V2/V1 deps.
+extension Color {
+    init(hex2: String) {
+        let hex = hex2.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 6:
+            (a, r, g, b) = (255, (int >> 16) & 0xFF, (int >> 8) & 0xFF, int & 0xFF)
+        case 8:
+            (a, r, g, b) = ((int >> 24) & 0xFF, (int >> 16) & 0xFF, (int >> 8) & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (255, 0, 0, 0)
+        }
+        self.init(
+            .sRGB,
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue: Double(b) / 255,
+            opacity: Double(a) / 255
+        )
+    }
+}
+
 extension View {
     /// V3 card chrome (rounded panel + hairline border on V3Colors.bgElevated).
-    /// Named `v3Card` to avoid colliding with the V1 `celariCard()` extension.
+    /// Named `v3Card` to avoid colliding with prior `celariCard()` extensions.
     func v3Card() -> some View { modifier(CelariCardModifier()) }
 
     /// Subtle gold glow for featured CTAs and the logo.

@@ -270,9 +270,8 @@ struct HomeViewV3: View {
     }
 }
 
-/// Sheet wrapper around the existing PXELogViewV2 so V3 surfaces logs without
-/// duplicating the log-viewer implementation. Phase C consolidates this into
-/// a V3-styled component.
+/// Sheet wrapper around PXELogView so V3 surfaces logs without nested
+/// chrome inside the component itself.
 private struct PXELogsSheet: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -292,7 +291,7 @@ private struct PXELogsSheet: View {
 
             Divider().background(V3Colors.border)
 
-            PXELogViewV2()
+            PXELogView()
                 .background(V3Colors.bgBase)
         }
         .background(V3Colors.bgBase)
