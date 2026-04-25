@@ -471,6 +471,9 @@ ios/CelariWallet/CelariWallet/
 ## Implementation Status
 
 - [x] **Brand System Foundation** (plan: `2026-04-24-brand-system-foundation.md`, branch: `feat/rebrand-foundation`) — tokens pipeline, hand-coded logo SVGs, asset generator scripts. Pencil master deferred: Pencil MCP was unreachable during implementation, so logo and icon masters were authored directly as SVG. A `.pen` document can be reconstructed later by importing the committed SVGs if/when Pencil becomes available.
-- [ ] iOS Rebrand — plan to be written.
+- [ ] **iOS Rebrand**
+  - [x] Phase A — V3 Foundation (plan: `2026-04-24-ios-v3-foundation.md`, branch: `feat/ios-v3-foundation`) — brand-new `V3/` UI layer with gold-on-dark theme, Outfit + Inter bundled and registered (UIAppFonts in project.yml so xcodegen preserves it), 5-tab shell (Home / Assets / Activity / Discover / Settings) backed by `RootViewV3` + `TabBarV3`, Appearance picker in `SettingsViewV3`, new gold AppIcon, `LogoMark` + `LogoLockup` vector imagesets with dark/light appearance entries. Tab contents are `ComingSoonPlaceholder` stubs; non-dashboard states (loading / onboarding / backup / restore / recovery) still route to V2 views for now. **Build note:** V3 source files compile cleanly. The full app build hits pre-existing compile errors in `Core/PXEBridge.swift:16` and `Core/WalletStore.swift:341` (`'lazy' cannot be used on a computed property` under Xcode 26 + `@Observable`). These are unrelated to V3 and exist on `main` HEAD; the user's main working tree has uncommitted fixes for them. Phase B can either land those Core fixes or fold them into Plan 3.
+  - [ ] Phase B — V3 Screens (plan to be written) — rebuild `HomeViewV3` / `SendViewV3` / `ReceiveViewV3` / `AssetsViewV3` / `ActivityViewV3` / `SettingsViewV3` / `OnboardingViewV3` matching reference mockups; replace placeholder tabs.
+  - [ ] Phase C — V1 + V2 cleanup (plan to be written) — delete orphan view trees once V3 is feature-complete.
 - [ ] Website Rebrand — plan to be written.
 - [ ] Extension Rebrand — plan to be written.
