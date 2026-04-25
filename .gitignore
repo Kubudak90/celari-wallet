@@ -75,3 +75,6 @@ Thumbs.db
 # Local Swoirenberg.xcframework (built / extracted, not tracked)
 fork/output/
 fork/build/
+
+# Vercel CLI metadata (per-developer)
+website/.vercel/
