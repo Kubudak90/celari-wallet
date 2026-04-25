@@ -23,15 +23,15 @@ struct RootViewV3: View {
                 case .onboarding:
                     OnboardingViewV3()
                 case .restore:
-                    RestoreViewV2()
+                    RestoreViewV3()
                 case .recoverAccount:
-                    RecoverAccountViewV2()
+                    RecoverAccountViewV3()
                 case .guardianSetup:
-                    GuardianSetupViewV2()
+                    GuardianSetupViewV3()
                 case .backup:
-                    BackupViewV2()
+                    BackupViewV3()
                 case .addAccount:
-                    AddAccountViewV2()
+                    AddAccountViewV3()
                 case .confirmTx:
                     ConfirmTxView()
                 case .walletConnect:
