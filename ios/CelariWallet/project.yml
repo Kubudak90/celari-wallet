@@ -51,6 +51,12 @@ targets:
           - CFBundleURLSchemes:
               - celari
             CFBundleURLName: com.celari.wallet
+        UIAppFonts:
+          - Outfit-Light.ttf
+          - Outfit-Thin.ttf
+          - Inter-Regular.ttf
+          - Inter-Medium.ttf
+          - Inter-SemiBold.ttf
 
   CelariWalletTests:
     type: bundle.unit-test
