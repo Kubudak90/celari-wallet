@@ -88,7 +88,104 @@ const store = {
   wsSignRequest: null,
   // V3 theme preference: "system" | "dark" | "light" — persisted in chrome.storage.local
   themePref: "system",
+  // Lock state — UI-level; protects against shoulder-surfing while the
+  // popup is open. Always lock on (re)open when at least one passkey
+  // account exists. Manual unlock via passkey assertion.
+  locked: false,
+  unlockError: null,
+  unlocking: false,
 };
+
+// Auto-lock idle window — popup re-opens almost always trigger a fresh
+// init() that locks regardless, so this matters only while the popup
+// stays open for a long time.
+const LOCK_IDLE_MS = 5 * 60 * 1000;
+let lockIdleTimer = null;
+let lastInteractionAt = Date.now();
+
+function bumpInteraction() {
+  lastInteractionAt = Date.now();
+}
+
+function startLockIdleTimer() {
+  stopLockIdleTimer();
+  lockIdleTimer = setInterval(() => {
+    if (store.locked) return;
+    if (!store.accounts.length) return;
+    if (!hasPasskeyAccount()) return;
+    if (Date.now() - lastInteractionAt >= LOCK_IDLE_MS) {
+      lockExtension({ reason: "idle" });
+    }
+  }, 30 * 1000);
+}
+
+function stopLockIdleTimer() {
+  if (lockIdleTimer) {
+    clearInterval(lockIdleTimer);
+    lockIdleTimer = null;
+  }
+}
+
+function hasPasskeyAccount() {
+  return Array.isArray(store.accounts) && store.accounts.some(a => a?.type === "passkey");
+}
+
+function lockExtension({ reason } = {}) {
+  store.locked = true;
+  store.unlockError = null;
+  store.unlocking = false;
+  // Clear any potentially sensitive scratch state from memory
+  if (store.sendForm) store.sendForm = { to: "", amount: "", token: "zkUSD" };
+  setState({ screen: "locked" });
+  if (reason === "idle") {
+    showToast?.("Locked due to inactivity", "info");
+  }
+}
+
+async function unlockExtension() {
+  const account = getActiveAccount();
+  if (!account) {
+    // No account → nothing to unlock; route to onboarding
+    store.locked = false;
+    setState({ screen: "onboarding" });
+    return;
+  }
+  if (account.type !== "passkey" || !account.credentialId) {
+    // Demo / non-passkey accounts: just unlock without biometric
+    store.locked = false;
+    bumpInteraction();
+    setState({ screen: "dashboard" });
+    return;
+  }
+
+  store.unlocking = true;
+  store.unlockError = null;
+  render();
+  try {
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const assertion = await navigator.credentials.get({
+      publicKey: {
+        challenge,
+        rpId: location.hostname,
+        allowCredentials: [
+          { type: "public-key", id: base64UrlToBytes(account.credentialId) },
+        ],
+        userVerification: "required",
+        timeout: 60_000,
+      },
+    });
+    if (!assertion) throw new Error("Passkey verification cancelled");
+    store.locked = false;
+    store.unlockError = null;
+    store.unlocking = false;
+    bumpInteraction();
+    setState({ screen: "dashboard" });
+  } catch (err) {
+    store.unlockError = err?.message || "Unlock failed";
+    store.unlocking = false;
+    render();
+  }
+}
 
 // ─── V3 Theme handling ────────────────────────────────
 
@@ -132,6 +229,11 @@ function setState(updates) {
   // Clear sync polling when leaving dashboard
   if (updates.screen && updates.screen !== "dashboard") {
     clearSyncInterval();
+  }
+  // Reset idle timer on every navigation; locked-screen transitions
+  // shouldn't bump (otherwise idle-lock would self-defeat).
+  if (updates.screen && updates.screen !== "locked") {
+    bumpInteraction();
   }
   render();
 }
@@ -297,7 +399,20 @@ async function init() {
     }
   } catch (e) {}
 
-  store.screen = store.accounts.length > 0 ? "dashboard" : "onboarding";
+  // Default-locked when a passkey account exists. Demo-only accounts
+  // (no passkey) skip the lock since they have nothing to protect.
+  if (store.accounts.length > 0) {
+    if (hasPasskeyAccount()) {
+      store.locked = true;
+      store.screen = "locked";
+    } else {
+      store.locked = false;
+      store.screen = "dashboard";
+    }
+  } else {
+    store.locked = false;
+    store.screen = "onboarding";
+  }
 
   if (store.accounts.length > 0) {
     if (isDemo()) {
@@ -310,6 +425,8 @@ async function init() {
     }
   }
 
+  bumpInteraction();
+  startLockIdleTimer();
   render();
 }
 
@@ -487,7 +604,26 @@ const icons = {
 
 function render() {
   const root = document.getElementById("root");
+  // Hard guard: anywhere except the safe pre-unlock screens, force-lock
+  // back to the lock screen if locked is true. Catches bugs where some
+  // flow tries setState({ screen: "dashboard" }) without unlocking.
+  if (
+    store.locked &&
+    store.screen !== "locked" &&
+    store.screen !== "loading" &&
+    store.screen !== "onboarding" &&
+    store.screen !== "confirm-tx" &&
+    store.screen !== "ws-approve" &&
+    store.screen !== "ws-sign"
+  ) {
+    store.screen = "locked";
+  }
   switch (store.screen) {
+    case "locked":
+      root.replaceChildren();
+      root.insertAdjacentHTML("beforeend", renderLocked());
+      bindLocked();
+      break;
     case "loading":
       root.innerHTML = renderLoading();
       break;
@@ -574,6 +710,65 @@ function renderLoading() {
       <div class="spinner" style="width:32px;height:32px;border-width:3px;margin-bottom:12px"></div>
       <p style="color:var(--text-dim);font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:3px">LOADING</p>
     </div>`;
+}
+
+// ─── Screen: Locked ───────────────────────────────────
+
+function renderLocked() {
+  const account = getActiveAccount();
+  const isPasskey = account?.type === "passkey";
+  const idLabel = account
+    ? `${account.address.slice(0, 8)}…${account.address.slice(-6)}`
+    : "";
+  const errorBlock = store.unlockError
+    ? `<div style="margin-top:14px;padding:10px 12px;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.25);color:var(--red);font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:0.5px;border-radius:var(--radius-md);max-width:280px;text-align:left">${escapeHtml(store.unlockError)}</div>`
+    : "";
+
+  return `
+    <div class="onboarding" style="padding:48px 24px 32px;display:flex;flex-direction:column;align-items:center;text-align:center">
+      <div style="margin-bottom:20px">
+        <img src="icons/logo-lockup.svg" alt="Celari" style="height:40px;display:block"/>
+      </div>
+
+      <div style="margin:8px 0 6px;font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:2.5px;color:var(--text-muted);text-transform:uppercase">Locked</div>
+      <h2 style="font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:18px;color:var(--text-warm);margin:4px 0 6px">Unlock with passkey</h2>
+      <p style="font-family:Inter,system-ui,sans-serif;font-size:12px;color:var(--text-body);max-width:260px;line-height:1.5;margin:0 0 20px">
+        ${isPasskey
+          ? "Use Face ID, Touch ID, or your device passkey to continue."
+          : "Tap unlock to continue."}
+      </p>
+
+      ${idLabel
+        ? `<div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:0.5px;color:var(--text-dim);margin-bottom:24px">${escapeHtml(idLabel)}</div>`
+        : ""}
+
+      <button id="btn-unlock" ${store.unlocking ? "disabled" : ""} style="
+        display:inline-flex;align-items:center;justify-content:center;gap:8px;
+        min-width:240px;padding:14px 18px;
+        background:linear-gradient(180deg, var(--gold-glow), var(--gold-soft));
+        border:none;border-radius:var(--radius-lg);
+        color:var(--bg);
+        font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:14px;letter-spacing:0.5px;
+        cursor:${store.unlocking ? "default" : "pointer"};
+        opacity:${store.unlocking ? "0.7" : "1"};
+        box-shadow:0 0 24px rgba(212,168,83,0.18);
+        transition:transform 0.15s ease, box-shadow 0.15s ease;
+      ">
+        ${store.unlocking
+          ? `<span class="spinner" style="width:14px;height:14px;border-width:2px;border-color:var(--bg) transparent var(--bg) var(--bg)"></span> Verifying…`
+          : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Unlock with passkey`}
+      </button>
+
+      ${errorBlock}
+    </div>`;
+}
+
+function bindLocked() {
+  document.getElementById("btn-unlock")?.addEventListener("click", () => {
+    if (store.unlocking) return;
+    bumpInteraction();
+    unlockExtension();
+  });
 }
 
 // ─── Screen: Onboarding ───────────────────────────────
@@ -1969,6 +2164,17 @@ function renderSettings() {
         </div>
       </div>
 
+      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Security</div>
+      <div style="background:var(--bg-card);border:1px solid var(--border);margin-bottom:16px;overflow:hidden">
+        <div id="btn-lock-now" class="settings-row" style="padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer">
+          <span style="color:var(--gold-primary)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
+          <div style="flex:1">
+            <div style="font-weight:400;font-size:12px;color:var(--text-warm)">Lock now</div>
+            <div style="font-size:10px;color:var(--text-dim)">Require passkey to reopen the wallet</div>
+          </div>
+        </div>
+      </div>
+
       <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Backup & Recovery</div>
       <div style="background:var(--bg-card);border:1px solid var(--border);margin-bottom:16px;overflow:hidden">
         <div id="btn-backup-export" class="settings-row" style="padding:12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);cursor:pointer">
@@ -2185,6 +2391,9 @@ function bindSettings() {
   });
 
   // Backup & Recovery
+  document.getElementById("btn-lock-now")?.addEventListener("click", () => {
+    lockExtension();
+  });
   document.getElementById("btn-backup-export")?.addEventListener("click", () => setState({ screen: "backup" }));
   document.getElementById("btn-backup-import")?.addEventListener("click", () => setState({ screen: "restore" }));
 
