@@ -34,7 +34,7 @@ const NETWORKS = {
   },
 };
 
-// ─── Wallet-SDK v4.1.3: Inline ECDH Crypto (pure WebCrypto, no imports) ──
+// ─── Wallet-SDK v4.2.0: Inline ECDH Crypto (pure WebCrypto, no imports) ──
 // Mirrors @aztec/wallet-sdk/dest/crypto.js exactly.
 
 const _WS_P256_SZ = 32;
@@ -133,7 +133,7 @@ async function _wsDecrypt(key, payload) {
   return JSON.parse(new TextDecoder().decode(decrypted));
 }
 
-// ─── Wallet-SDK v4.1.3: Session State ──────────────────────────────────
+// ─── Wallet-SDK v4.2.0: Session State ──────────────────────────────────
 const CELARI_WALLET_ID_WS = "celari-wallet";
 const _WS_BG = "background";
 const _WS_CS = "content-script";
@@ -510,7 +510,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
-  // Wallet-SDK v4.1.3 internal protocol (content script → background)
+  // Wallet-SDK v4.2.0 internal protocol (content script → background)
   if (message?.origin === _WS_CS) {
     _wsHandleProtocolMessage(message, sender).catch(e => console.warn("[WalletSDK]", e.message));
     return false; // fire-and-forget, no sendResponse needed
@@ -528,7 +528,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     // Nethermind Fee Juice faucet auto-claim: content.js intercepts the
     // faucet's /api/drip or /api/claim response and forwards claimData here.
-    // Wallet-SDK v4.1.3: popup approval flow for dApp discovery
+    // Wallet-SDK v4.2.0: popup approval flow for dApp discovery
     case "WS_GET_PENDING_DISCOVERY": {
       const d = _wsPendingDiscoveries.get(message.requestId);
       if (d) {
@@ -572,7 +572,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       break;
     }
 
-    // Wallet-SDK v4.1.3: popup approval flow for sendTx / createAuthWit
+    // Wallet-SDK v4.2.0: popup approval flow for sendTx / createAuthWit
     case "WS_GET_PENDING_SIGN": {
       const req = _wsPendingSignRequests.get(message.requestId);
       if (!req) { sendResponse({ success: false, error: "No pending sign request" }); break; }

@@ -52,7 +52,7 @@ try {
   script.onload = () => script.remove();
 } catch {}
 
-// ─── Wallet-SDK v4.1.3 Protocol: Discovery + Encrypted Channel ─────
+// ─── Wallet-SDK v4.2.0 Protocol: Discovery + Encrypted Channel ─────
 // Implements ContentScriptConnectionHandler behavior.
 // Acts as a pure relay between the page (MessageChannel) and background.
 // The background owns all session state and crypto.

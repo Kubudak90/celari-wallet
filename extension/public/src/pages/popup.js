@@ -80,7 +80,7 @@ const store = {
   wcProposal: null,
   // Fee Juice claim (pasted from bridge.human.tech or any L1→L2 bridge)
   pendingClaim: null,
-  // Wallet-SDK v4.1.3 approval popup state (each only set when this popup
+  // Wallet-SDK v4.2.0 approval popup state (each only set when this popup
   // window was launched specifically for approval — e.g. popup.html?wsapprove=X)
   wsApproveId: null,
   wsDiscovery: null,
@@ -330,7 +330,7 @@ async function init() {
     return;
   }
 
-  // Wallet-SDK v4.1.3 connection approval popup (popup.html?wsapprove=<id>)
+  // Wallet-SDK v4.2.0 connection approval popup (popup.html?wsapprove=<id>)
   const wsApproveId = urlParams.get("wsapprove");
   if (wsApproveId) {
     store.wsApproveId = wsApproveId;
@@ -347,7 +347,7 @@ async function init() {
     return;
   }
 
-  // Wallet-SDK v4.1.3 transaction signing popup (popup.html?wssign=<id>)
+  // Wallet-SDK v4.2.0 transaction signing popup (popup.html?wssign=<id>)
   const wsSignId = urlParams.get("wssign");
   if (wsSignId) {
     store.wsSignId = wsSignId;
@@ -2660,7 +2660,7 @@ function bindConfirmTx() {
   });
 }
 
-// ─── Screens: Wallet-SDK v4.1.3 Approval Popups ─────
+// ─── Screens: Wallet-SDK v4.2.0 Approval Popups ─────
 
 function renderWsApprove() {
   const d = store.wsDiscovery || {};
