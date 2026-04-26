@@ -25,6 +25,7 @@ const outdir = resolve(__dirname, "dist");
 // Ensure output directory exists
 mkdirSync(outdir, { recursive: true });
 mkdirSync(resolve(outdir, "src/pages"), { recursive: true });
+mkdirSync(resolve(outdir, "src/lib"), { recursive: true });
 mkdirSync(resolve(outdir, "styles"), { recursive: true });
 mkdirSync(resolve(outdir, "icons"), { recursive: true });
 mkdirSync(resolve(outdir, "fonts"), { recursive: true });
@@ -247,6 +248,7 @@ try {
   cpSync(resolve(__dirname, "public/popup.html"), resolve(outdir, "popup.html"));
   cpSync(resolve(__dirname, "public/offscreen.html"), resolve(outdir, "offscreen.html"));
   cpSync(resolve(__dirname, "public/styles"), resolve(outdir, "styles"), { recursive: true });
+  cpSync(resolve(__dirname, "public/src/lib"), resolve(outdir, "src/lib"), { recursive: true });
   cpSync(resolve(__dirname, "public/icons"), resolve(outdir, "icons"), { recursive: true });
   if (existsSync(resolve(__dirname, "public/fonts"))) {
     cpSync(resolve(__dirname, "public/fonts"), resolve(outdir, "fonts"), { recursive: true });

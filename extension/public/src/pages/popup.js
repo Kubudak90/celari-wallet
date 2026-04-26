@@ -16,6 +16,8 @@
  * 6. Settings   → Network, account, passkey management
  */
 
+import * as passkeyCrypto from "../lib/passkey-crypto.js";
+
 // ─── Security: HTML Escaping ──────────────────────────
 
 function escapeHtml(str) {
