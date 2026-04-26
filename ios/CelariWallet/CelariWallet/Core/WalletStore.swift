@@ -377,9 +377,14 @@ class WalletStore {
             screen = .onboarding
             #endif
         } else {
-            tokens = Token.defaults
+            // loadFromStorage() already populated tokens from cachedTokens if available.
+            // Only fall back to defaults when the cache was empty — otherwise we'd flash
+            // zero balances over the persisted ones the user saw last time.
+            if tokens.isEmpty {
+                tokens = Token.defaults
+            }
             screen = .dashboard
-            walletLog.notice("[WalletStore] Loaded \(self.accounts.count, privacy: .public) account(s) — showing dashboard")
+            walletLog.notice("[WalletStore] Loaded \(self.accounts.count, privacy: .public) account(s) — showing dashboard with \(self.tokens.count, privacy: .public) cached token(s)")
 
             // Check node connection in background
             Task { await checkConnection() }

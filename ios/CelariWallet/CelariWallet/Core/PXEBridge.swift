@@ -100,7 +100,10 @@ class PXEBridge: NSObject {
             }
 
             window.nativeProver = {
-                available: false, // Decision gate: Week 4 — set to true after Swoirenberg stabilizes
+                // Decision gate: 2026-04-27 (Week 4 of dual-track plan). Set to true
+                // after Swoirenberg crash guards land + benchmark beats WASM on iPhone 13+.
+                // Until then, JS layer falls back to bb.js WASM (acvm_js_bg.wasm in offscreen.js).
+                available: false,
                 callNative: callNative,
                 setupSrs: function(opts) {
                     return callNative('setup_srs', opts || {});

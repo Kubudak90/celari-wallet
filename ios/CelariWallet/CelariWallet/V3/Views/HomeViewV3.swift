@@ -36,6 +36,7 @@ struct HomeViewV3: View {
                     hidden: balanceHidden,
                     onTogglePrivacy: { balanceHidden.toggle() }
                 )
+                pxeStateChip
                 quickActionsRow
                 if needsDeploy { deployBanner }
                 accountsSection
@@ -74,6 +75,69 @@ struct HomeViewV3: View {
             }
             .buttonStyle(.plain)
         }
+    }
+
+    @ViewBuilder
+    private var pxeStateChip: some View {
+        switch store.pxeState {
+        case .ready, .notStarted:
+            // .ready → no chip, balances are live; .notStarted → init flow not entered yet, also silent.
+            EmptyView()
+        case .initializing:
+            pxeChip(text: "Connecting to PXE...", tint: V3Colors.goldSoft, showSpinner: true)
+        case .syncing(let progress):
+            pxeChip(text: progress.isEmpty ? "Syncing..." : "Syncing — \(progress)", tint: V3Colors.goldSoft, showSpinner: true)
+        case .failed(let error):
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(V3Colors.statusDown)
+                Text("PXE failed — tap to retry")
+                    .font(V3Fonts.body(13))
+                    .foregroundColor(V3Colors.textPrimary)
+                Spacer(minLength: 0)
+                Text(error.prefix(60).description)
+                    .font(V3Fonts.body(11))
+                    .foregroundColor(V3Colors.textMuted)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(V3Colors.bgElevated)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(V3Colors.statusDown.opacity(0.4), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                Task { await store.retryPXEInit() }
+            }
+        }
+    }
+
+    private func pxeChip(text: String, tint: Color, showSpinner: Bool) -> some View {
+        HStack(spacing: 8) {
+            if showSpinner {
+                ProgressView()
+                    .scaleEffect(0.6)
+                    .tint(tint)
+                    .frame(width: 12, height: 12)
+            }
+            Text(text)
+                .font(V3Fonts.body(12))
+                .foregroundColor(V3Colors.textSecondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(V3Colors.bgElevated)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(tint.opacity(0.3), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     private var quickActionsRow: some View {
