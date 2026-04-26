@@ -18,6 +18,7 @@
 
 import * as passkeyCrypto from "../lib/passkey-crypto.js";
 import { detectLegacyPlaintext, validateAccountsArray, purgePending } from "../lib/account-schema.js";
+import { remainingCooldownMs, cooldownMinutes } from "../lib/faucet-cooldown.js";
 
 // ─── Security: HTML Escaping ──────────────────────────
 
@@ -733,13 +734,10 @@ async function fetchRealBalances() {
 
 // ─── Faucet Request ──────────────────────────────────
 
-const FAUCET_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
-
 async function getFaucetCooldownMs() {
   try {
     const r = await chrome.runtime.sendMessage({ type: "GET_FAUCET_RATE" });
-    const last = Number(r?.lastFaucetTime) || 0;
-    return Math.max(0, (last + FAUCET_COOLDOWN_MS) - Date.now());
+    return remainingCooldownMs(r?.lastFaucetTime);
   } catch (e) {
     return 0;
   }
@@ -750,8 +748,8 @@ async function getFaucetCooldownMs() {
 // the label decrements as time passes.
 async function refreshFaucetCooldown() {
   const next = await getFaucetCooldownMs();
-  const prevMin = Math.ceil(store.faucetCooldownMs / 60000);
-  const nextMin = Math.ceil(next / 60000);
+  const prevMin = cooldownMinutes(store.faucetCooldownMs);
+  const nextMin = cooldownMinutes(next);
   if (prevMin !== nextMin) {
     store.faucetCooldownMs = next;
     if (store.screen === "dashboard") render();
@@ -780,7 +778,7 @@ async function handleFaucet() {
 
   const remaining = await getFaucetCooldownMs();
   if (remaining > 0) {
-    showToast(`Faucet cooldown: ${Math.ceil(remaining / 60000)} min remaining`, "error");
+    showToast(`Faucet cooldown: ${cooldownMinutes(remaining)} min remaining`, "error");
     return;
   }
 
@@ -1560,7 +1558,7 @@ function renderDashboard() {
         Receive
       </button>
       ${store.network === "testnet" || store.network === "devnet" ? (() => {
-        const cooldownMin = Math.ceil(store.faucetCooldownMs / 60000);
+        const cooldownMin = cooldownMinutes(store.faucetCooldownMs);
         const onCooldown = cooldownMin > 0;
         return `
       <button class="action-btn" id="btn-faucet"${onCooldown ? ' style="opacity:0.5;pointer-events:none;"' : ''} title="${onCooldown ? `Cooldown ${cooldownMin}m` : 'Request testnet tokens'}">
