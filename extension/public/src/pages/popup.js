@@ -136,6 +136,8 @@ function lockExtension({ reason } = {}) {
   store.unlocking = false;
   // Clear any potentially sensitive scratch state from memory
   if (store.sendForm) store.sendForm = { to: "", amount: "", token: "zkUSD" };
+  // Persist so close/reopen remembers the lock
+  try { chrome.storage.local.set({ celari_locked: true }); } catch (e) {}
   setState({ screen: "locked" });
   if (reason === "idle") {
     showToast?.("Locked due to inactivity", "info");
@@ -147,12 +149,14 @@ async function unlockExtension() {
   if (!account) {
     // No account → nothing to unlock; route to onboarding
     store.locked = false;
+    try { chrome.storage.local.set({ celari_locked: false }); } catch (e) {}
     setState({ screen: "onboarding" });
     return;
   }
   if (account.type !== "passkey" || !account.credentialId) {
     // Demo / non-passkey accounts: just unlock without biometric
     store.locked = false;
+    try { chrome.storage.local.set({ celari_locked: false }); } catch (e) {}
     bumpInteraction();
     setState({ screen: "dashboard" });
     return;
@@ -178,6 +182,7 @@ async function unlockExtension() {
     store.locked = false;
     store.unlockError = null;
     store.unlocking = false;
+    try { chrome.storage.local.set({ celari_locked: false }); } catch (e) {}
     bumpInteraction();
     setState({ screen: "dashboard" });
   } catch (err) {
@@ -399,10 +404,17 @@ async function init() {
     }
   } catch (e) {}
 
-  // Default-locked when a passkey account exists. Demo-only accounts
-  // (no passkey) skip the lock since they have nothing to protect.
+  // Default-locked when a passkey account exists, OR when we explicitly
+  // persisted a lock from a prior session. Demo-only accounts (no passkey)
+  // skip the lock since they have nothing to protect.
+  let persistedLock = false;
+  try {
+    const r = await chrome.storage.local.get("celari_locked");
+    persistedLock = r?.celari_locked === true;
+  } catch (e) {}
+
   if (store.accounts.length > 0) {
-    if (hasPasskeyAccount()) {
+    if (hasPasskeyAccount() && (persistedLock || true)) {
       store.locked = true;
       store.screen = "locked";
     } else {
@@ -412,6 +424,7 @@ async function init() {
   } else {
     store.locked = false;
     store.screen = "onboarding";
+    try { chrome.storage.local.set({ celari_locked: false }); } catch (e) {}
   }
 
   if (store.accounts.length > 0) {
