@@ -118,13 +118,21 @@ Encrypted blob (stored in chrome.storage.local)
 
 **Triggered by:** manual "Lock now" button, idle timer expiry (T5), AND popup close (`window.beforeunload`). Always wiping session on close means each popup re-open requires a fresh passkey unlock to populate session — which is already T1's expected behavior, so zero added UX cost.
 
-**Signing operations (`SIGN_TX`, transfers, etc.):**
+**Signing operations — UX policy:**
 
-No code change. Background reads plaintext from `chrome.storage.session`. Plaintext was put there by popup unlock; lock removes it.
+Passkey prompts happen at exactly three places:
 
-**dApp signing popups (`?wssign`, `?confirm`, `?wsapprove`):**
+1. **Popup open / unlock** — required. PRF eval + decrypt; populates session.
+2. **Return from lock** — required. Same PRF flow. (Manual lock, idle timer, or popup close → re-open.)
+3. **Per-transaction passkey** — **opt-in**, controlled by a Settings toggle ("Require passkey for each transaction", default OFF).
 
-These URL-launched popups currently bypass the lock screen for UX (auto-prompted by dApp). With encrypted storage, they have no plaintext to use. Solution: each such popup performs a **silent unlock at entry** — issue `navigator.credentials.get` with PRF before rendering the approval UI. User sees passkey prompt (browser-native), approves, popup decrypts, then renders. Reject → close popup. This is a UX improvement: dApp signing now requires explicit passkey approval per request, not just session-persistent permission.
+**Default behavior (toggle OFF):** After unlock, `chrome.storage.session` holds plaintext until lock. Background-driven `SIGN_TX` and dApp `?wssign`/`?confirm`/`?wsapprove` popups consume that plaintext without re-prompting. One passkey prompt per popup session.
+
+**Hardened behavior (toggle ON):** Each signing operation triggers `navigator.credentials.get()` (no PRF eval — just user-presence assertion) before the popup forwards the request to background. Reject → operation aborts with toast "Passkey required". This adds one prompt per transaction without re-deriving the KEK (KEK already lives in memory while unlocked).
+
+**dApp signing popups (`?wssign`, `?confirm`, `?wsapprove`):** Behave as ordinary signing operations — toggle gates whether they prompt. The URL-launched popup *itself* still skips the lock screen (no UI flicker), but if the user is currently locked, the popup must perform a full PRF unlock before showing the approval UI. So in the locked-extension state, dApp triggers always cost one passkey prompt; in the unlocked state, prompts are governed by the toggle.
+
+**No KEK persistence:** KEK lives in popup memory only between unlock and lock. It is **not** pushed to session storage; only the plaintext secret is. This means per-tx assertion (when toggle is on) is cheap — pure WebAuthn `get`, no PRF round-trip.
 
 ### Migration: none
 
@@ -140,7 +148,7 @@ Add `"minimum_chrome_version": "116"` so Chrome Web Store auto-filters incompati
 2. **PRF capability is required.** Onboarding fails fast on Chrome <116 or browsers without PRF — clear error message, no silent fallback to plaintext.
 3. **Unlock decrypts correctly.** A user can lock the popup, close it, reopen, unlock, and successfully sign a transaction. End-to-end test on testnet.
 4. **Lock wipes session storage.** After lock (manual, idle, or popup close), `chrome.storage.session` contains no `celari_secret` or `celari_private_key`. Background signing requests in this state fail with a structured `WALLET_LOCKED` error code (not a raw exception), which the popup translates to a "Wallet is locked — open Celari to unlock" toast.
-5. **dApp signing requires explicit per-request passkey approval.** Each `?wssign` popup prompts for passkey before showing the sign UI.
+5. **Per-tx passkey toggle behaves correctly.** With the Settings toggle OFF, dApp `?wssign` popups consume cached plaintext without re-prompting. With the toggle ON, the same popups trigger `navigator.credentials.get()` before showing the approval UI; rejection aborts the signing op cleanly.
 6. **Schema validation rejects legacy.** A `celari_accounts` entry with plain `secretKey` triggers the upgrade-cleanup path, not silent acceptance.
 
 ## Out of scope
@@ -159,9 +167,12 @@ Add `"minimum_chrome_version": "116"` so Chrome Web Store auto-filters incompati
 ## File touches (estimate)
 
 - `extension/public/manifest.json` — minimum_chrome_version + (no other change)
-- `extension/public/src/pages/popup.js` — onboarding (PRF setup), unlock (PRF eval + decrypt), lock (wipe), schema validation, init upgrade path
+- `extension/public/src/pages/popup.js` — onboarding (PRF setup), unlock (PRF eval + decrypt), lock (wipe), schema validation, init upgrade path, Settings toggle for per-tx passkey, gating logic in send + dApp approval handlers
 - `extension/public/src/background.js` — no change (reads `chrome.storage.session` as before)
 - `extension/public/src/lib/passkey-crypto.js` — **new** — encapsulates KEK derivation, AES-GCM wrap/unwrap helpers (~150 LOC)
+- `extension/public/styles/popup.css` — Settings toggle row styling (minor)
+
+**New persisted setting:** `chrome.storage.local.celari_require_passkey_per_tx: boolean` — default `false`.
 
 ## Glossary
 
