@@ -252,15 +252,11 @@ function handleLegacyMessage(event) {
   }
 }
 
-// ─── Nethermind Fee Juice Faucet Auto-Claim ─────
-// When the user opens https://aztec-faucet.nethermind.io to request Fee Juice,
-// we patch window.fetch in the page's main world to capture the /api/drip and
-// /api/claim responses. When claimData is available we forward it to the
-// background so the Celari popup's Deploy banner auto-fills the claim payload.
 // ─── Nethermind Fee Juice Faucet — Address auto-fill ─────
-// No inline script injection (faucet's CSP blocks it). The popup now calls
-// the Nethermind API directly, so the fetch-patch is no longer needed. We
-// only auto-fill the address field if the user opened the faucet manually.
+// The popup calls the Nethermind API directly to drip + poll for claim
+// readiness, so this content script only needs to auto-fill the address
+// input when the user opens the faucet page manually. No inline script
+// injection (faucet's CSP blocks it).
 if (location.hostname === "aztec-faucet.nethermind.io") {
   try {
     chrome.storage.local.get("celari_faucet_pending", (result) => {
