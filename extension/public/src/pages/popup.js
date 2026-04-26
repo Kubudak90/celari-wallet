@@ -157,6 +157,13 @@ function lockExtension({ reason } = {}) {
   store.unlocking = false;
   // Clear any potentially sensitive scratch state from memory
   if (store.sendForm) store.sendForm = { to: "", amount: "", token: "zkUSD" };
+  // Wipe plaintext signing material from session so background's signing
+  // path returns WALLET_LOCKED until the next unlock decrypts again.
+  try {
+    chrome.storage.session.remove(["celari_secret", "celari_private_key"]);
+  } catch (e) {
+    console.warn("[Celari popup] session wipe failed:", e?.message || e);
+  }
   // Persist so close/reopen remembers the lock. Surface storage failures —
   // if this write is lost, the popup re-opens unlocked and the user thinks
   // they locked but didn't.
