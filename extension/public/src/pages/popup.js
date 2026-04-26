@@ -147,6 +147,18 @@ if (typeof document !== "undefined") {
   }
 }
 
+// Popup unmount: wipe session and persist lock so the extension is locked
+// from the moment the popup re-opens. Direct storage calls (no DOM mutation)
+// because the popup is unmounting — toast/render won't flush.
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => {
+    try {
+      chrome.storage.session.remove(["celari_secret", "celari_private_key"]);
+      chrome.storage.local.set({ celari_locked: true });
+    } catch (e) {}
+  });
+}
+
 function hasPasskeyAccount() {
   return Array.isArray(store.accounts) && store.accounts.some(a => a?.type === "passkey");
 }
