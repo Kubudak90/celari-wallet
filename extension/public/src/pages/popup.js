@@ -395,22 +395,40 @@ async function init() {
   // and surface the issue so the user knows their wallet wasn't lost — just
   // unreadable in the current shape.
   let storageError = null;
+  let legacyWiped = false;
   try {
     const stored = await chrome.storage.local.get("celari_accounts");
     if (stored.celari_accounts !== undefined) {
       if (!Array.isArray(stored.celari_accounts)) {
         throw new Error("celari_accounts is not an array");
       }
-      for (const a of stored.celari_accounts) {
-        if (!a || typeof a !== "object" || !a.address) {
-          throw new Error("celari_accounts entry missing address");
+      // v0.5 → v0.6 schema bump: any passkey account with plaintext signing
+      // material was written by legacy code. Wipe and re-onboard. Demo
+      // accounts have no secrets so they're unaffected.
+      const hasLegacyPlaintext = stored.celari_accounts.some(
+        a => a?.type === "passkey" && (a.secretKey || a.privateKeyPkcs8),
+      );
+      if (hasLegacyPlaintext) {
+        await chrome.storage.local.remove(["celari_accounts", "celari_locked"]);
+        store.accounts = [];
+        legacyWiped = true;
+      } else {
+        for (const a of stored.celari_accounts) {
+          if (!a || typeof a !== "object" || !a.address) {
+            throw new Error("celari_accounts entry missing address");
+          }
+          if (a.type === "passkey") {
+            if (!a.encryptedSecret || !a.encryptedPrivateKey || !a.prfSalt) {
+              throw new Error("passkey account missing encrypted fields");
+            }
+          }
         }
-      }
-      // Purge any legacy placeholder accounts (address contains "_pending")
-      const clean = stored.celari_accounts.filter(a => !a.address?.includes("_pending"));
-      store.accounts = clean;
-      if (clean.length !== stored.celari_accounts.length) {
-        await chrome.storage.local.set({ celari_accounts: clean });
+        // Purge any legacy placeholder accounts (address contains "_pending")
+        const clean = stored.celari_accounts.filter(a => !a.address?.includes("_pending"));
+        store.accounts = clean;
+        if (clean.length !== stored.celari_accounts.length) {
+          await chrome.storage.local.set({ celari_accounts: clean });
+        }
       }
     }
   } catch (e) {
@@ -508,6 +526,14 @@ async function init() {
       showToast?.(
         `Wallet storage looks corrupted (${storageError}). Re-import via passkey to recover.`,
         "error",
+      );
+    }, 250);
+  }
+  if (legacyWiped) {
+    setTimeout(() => {
+      showToast?.(
+        "Wallet storage upgraded to encrypted format. Please re-add your account.",
+        "success",
       );
     }, 250);
   }
