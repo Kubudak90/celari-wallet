@@ -361,6 +361,12 @@ async function init() {
       store.nodeUrl = response.state.nodeUrl;
       store.nodeInfo = response.state.nodeInfo;
       store.accounts = response.state.accounts || [];
+      if (response.state.offscreenInitError) {
+        // Defer until first render so showToast is wired
+        setTimeout(() => {
+          showToast?.(`Engine load failed: ${response.state.offscreenInitError}. Reload the extension to retry.`, "error");
+        }, 200);
+      }
     }
   } catch (e) {
     console.warn("Background not ready, using defaults");

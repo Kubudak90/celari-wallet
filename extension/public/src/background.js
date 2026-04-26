@@ -338,9 +338,9 @@ async function _wsSendSignError(pending, errorMsg) {
 
 let offscreenReady = false;
 let offscreenListenerReady = false; // True after offscreen JS has loaded and listener is registered
+let offscreenInitError = null;
 
 async function ensureOffscreen() {
-  // Always verify the offscreen document actually exists (Chrome may close it when idle)
   try {
     const contexts = await chrome.runtime.getContexts({
       contextTypes: ["OFFSCREEN_DOCUMENT"],
@@ -348,26 +348,44 @@ async function ensureOffscreen() {
     if (contexts.length > 0) {
       offscreenReady = true;
       if (!offscreenListenerReady) {
-        // Document exists but we haven't confirmed JS loaded — wait briefly
         await waitForOffscreenListener(10000);
       }
-      return;
+      if (offscreenListenerReady) {
+        offscreenInitError = null;
+        return;
+      }
     }
-    // Document doesn't exist — reset flags and recreate
-    offscreenReady = false;
-    offscreenListenerReady = false;
-    await chrome.offscreen.createDocument({
-      url: "offscreen.html",
-      reasons: ["WORKERS"],
-      justification: "Aztec PXE WASM proving engine for zero-knowledge proofs",
-    });
-    offscreenReady = true;
-    console.log("Offscreen document created — waiting for JS to load...");
-    // Wait for offscreen.js to finish loading (73MB+ bundle) and register listener
-    await waitForOffscreenListener(30000);
+    // Document doesn't exist (or stalled) — recreate up to 3x
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      offscreenReady = false;
+      offscreenListenerReady = false;
+      try {
+        // Close any stale doc before recreating
+        const existing = await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] });
+        if (existing.length > 0) {
+          try { await chrome.offscreen.closeDocument(); } catch (e) {}
+        }
+        await chrome.offscreen.createDocument({
+          url: "offscreen.html",
+          reasons: ["WORKERS"],
+          justification: "Aztec PXE WASM proving engine for zero-knowledge proofs",
+        });
+        offscreenReady = true;
+        console.log(`Offscreen attempt ${attempt}: created — waiting for listener...`);
+        await waitForOffscreenListener(45000);
+        if (offscreenListenerReady) {
+          offscreenInitError = null;
+          return;
+        }
+        console.warn(`Offscreen attempt ${attempt}: listener never registered`);
+      } catch (e) {
+        console.error(`Offscreen attempt ${attempt} failed:`, e?.message || e);
+      }
+    }
+    offscreenInitError = "Offscreen engine failed to load after 3 attempts";
   } catch (e) {
+    offscreenInitError = e?.message || "Offscreen creation failed";
     offscreenReady = false;
-    console.error("Offscreen creation failed:", e.message);
   }
 }
 
@@ -575,7 +593,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case "GET_STATE":
-      sendResponse({ success: true, state });
+      sendResponse({
+        success: true,
+        state: { ...state, offscreenInitError },
+      });
       break;
 
     case "GET_NETWORKS": {
