@@ -168,6 +168,33 @@ function hasPasskeyAccount() {
   return Array.isArray(store.accounts) && store.accounts.some(a => a?.type === "passkey");
 }
 
+// When the per-tx toggle is on, prompt the user for a fresh WebAuthn
+// assertion before any signing operation. Presence-only — no PRF eval
+// needed because plaintext is already in chrome.storage.session.
+async function requireSigningPasskey() {
+  if (!store.requirePasskeyPerTx) return true;
+  const account = getActiveAccount();
+  if (account?.type !== "passkey" || !account.credentialId) return true;
+  try {
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const assertion = await navigator.credentials.get({
+      publicKey: {
+        challenge,
+        rpId: location.hostname,
+        allowCredentials: [{
+          type: "public-key",
+          id: passkeyCrypto.base64UrlToBytes(account.credentialId),
+        }],
+        userVerification: "required",
+        timeout: 60_000,
+      },
+    });
+    return !!assertion;
+  } catch (e) {
+    return false;
+  }
+}
+
 function lockExtension({ reason } = {}) {
   store.locked = true;
   store.unlockError = null;
@@ -2090,24 +2117,18 @@ async function handleSendConfirm() {
 
   const btn = document.getElementById("btn-confirm-send");
   btn.disabled = true;
-  btn.textContent = "Verifying passkey...";
 
   const account = getActiveAccount();
 
   try {
-    // Passkey verification (biometric)
-    if (account?.type === "passkey") {
-      const challenge = crypto.getRandomValues(new Uint8Array(32));
-      const assertion = await navigator.credentials.get({
-        publicKey: {
-          challenge,
-          rpId: location.hostname,
-          allowCredentials: [{ type: "public-key", id: base64UrlToBytes(account.credentialId) }],
-          userVerification: "required",
-          timeout: 60000,
-        },
-      });
-      if (!assertion) throw new Error("Passkey verification cancelled");
+    // Per-tx passkey gate (no-op when the Settings toggle is off, which is
+    // the default — one unlock covers the whole popup session).
+    btn.textContent = store.requirePasskeyPerTx ? "Verifying passkey..." : "Sending...";
+    if (!await requireSigningPasskey()) {
+      btn.disabled = false;
+      btn.textContent = "Send";
+      showToast?.("Passkey required to sign", "error");
+      return;
     }
 
     // Find token address from store or custom tokens
@@ -2880,6 +2901,10 @@ function renderConfirmTx() {
 
 function bindConfirmTx() {
   document.getElementById("btnApproveTx")?.addEventListener("click", async () => {
+    if (!await requireSigningPasskey()) {
+      showToast?.("Passkey required to sign", "error");
+      return;
+    }
     try {
       await chrome.runtime.sendMessage({
         type: "SIGN_APPROVE",
@@ -2990,6 +3015,10 @@ function renderWsSign() {
 
 function bindWsSign() {
   document.getElementById("btn-ws-sign-approve")?.addEventListener("click", async () => {
+    if (!await requireSigningPasskey()) {
+      showToast?.("Passkey required to sign", "error");
+      return;
+    }
     try {
       await chrome.runtime.sendMessage({ type: "WS_APPROVE_SIGN", requestId: store.wsSignId });
     } catch (e) {}
