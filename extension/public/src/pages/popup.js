@@ -398,6 +398,32 @@ async function init() {
     store.requirePasskeyPerTx = r?.celari_require_passkey_per_tx === true;
   } catch (e) {}
 
+  // Pre-load accounts so URL-launched popups can detect "wallet locked" before
+  // the schema validation block below runs. This is a lightweight read; the
+  // canonical validation (with corruption detection) still runs later.
+  let preloadedHasPasskey = false;
+  try {
+    const stored = await chrome.storage.local.get("celari_accounts");
+    if (Array.isArray(stored.celari_accounts)) {
+      preloadedHasPasskey = stored.celari_accounts.some(a => a?.type === "passkey");
+    }
+  } catch (e) {}
+
+  // Helper: when a dApp-launched popup arrives at the wallet but session
+  // storage was wiped (locked), route to the lock screen, remember the
+  // intended target, and let unlockExtension() jump back on success.
+  async function _gateLockedApprovalPopup(intendedScreen) {
+    if (!preloadedHasPasskey) return false;
+    const sess = await chrome.storage.session.get("celari_secret");
+    if (!sess.celari_secret) {
+      store.locked = true;
+      store.pendingApprovalScreen = intendedScreen;
+      store.screen = "locked";
+      return true;
+    }
+    return false;
+  }
+
   // Check if opened for dApp transaction confirmation
   const urlParams = new URLSearchParams(window.location.search);
   const confirmId = urlParams.get("confirm");
@@ -408,6 +434,7 @@ async function init() {
       if (res?.success) {
         store.pendingSignRequest = res.request;
         store.screen = "confirm-tx";
+        await _gateLockedApprovalPopup("confirm-tx");
         render();
         return;
       }
@@ -426,6 +453,7 @@ async function init() {
       if (res?.success) {
         store.wsDiscovery = res.discovery;
         store.screen = "ws-approve";
+        await _gateLockedApprovalPopup("ws-approve");
         render();
         return;
       }
@@ -443,6 +471,7 @@ async function init() {
       if (res?.success) {
         store.wsSignRequest = res.request;
         store.screen = "ws-sign";
+        await _gateLockedApprovalPopup("ws-sign");
         render();
         return;
       }
