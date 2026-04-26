@@ -383,9 +383,23 @@ async function init() {
     console.warn("Background not ready, using defaults");
   }
 
+  // Storage corruption detection: previously the celari_accounts read swallowed
+  // every error, so a schema mismatch (renamed field, non-array value) silently
+  // dropped the user back to onboarding with no warning. Validate explicitly
+  // and surface the issue so the user knows their wallet wasn't lost — just
+  // unreadable in the current shape.
+  let storageError = null;
   try {
     const stored = await chrome.storage.local.get("celari_accounts");
-    if (stored.celari_accounts?.length) {
+    if (stored.celari_accounts !== undefined) {
+      if (!Array.isArray(stored.celari_accounts)) {
+        throw new Error("celari_accounts is not an array");
+      }
+      for (const a of stored.celari_accounts) {
+        if (!a || typeof a !== "object" || !a.address) {
+          throw new Error("celari_accounts entry missing address");
+        }
+      }
       // Purge any legacy placeholder accounts (address contains "_pending")
       const clean = stored.celari_accounts.filter(a => !a.address?.includes("_pending"));
       store.accounts = clean;
@@ -393,7 +407,10 @@ async function init() {
         await chrome.storage.local.set({ celari_accounts: clean });
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    storageError = e?.message || "Storage corrupted";
+    console.error("[Celari popup] storage parse failed:", e);
+  }
 
   // Load custom tokens from storage
   try {
@@ -466,6 +483,14 @@ async function init() {
   bumpInteraction();
   startLockIdleTimer();
   render();
+  if (storageError) {
+    setTimeout(() => {
+      showToast?.(
+        `Wallet storage looks corrupted (${storageError}). Re-import via passkey to recover.`,
+        "error",
+      );
+    }, 250);
+  }
 }
 
 // ─── Demo Data ────────────────────────────────────────
