@@ -339,8 +339,9 @@ async function _wsSendSignError(pending, errorMsg) {
 let offscreenReady = false;
 let offscreenListenerReady = false; // True after offscreen JS has loaded and listener is registered
 let offscreenInitError = null;
+let offscreenInitInFlight = null; // Singleton: parallel callers share one init pass
 
-async function ensureOffscreen() {
+async function _ensureOffscreenImpl() {
   try {
     const contexts = await chrome.runtime.getContexts({
       contextTypes: ["OFFSCREEN_DOCUMENT"],
@@ -354,8 +355,10 @@ async function ensureOffscreen() {
         offscreenInitError = null;
         return;
       }
+      // Document exists but listener never registered — fall through to retry,
+      // which will close it before recreating.
     }
-    // Document doesn't exist (or stalled) — recreate up to 3x
+    // Document doesn't exist (or is stalled) — (re)create up to 3x
     for (let attempt = 1; attempt <= 3; attempt++) {
       offscreenReady = false;
       offscreenListenerReady = false;
@@ -363,7 +366,11 @@ async function ensureOffscreen() {
         // Close any stale doc before recreating
         const existing = await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] });
         if (existing.length > 0) {
-          try { await chrome.offscreen.closeDocument(); } catch (e) {}
+          try {
+            await chrome.offscreen.closeDocument();
+          } catch (e) {
+            console.debug("[Celari bg] closeDocument failed (likely already closed):", e?.message || e);
+          }
         }
         await chrome.offscreen.createDocument({
           url: "offscreen.html",
@@ -387,6 +394,16 @@ async function ensureOffscreen() {
     offscreenInitError = e?.message || "Offscreen creation failed";
     offscreenReady = false;
   }
+}
+
+// Public API: deduplicates concurrent callers via a singleton promise so
+// parallel sendToPXE() calls don't race on createDocument/closeDocument.
+function ensureOffscreen() {
+  if (offscreenInitInFlight) return offscreenInitInFlight;
+  offscreenInitInFlight = _ensureOffscreenImpl().finally(() => {
+    offscreenInitInFlight = null;
+  });
+  return offscreenInitInFlight;
 }
 
 function waitForOffscreenListener(timeoutMs) {
