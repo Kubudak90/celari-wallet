@@ -22,6 +22,7 @@ export default {
     "node_modules/(?!(@aztec)/)",
   ],
   testMatch: ["**/test/**/*.test.ts", "**/__tests__/**/*.test.ts"],
+  setupFiles: ["<rootDir>/extension/test/setup.ts"],
   testTimeout: 300_000,
   collectCoverageFrom: [
     "src/**/*.ts",
