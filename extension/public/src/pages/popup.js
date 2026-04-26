@@ -2906,10 +2906,14 @@ function bindConfirmTx() {
       return;
     }
     try {
-      await chrome.runtime.sendMessage({
+      const r = await chrome.runtime.sendMessage({
         type: "SIGN_APPROVE",
         requestId: store.pendingSignRequestId,
       });
+      if (r?.code === "WALLET_LOCKED") {
+        showToast?.("Wallet is locked. Open Celari and unlock to continue.", "error");
+        return;
+      }
     } catch (e) {}
     window.close();
   });
@@ -3020,7 +3024,11 @@ function bindWsSign() {
       return;
     }
     try {
-      await chrome.runtime.sendMessage({ type: "WS_APPROVE_SIGN", requestId: store.wsSignId });
+      const r = await chrome.runtime.sendMessage({ type: "WS_APPROVE_SIGN", requestId: store.wsSignId });
+      if (r?.code === "WALLET_LOCKED") {
+        showToast?.("Wallet is locked — unlock first", "error");
+        return;
+      }
     } catch (e) {}
     window.close();
   });

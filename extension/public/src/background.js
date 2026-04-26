@@ -283,6 +283,26 @@ async function _wsHandleProtocolMessage(message, sender) {
 // Shared helper: forward a decrypted wallet-sdk message to the offscreen PXE,
 // encrypt the response with the session key, and send it back to the dApp tab.
 async function _wsForwardToPxe(decrypted, session, sessionId) {
+  if (await _bgIsLocked()) {
+    const responsePayload = JSON.stringify({
+      messageId: decrypted.messageId,
+      error: "Wallet locked",
+      code: "WALLET_LOCKED",
+      walletId: CELARI_WALLET_ID_WS,
+    });
+    try {
+      const encrypted = await _wsEncrypt(session.encryptionKey, responsePayload);
+      chrome.tabs.sendMessage(session.tabId, {
+        origin: _WS_BG,
+        type: "secure-response",
+        sessionId,
+        content: encrypted,
+      }).catch(() => {});
+    } catch (e) {
+      console.warn("[WalletSDK] locked-response send failed:", e?.message || e);
+    }
+    return;
+  }
   let responsePayload;
   try {
     const pxeResult = await sendToPXE({
@@ -364,6 +384,15 @@ let offscreenReady = false;
 let offscreenListenerReady = false; // True after offscreen JS has loaded and listener is registered
 let offscreenInitError = null;
 let offscreenInitInFlight = null; // Singleton: parallel callers share one init pass
+
+async function _bgIsLocked() {
+  try {
+    const r = await chrome.storage.session.get(["celari_secret"]);
+    return !r?.celari_secret;
+  } catch (e) {
+    return true;
+  }
+}
 
 async function _ensureOffscreenImpl() {
   try {
@@ -592,15 +621,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case "WS_APPROVE_SIGN": {
-      const req = _wsPendingSignRequests.get(message.requestId);
-      if (!req) { sendResponse({ success: false, error: "Not found" }); break; }
-      _wsPendingSignRequests.delete(message.requestId);
-      // Ack the popup immediately, run PXE async in background
-      sendResponse({ success: true });
-      const sessionForForward = { encryptionKey: req.encryptionKey, tabId: req.tabId };
-      _wsForwardToPxe(req.decrypted, sessionForForward, req.sessionId)
-        .catch((e) => console.warn("[WalletSDK] approved sign forward failed:", e?.message || e));
-      break;
+      (async () => {
+        if (await _bgIsLocked()) {
+          sendResponse({ success: false, error: "Wallet is locked", code: "WALLET_LOCKED" });
+          return;
+        }
+        const req = _wsPendingSignRequests.get(message.requestId);
+        if (!req) { sendResponse({ success: false, error: "Not found" }); return; }
+        _wsPendingSignRequests.delete(message.requestId);
+        // Ack the popup immediately, run PXE async in background
+        sendResponse({ success: true });
+        const sessionForForward = { encryptionKey: req.encryptionKey, tabId: req.tabId };
+        _wsForwardToPxe(req.decrypted, sessionForForward, req.sessionId)
+          .catch((e) => console.warn("[WalletSDK] approved sign forward failed:", e?.message || e));
+      })();
+      return true;
     }
 
     case "WS_REJECT_SIGN": {
@@ -955,24 +990,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case "SIGN_APPROVE": {
-      const pending = pendingSignRequests.get(message.requestId);
-      if (pending) {
-        pendingSignRequests.delete(message.requestId);
-        // Forward the approved sign request back to the content script
-        if (pending.tabId) {
-          chrome.tabs.sendMessage(pending.tabId, {
-            target: "content",
-            type: "SIGN_APPROVED",
-            payload: pending.payload,
-          });
+      (async () => {
+        if (await _bgIsLocked()) {
+          sendResponse({ success: false, error: "Wallet is locked", code: "WALLET_LOCKED" });
+          return;
         }
-        pending.sendResponse({ success: true, approved: true });
-        // Also respond to the popup that sent SIGN_APPROVE
-        sendResponse({ success: true });
-      } else {
-        sendResponse({ success: false, error: "Request not found or expired" });
-      }
-      break;
+        const pending = pendingSignRequests.get(message.requestId);
+        if (pending) {
+          pendingSignRequests.delete(message.requestId);
+          // Forward the approved sign request back to the content script
+          if (pending.tabId) {
+            chrome.tabs.sendMessage(pending.tabId, {
+              target: "content",
+              type: "SIGN_APPROVED",
+              payload: pending.payload,
+            });
+          }
+          pending.sendResponse({ success: true, approved: true });
+          // Also respond to the popup that sent SIGN_APPROVE
+          sendResponse({ success: true });
+        } else {
+          sendResponse({ success: false, error: "Request not found or expired" });
+        }
+      })();
+      return true;
     }
 
     case "SIGN_REJECT": {
@@ -988,12 +1029,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     // Wallet-SDK protocol: forward wallet method calls to offscreen PXE
     case "WALLET_METHOD_CALL": {
-      sendToPXE({
-        type: "PXE_WALLET_METHOD",
-        rawMessage: message.rawMessage,
-      })
-        .then((result) => sendResponse(result))
-        .catch((e) => sendResponse({ error: sanitizeRpcError(e) }));
+      (async () => {
+        if (await _bgIsLocked()) {
+          sendResponse({ success: false, error: "Wallet is locked", code: "WALLET_LOCKED" });
+          return;
+        }
+        sendToPXE({
+          type: "PXE_WALLET_METHOD",
+          rawMessage: message.rawMessage,
+        })
+          .then((result) => sendResponse(result))
+          .catch((e) => sendResponse({ error: sanitizeRpcError(e) }));
+      })();
       return true; // async response
     }
 
