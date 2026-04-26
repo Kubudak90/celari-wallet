@@ -126,6 +126,17 @@ function stopLockIdleTimer() {
   }
 }
 
+// Module-load: any user input bumps the interaction clock so the idle lock
+// only fires after true inactivity, not just absence of state transitions.
+// Without this, typing in a form or scrolling a list never resets the timer
+// because those interactions don't go through setState().
+if (typeof document !== "undefined") {
+  const activityEvents = ["pointerdown", "keydown", "wheel", "touchstart", "input"];
+  for (const evt of activityEvents) {
+    document.addEventListener(evt, bumpInteraction, { passive: true, capture: true });
+  }
+}
+
 function hasPasskeyAccount() {
   return Array.isArray(store.accounts) && store.accounts.some(a => a?.type === "passkey");
 }
