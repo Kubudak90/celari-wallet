@@ -3216,6 +3216,9 @@ function bindBackup() {
       // Collect sensitive keys from session storage
       const sessionData = await chrome.storage.session.get(["celari_secret", "celari_private_key"]);
 
+      // Plaintext keys only live in chrome.storage.session while the popup is
+      // unlocked. There is no longer an account.secretKey fallback (encrypted
+      // schema removed it). If the user is locked, the backup must fail loud.
       const backupData = {
         version: 1,
         timestamp: new Date().toISOString(),
@@ -3223,15 +3226,15 @@ function bindBackup() {
         address: account.address,
         publicKeyX: account.publicKeyX,
         publicKeyY: account.publicKeyY,
-        secretKey: sessionData.celari_secret || account.secretKey,
+        secretKey: sessionData.celari_secret,
         salt: account.salt,
-        privateKeyPkcs8: sessionData.celari_private_key || account.privateKeyPkcs8,
+        privateKeyPkcs8: sessionData.celari_private_key,
         network: store.network,
         credentialId: account.credentialId,
       };
 
       if (!backupData.secretKey || !backupData.salt) {
-        throw new Error("Account keys not available. Deploy your account first or ensure you have an active session.");
+        throw new Error("Account keys not available — unlock the wallet and try again.");
       }
 
       showBackupStatus(statusEl, "Encrypting with AES-256-GCM...", false);
@@ -3372,19 +3375,49 @@ async function handleRestoreDecrypt() {
       throw new Error("This account is already imported");
     }
 
-    // Create account entry
+    // Restored secrets must be encrypted at rest before they touch
+    // chrome.storage.local. We use the same PRF flow as fresh onboarding —
+    // requires the device to have access to the original credential. If the
+    // passkey isn't available on this device (e.g. backup taken on a different
+    // browser / not synced), throw a helpful error pointing the user at
+    // guardian recovery, which is the canonical cross-device path.
+    if (!data.credentialId || !data.secretKey || !data.privateKeyPkcs8) {
+      throw new Error("Backup is missing fields required for encrypted restore");
+    }
+
+    const prfSaltBytes = passkeyCrypto.generatePrfSalt();
+    const prfSaltBase64 = passkeyCrypto.saltCodec.toBase64(prfSaltBytes);
+
+    let kek;
+    try {
+      kek = await passkeyCrypto.deriveKek({
+        credentialId: data.credentialId,
+        prfSaltBase64,
+      });
+    } catch (e) {
+      throw new Error(
+        "Cannot encrypt restored wallet on this device — passkey unavailable. "
+        + "Use guardian recovery instead."
+      );
+    }
+
+    const encryptedSecret = await passkeyCrypto.encryptWithKek(kek, data.secretKey);
+    const encryptedPrivateKey = await passkeyCrypto.encryptWithKek(kek, data.privateKeyPkcs8);
+
+    // Create account entry — encrypted shape matches onboarding output
     const accountNum = store.accounts.length + 1;
     const account = {
       address: data.address,
-      credentialId: data.credentialId || "",
+      credentialId: data.credentialId,
       publicKeyX: data.publicKeyX,
       publicKeyY: data.publicKeyY,
       type: "passkey",
       label: data.label || `Restored ${accountNum}`,
       deployed: true,
       salt: data.salt,
-      secretKey: data.secretKey,
-      privateKeyPkcs8: data.privateKeyPkcs8,
+      prfSalt: prfSaltBase64,
+      encryptedSecret,
+      encryptedPrivateKey,
       createdAt: data.timestamp || new Date().toISOString(),
     };
 
