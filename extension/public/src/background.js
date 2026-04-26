@@ -297,7 +297,7 @@ async function _wsForwardToPxe(decrypted, session, sessionId) {
   } catch (e) {
     responsePayload = JSON.stringify({
       messageId: decrypted.messageId,
-      error: e.message,
+      error: sanitizeRpcError(e),
       walletId: CELARI_WALLET_ID_WS,
     });
   }
@@ -332,6 +332,20 @@ async function _wsSendSignError(pending, errorMsg) {
   } catch (e) {
     console.warn("[WalletSDK] sign error send failed:", e?.message || e);
   }
+}
+
+// --- RPC Error Sanitizer ---------------------------------------------
+
+function sanitizeRpcError(err) {
+  const msg = err?.message || String(err || "");
+  // Strip URLs, IPs, file paths, and common RPC node-version banners
+  let clean = msg
+    .replace(/https?:\/\/[^\s)]+/g, "<url>")
+    .replace(/\b\d{1,3}(\.\d{1,3}){3}\b/g, "<ip>")
+    .replace(/\/[A-Za-z0-9_\-./]+\.(js|ts|wasm|json)/g, "<file>")
+    .replace(/aztec[_-]?node[_-]?version[: ]+[^\s,)]+/gi, "<node>");
+  if (clean.length > 240) clean = clean.slice(0, 240) + "…";
+  return clean;
 }
 
 // --- Offscreen Document (PXE WASM Engine) ----------------------------
@@ -852,7 +866,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       verifyAccount(addr).then((result) => {
         sendResponse({ success: true, ...result });
       }).catch((e) => {
-        sendResponse({ success: false, error: e.message });
+        sendResponse({ success: false, error: sanitizeRpcError(e) });
       });
       return true;
     }
@@ -861,7 +875,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       getBlockNumber().then((blockNumber) => {
         sendResponse({ success: true, blockNumber });
       }).catch((e) => {
-        sendResponse({ success: false, error: e.message });
+        sendResponse({ success: false, error: sanitizeRpcError(e) });
       });
       return true;
     }
@@ -869,7 +883,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case "FAUCET_REQUEST": {
       sendToPXE({ type: "PXE_FAUCET", data: { address: message.address } })
         .then((result) => sendResponse({ success: true, ...result }))
-        .catch((e) => sendResponse({ success: false, error: e.message }));
+        .catch((e) => sendResponse({ success: false, error: sanitizeRpcError(e) }));
       return true;
     }
 
@@ -981,14 +995,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         rawMessage: message.rawMessage,
       })
         .then((result) => sendResponse(result))
-        .catch((e) => sendResponse({ error: e.message }));
+        .catch((e) => sendResponse({ error: sanitizeRpcError(e) }));
       return true; // async response
     }
 
     case "GET_WITHDRAW_PROOF": {
       handleGetWithdrawProof(message.payload.l2TxHash).then(
         (result) => sendResponse(result),
-        (err) => sendResponse({ success: false, error: err.message })
+        (err) => sendResponse({ success: false, error: sanitizeRpcError(err) })
       );
       return true;
     }
@@ -1037,12 +1051,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               }
               sendResponse({ success: true, ...result });
             })
-            .catch((e) => sendResponse({ success: false, error: e.message }));
+            .catch((e) => sendResponse({ success: false, error: sanitizeRpcError(e) }));
           return true;
         }
         sendToPXE(message)
           .then((result) => sendResponse({ success: true, ...result }))
-          .catch((e) => sendResponse({ success: false, error: e.message }));
+          .catch((e) => sendResponse({ success: false, error: sanitizeRpcError(e) }));
         return true; // async response
       }
       sendResponse({ success: false, error: "Unknown message type" });
