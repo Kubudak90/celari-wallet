@@ -1080,15 +1080,31 @@ async function handleCreatePasskey() {
         },
         timeout: 60000,
         attestation: "none",
+        extensions: { prf: { eval: { first: passkeyCrypto.generatePrfSalt() } } },
       },
     };
 
     const credential = await navigator.credentials.create(createOptions);
     if (!credential) throw new Error("Passkey creation cancelled");
 
+    // Storage salt for all future PRF evals on this account
+    const prfSaltBytes = passkeyCrypto.generatePrfSalt();
+    const prfSaltBase64 = passkeyCrypto.saltCodec.toBase64(prfSaltBytes);
+
     // 2. Wait for the offscreen PXE engine to be ready (this is what takes the longest)
     btn.textContent = "Starting PXE engine...";
     await waitForPxeReady((text) => { btn.textContent = text; });
+
+    btn.textContent = "Securing wallet with passkey...";
+    let kek;
+    try {
+      kek = await passkeyCrypto.deriveKek({
+        credentialId: credential.id,
+        prfSaltBase64,
+      });
+    } catch (e) {
+      throw new Error(`Passkey encryption setup failed: ${e?.message || e}`);
+    }
 
     // 3. Generate the on-chain signing keypair inside offscreen
     btn.textContent = "Generating signing key...";
@@ -1117,6 +1133,9 @@ async function handleCreatePasskey() {
 
     // 5. Save the account with the REAL pre-computed address.
     //    `deployed: false` — deploy happens later via the Deploy banner, reusing these keys.
+    const encryptedSecret = await passkeyCrypto.encryptWithKek(kek, computed.secretKey);
+    const encryptedPrivateKey = await passkeyCrypto.encryptWithKek(kek, keys.privateKeyPkcs8);
+
     const accountNum = store.accounts.length + 1;
     const account = {
       address: computed.address,
@@ -1128,6 +1147,10 @@ async function handleCreatePasskey() {
       label: accountNum === 1 ? "Main Wallet" : `Wallet ${accountNum}`,
       deployed: false,
       createdAt: new Date().toISOString(),
+      // Encrypted at rest — see spec 2026-04-25-passkey-encryption-design.md
+      prfSalt: prfSaltBase64,
+      encryptedSecret,
+      encryptedPrivateKey,
     };
 
     store.accounts.push(account);
