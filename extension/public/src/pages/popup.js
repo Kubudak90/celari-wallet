@@ -2559,16 +2559,34 @@ function renderSimpleQR(data) {
 
 // ─── Toast Notifications ──────────────────────────────
 
-function showToast(message, type = "success") {
-  const existing = document.querySelector(".toast");
-  if (existing) existing.remove();
+const TOAST_DEFAULT_MS = 3500;
+const TOAST_MAX_VISIBLE = 3;
 
+function _ensureToastStack() {
+  let stack = document.querySelector(".toast-stack");
+  if (stack) return stack;
+  stack = document.createElement("div");
+  stack.className = "toast-stack";
+  document.body.appendChild(stack);
+  return stack;
+}
+
+function showToast(message, type = "success", durationMs = TOAST_DEFAULT_MS) {
+  const stack = _ensureToastStack();
+  // Drop oldest if we exceed the cap so the stack never stretches off-screen
+  while (stack.children.length >= TOAST_MAX_VISIBLE) {
+    stack.firstElementChild?.remove();
+  }
   const toast = document.createElement("div");
   toast.className = `toast ${type}`;
   toast.textContent = message; // textContent prevents XSS
-  document.body.appendChild(toast);
-
-  setTimeout(() => toast.remove(), 3000);
+  stack.appendChild(toast);
+  // Trigger CSS transition on next frame
+  requestAnimationFrame(() => toast.classList.add("show"));
+  setTimeout(() => {
+    toast.classList.remove("show");
+    setTimeout(() => toast.remove(), 220);
+  }, durationMs);
 }
 
 // ─── Helpers ──────────────────────────────────────────
