@@ -476,6 +476,16 @@ let state = {
 // --- Message Handler -------------------------------------------------
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Defense in depth: reject any message that doesn't originate from our own
+  // extension's content scripts / popup / offscreen. externally_connectable is
+  // also locked to [] in the manifest, so external pages can't reach this
+  // listener at all — this guard catches anything unexpected that slips
+  // through (e.g. a malicious extension bridging via tab.sendMessage).
+  if (sender.id && sender.id !== chrome.runtime.id) {
+    sendResponse({ success: false, error: "Unauthorized sender" });
+    return false;
+  }
+
   // Wallet-SDK v4.1.3 internal protocol (content script → background)
   if (message?.origin === _WS_CS) {
     _wsHandleProtocolMessage(message, sender).catch(e => console.warn("[WalletSDK]", e.message));
@@ -484,12 +494,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Skip messages tagged for offscreen document (prevents routing loop)
   if (message._target === "offscreen") return false;
-
-  // Only accept messages from our own extension
-  if (sender.id !== chrome.runtime.id) {
-    sendResponse({ success: false, error: "Unauthorized sender" });
-    return;
-  }
 
   switch (message.type) {
     case "OFFSCREEN_READY":

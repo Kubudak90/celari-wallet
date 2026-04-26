@@ -26,6 +26,9 @@
     "service_worker": "src/background.js",
     "type": "module"
   },
+  "externally_connectable": {
+    "matches": []
+  },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
