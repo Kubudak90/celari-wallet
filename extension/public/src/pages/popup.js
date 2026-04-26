@@ -88,6 +88,10 @@ const store = {
   wsDiscovery: null,
   wsSignId: null,
   wsSignRequest: null,
+  // When a dApp-launched popup (?wssign / ?confirm / ?wsapprove) finds the
+  // wallet locked, we record the original target screen here, route to the
+  // lock screen, and on successful unlock jump back to this screen.
+  pendingApprovalScreen: null,
   // V3 theme preference: "system" | "dark" | "light" — persisted in chrome.storage.local
   themePref: "system",
   // Lock state — UI-level; protects against shoulder-surfing while the
@@ -184,32 +188,52 @@ async function unlockExtension() {
     setState({ screen: "dashboard" });
     return;
   }
+  if (!account.encryptedSecret || !account.encryptedPrivateKey || !account.prfSalt) {
+    // Account exists but has no encryption material — likely a partially
+    // migrated record. User must re-onboard; we don't fall back to plaintext.
+    store.unlockError = "This account is missing encrypted material. Re-onboard.";
+    render();
+    return;
+  }
 
   store.unlocking = true;
   store.unlockError = null;
   render();
   try {
-    const challenge = crypto.getRandomValues(new Uint8Array(32));
-    const assertion = await navigator.credentials.get({
-      publicKey: {
-        challenge,
-        rpId: location.hostname,
-        allowCredentials: [
-          { type: "public-key", id: base64UrlToBytes(account.credentialId) },
-        ],
-        userVerification: "required",
-        timeout: 60_000,
-      },
+    // Derive KEK via PRF eval (one WebAuthn prompt) and decrypt both blobs.
+    const kek = await passkeyCrypto.deriveKek({
+      credentialId: account.credentialId,
+      prfSaltBase64: account.prfSalt,
     });
-    if (!assertion) throw new Error("Passkey verification cancelled");
+    const secretKey = await passkeyCrypto.decryptWithKek(kek, account.encryptedSecret);
+    const privateKeyPkcs8 = await passkeyCrypto.decryptWithKek(kek, account.encryptedPrivateKey);
+    // Push plaintext to chrome.storage.session so background's existing read
+    // path is preserved. Lock will wipe this.
+    await chrome.storage.session.set({
+      celari_secret: secretKey,
+      celari_private_key: privateKeyPkcs8,
+    });
     store.locked = false;
     store.unlockError = null;
     store.unlocking = false;
     try { chrome.storage.local.set({ celari_locked: false }); } catch (e) {}
     bumpInteraction();
-    setState({ screen: "dashboard" });
+    // If a dApp-launched popup queued an approval target before unlock, jump
+    // back to it; otherwise land on the dashboard.
+    const target = store.pendingApprovalScreen;
+    if (target) {
+      store.pendingApprovalScreen = null;
+      setState({ screen: target });
+    } else {
+      setState({ screen: "dashboard" });
+    }
   } catch (err) {
-    store.unlockError = err?.message || "Unlock failed";
+    const msg = err?.message || "";
+    store.unlockError = msg.includes("PRF unavailable")
+      ? "Browser does not support encrypted unlock. Update Chrome to 116+."
+      : msg.toLowerCase().includes("cancel")
+      ? "Unlock cancelled."
+      : "Unlock failed. Try again.";
     store.unlocking = false;
     render();
   }
