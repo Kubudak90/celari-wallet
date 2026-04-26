@@ -9,6 +9,8 @@
  * - dApp communication (via content script)
  */
 
+import { sanitizeRpcError } from "./lib/sanitize.js";
+
 // --- Network Presets -------------------------------------------------
 
 const NETWORKS = {
@@ -352,30 +354,6 @@ async function _wsSendSignError(pending, errorMsg) {
   } catch (e) {
     console.warn("[WalletSDK] sign error send failed:", e?.message || e);
   }
-}
-
-// --- RPC Error Sanitizer ---------------------------------------------
-
-function sanitizeRpcError(err) {
-  // Coerce to string defensively — non-string err.message (object, array)
-  // would otherwise crash the regex chain or silently leak via toString.
-  let msg;
-  if (err && typeof err.message === "string") msg = err.message;
-  else if (typeof err === "string") msg = err;
-  else if (err == null) msg = "";
-  else { try { msg = JSON.stringify(err); } catch { msg = String(err); } }
-  // If a stack was attached, drop everything from "    at " onward —
-  // stacks contain raw extension paths.
-  const stackIdx = msg.indexOf("\n    at ");
-  if (stackIdx > -1) msg = msg.slice(0, stackIdx);
-  // Strip URLs, IPs, file paths, and common RPC node-version banners
-  let clean = msg
-    .replace(/https?:\/\/[^\s)]+/g, "<url>")
-    .replace(/\b\d{1,3}(\.\d{1,3}){3}\b/g, "<ip>")
-    .replace(/\/[A-Za-z0-9_\-./]+\.(js|ts|wasm|json)/g, "<file>")
-    .replace(/aztec[_-]?node[_-]?version[: ]+[^\s,)]+/gi, "<node>");
-  if (clean.length > 240) clean = clean.slice(0, 240) + "...";
-  return clean;
 }
 
 // --- Offscreen Document (PXE WASM Engine) ----------------------------
