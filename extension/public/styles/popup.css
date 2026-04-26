@@ -731,6 +731,44 @@ body {
 
 .back-btn:hover { color: var(--copper); }
 
+/* ─── Settings Toggle ─── */
+.celari-toggle {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.celari-toggle input { opacity: 0; width: 0; height: 0; }
+.celari-toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: var(--bg-elevated, #141416);
+  border: 1px solid var(--border-subtle, #26262A);
+  border-radius: 12px;
+  transition: background 200ms, border-color 200ms;
+}
+.celari-toggle-slider::before {
+  content: "";
+  position: absolute;
+  height: 14px;
+  width: 14px;
+  left: 2px;
+  top: 2px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: transform 200ms, background 200ms;
+}
+.celari-toggle input:checked + .celari-toggle-slider {
+  background: var(--gold-primary);
+  border-color: var(--gold-primary);
+}
+.celari-toggle input:checked + .celari-toggle-slider::before {
+  transform: translateX(16px);
+  background: #0A0A0B;
+}
+
 /* ─── Status Toast Stack — max 3 visible, auto-dismiss after 3.5s ─── */
 .toast-stack {
   position: fixed;

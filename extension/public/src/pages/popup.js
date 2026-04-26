@@ -94,6 +94,11 @@ const store = {
   pendingApprovalScreen: null,
   // V3 theme preference: "system" | "dark" | "light" — persisted in chrome.storage.local
   themePref: "system",
+  // When true, every signing op (Send / dApp approval) triggers a fresh
+  // navigator.credentials.get() before the request is forwarded to background.
+  // Off by default — one passkey unlock covers the whole popup session.
+  // Persisted in chrome.storage.local.celari_require_passkey_per_tx.
+  requirePasskeyPerTx: false,
   // Lock state — UI-level; protects against shoulder-surfing while the
   // popup is open. Always lock on (re)open when at least one passkey
   // account exists. Manual unlock via passkey assertion.
@@ -359,6 +364,12 @@ async function init() {
   } catch (e) {
     applyTheme("system");
   }
+
+  // Per-tx passkey requirement — opt-in security setting.
+  try {
+    const r = await chrome.storage.local.get("celari_require_passkey_per_tx");
+    store.requirePasskeyPerTx = r?.celari_require_passkey_per_tx === true;
+  } catch (e) {}
 
   // Check if opened for dApp transaction confirmation
   const urlParams = new URLSearchParams(window.location.search);
@@ -2440,12 +2451,23 @@ function renderSettings() {
 
       <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Security</div>
       <div style="background:var(--bg-card);border:1px solid var(--border);margin-bottom:16px;overflow:hidden">
-        <div id="btn-lock-now" class="settings-row" style="padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer">
+        <div id="btn-lock-now" class="settings-row" style="padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer;border-bottom:1px solid var(--border)">
           <span style="color:var(--gold-primary)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
           <div style="flex:1">
             <div style="font-weight:400;font-size:12px;color:var(--text-warm)">Lock now</div>
             <div style="font-size:10px;color:var(--text-dim)">Require passkey to reopen the wallet</div>
           </div>
+        </div>
+        <div class="settings-row" style="padding:12px;display:flex;align-items:center;gap:10px">
+          <span style="color:var(--gold-primary)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12l2 2 4-4"/><path d="M12 3 L20 5 V11 C20 15.5 16.5 19.5 12 22 C7.5 19.5 4 15.5 4 11 V5 Z"/></svg></span>
+          <div style="flex:1">
+            <div style="font-weight:400;font-size:12px;color:var(--text-warm)">Require passkey for each transaction</div>
+            <div style="font-size:10px;color:var(--text-dim)">Adds a Touch ID / Face ID prompt before every signing op. Otherwise one unlock covers the whole popup session.</div>
+          </div>
+          <label class="celari-toggle">
+            <input type="checkbox" id="setting-tx-passkey" ${store.requirePasskeyPerTx ? "checked" : ""}>
+            <span class="celari-toggle-slider"></span>
+          </label>
         </div>
       </div>
 
@@ -2667,6 +2689,19 @@ function bindSettings() {
   // Backup & Recovery
   document.getElementById("btn-lock-now")?.addEventListener("click", () => {
     lockExtension();
+  });
+
+  document.getElementById("setting-tx-passkey")?.addEventListener("change", async (e) => {
+    store.requirePasskeyPerTx = e.target.checked;
+    try {
+      await chrome.storage.local.set({ celari_require_passkey_per_tx: e.target.checked });
+    } catch (err) {}
+    showToast?.(
+      e.target.checked
+        ? "Passkey required for each transaction"
+        : "Passkey only at unlock",
+      "success",
+    );
   });
   document.getElementById("btn-backup-export")?.addEventListener("click", () => setState({ screen: "backup" }));
   document.getElementById("btn-backup-import")?.addEventListener("click", () => setState({ screen: "restore" }));
