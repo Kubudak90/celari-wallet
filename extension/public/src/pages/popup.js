@@ -17,6 +17,7 @@
  */
 
 import * as passkeyCrypto from "../lib/passkey-crypto.js";
+import { detectLegacyPlaintext, validateAccountsArray, purgePending } from "../lib/account-schema.js";
 
 // ─── Security: HTML Escaping ──────────────────────────
 
@@ -509,32 +510,15 @@ async function init() {
   try {
     const stored = await chrome.storage.local.get("celari_accounts");
     if (stored.celari_accounts !== undefined) {
-      if (!Array.isArray(stored.celari_accounts)) {
-        throw new Error("celari_accounts is not an array");
-      }
-      // v0.5 → v0.6 schema bump: any passkey account with plaintext signing
-      // material was written by legacy code. Wipe and re-onboard. Demo
-      // accounts have no secrets so they're unaffected.
-      const hasLegacyPlaintext = stored.celari_accounts.some(
-        a => a?.type === "passkey" && (a.secretKey || a.privateKeyPkcs8),
-      );
-      if (hasLegacyPlaintext) {
+      if (detectLegacyPlaintext(stored.celari_accounts)) {
+        // v0.5 → v0.6 schema bump: any passkey account with plaintext
+        // signing material was written by legacy code. Wipe and re-onboard.
         await chrome.storage.local.remove(["celari_accounts", "celari_locked"]);
         store.accounts = [];
         legacyWiped = true;
       } else {
-        for (const a of stored.celari_accounts) {
-          if (!a || typeof a !== "object" || !a.address) {
-            throw new Error("celari_accounts entry missing address");
-          }
-          if (a.type === "passkey") {
-            if (!a.encryptedSecret || !a.encryptedPrivateKey || !a.prfSalt) {
-              throw new Error("passkey account missing encrypted fields");
-            }
-          }
-        }
-        // Purge any legacy placeholder accounts (address contains "_pending")
-        const clean = stored.celari_accounts.filter(a => !a.address?.includes("_pending"));
+        validateAccountsArray(stored.celari_accounts); // throws on bad shape
+        const clean = purgePending(stored.celari_accounts);
         store.accounts = clean;
         if (clean.length !== stored.celari_accounts.length) {
           await chrome.storage.local.set({ celari_accounts: clean });
