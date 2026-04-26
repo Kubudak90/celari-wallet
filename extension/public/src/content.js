@@ -201,6 +201,9 @@ window.addEventListener("pagehide", () => {
 
 function handleLegacyMessage(event) {
   if (event.data?.target !== "celari-content") return;
+  // Only accept messages from the page's own origin — rejects cross-origin
+  // iframes attempting to spoof a connection.
+  if (event.origin !== window.location.origin) return;
 
   const ALLOWED_DAPP_TYPES = [
     "DAPP_CONNECT",
