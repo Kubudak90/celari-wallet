@@ -780,21 +780,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case "DELETE_ACCOUNT": {
       const idx = message.index;
-      if (idx >= 0 && idx < state.accounts.length && state.accounts.length > 1) {
-        const deleted = state.accounts.splice(idx, 1)[0];
-        if (state.activeAccountIndex >= state.accounts.length) {
-          state.activeAccountIndex = state.accounts.length - 1;
-        }
-        chrome.storage.local.set({ celari_accounts: state.accounts });
-        // Tell PXE to remove the account from its registry
-        if (deleted.address) {
-          sendToPXE({ type: "PXE_DELETE_ACCOUNT", data: { address: deleted.address } }).catch(() => {});
-        }
-        sendResponse({ success: true, accounts: state.accounts, activeAccountIndex: state.activeAccountIndex });
-      } else {
+      if (!(idx >= 0 && idx < state.accounts.length && state.accounts.length > 1)) {
         sendResponse({ success: false, error: "Cannot delete: invalid index or last account" });
+        break;
       }
-      break;
+      const account = state.accounts[idx];
+      // Try PXE deletion first; only mutate local state on success. Previously
+      // local state was deleted before PXE, so a PXE failure would silently
+      // desync the popup from the offscreen registry.
+      sendToPXE({ type: "PXE_DELETE_ACCOUNT", data: { address: account.address } })
+        .then(() => {
+          state.accounts.splice(idx, 1);
+          if (state.activeAccountIndex >= state.accounts.length) {
+            state.activeAccountIndex = state.accounts.length - 1;
+          }
+          chrome.storage.local.set({ celari_accounts: state.accounts });
+          sendResponse({
+            success: true,
+            accounts: state.accounts,
+            activeAccountIndex: state.activeAccountIndex,
+          });
+        })
+        .catch((e) => {
+          sendResponse({
+            success: false,
+            error: `PXE deletion failed: ${sanitizeRpcError(e)}`,
+          });
+        });
+      return true; // keep sendResponse channel open for the async path
     }
 
     case "GET_BACKUP_DATA": {
