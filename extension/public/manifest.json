@@ -19,9 +19,6 @@
     },
     "default_title": "Celari Wallet"
   },
-  "side_panel": {
-    "default_path": "sidepanel.html"
-  },
   "background": {
     "service_worker": "src/background.js",
     "type": "module"
@@ -41,8 +38,7 @@
     "activeTab",
     "notifications",
     "alarms",
-    "offscreen",
-    "sidePanel"
+    "offscreen"
   ],
   "host_permissions": [
     "https://*.aztec-labs.com/*",

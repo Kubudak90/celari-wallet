@@ -245,7 +245,6 @@ try {
 
   cpSync(resolve(__dirname, "public/manifest.json"), resolve(outdir, "manifest.json"));
   cpSync(resolve(__dirname, "public/popup.html"), resolve(outdir, "popup.html"));
-  cpSync(resolve(__dirname, "public/sidepanel.html"), resolve(outdir, "sidepanel.html"));
   cpSync(resolve(__dirname, "public/offscreen.html"), resolve(outdir, "offscreen.html"));
   cpSync(resolve(__dirname, "public/styles"), resolve(outdir, "styles"), { recursive: true });
   cpSync(resolve(__dirname, "public/icons"), resolve(outdir, "icons"), { recursive: true });
