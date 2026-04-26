@@ -641,6 +641,30 @@ const icons = {
 // before insertion. Static HTML structure uses innerHTML for performance.
 
 function render() {
+  try {
+    return _renderImpl();
+  } catch (err) {
+    console.error("[Celari popup] render crash:", err);
+    const root = document.getElementById("root") || document.body;
+    root.replaceChildren();
+    const escape = (s) => String(s).replace(/[<>&"]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
+    root.insertAdjacentHTML("afterbegin", `
+      <div style="padding:24px;text-align:center;color:var(--text-warm);font-family:Inter,system-ui,sans-serif;">
+        <div style="font-size:48px;margin-bottom:16px;">⚠</div>
+        <h2 style="font-size:18px;margin-bottom:8px;font-weight:600;">Something went wrong</h2>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:20px;">
+          ${escape(err?.message || "Render error")}
+        </p>
+        <button id="celari-render-retry" style="background:var(--gold-primary,#D4A853);color:#0A0A0B;padding:10px 20px;border:0;border-radius:8px;cursor:pointer;font-weight:600;">Reload Popup</button>
+      </div>
+    `);
+    document.getElementById("celari-render-retry")?.addEventListener("click", () => {
+      window.location.reload();
+    });
+  }
+}
+
+function _renderImpl() {
   const root = document.getElementById("root");
   // Hard guard: anywhere except the safe pre-unlock screens, force-lock
   // back to the lock screen if locked is true. Catches bugs where some
