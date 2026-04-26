@@ -7,6 +7,14 @@ export default {
     "^(\\.{1,2}/.*)\\.js$": "$1",
   },
   transform: {
+    "^.+/extension/.*\\.tsx?$": [
+      "ts-jest",
+      { useESM: true, tsconfig: "extension/test/tsconfig.json", diagnostics: false },
+    ],
+    "^.+/extension/.*\\.js$": [
+      "ts-jest",
+      { useESM: true, tsconfig: "extension/test/tsconfig.json", diagnostics: false },
+    ],
     "^.+\\.tsx?$": [
       "ts-jest",
       { useESM: true, tsconfig: "tsconfig.json", diagnostics: false },
