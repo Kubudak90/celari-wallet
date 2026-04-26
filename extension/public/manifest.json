@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "Celari Wallet",
   "version": "0.5.0",
+  "minimum_chrome_version": "116",
   "description": "Privacy-first super wallet for Aztec Network. Passkey authentication, private transfers, crypto card spending.",
   "homepage_url": "https://github.com/Kubudak90/celari-wallet",
   "icons": {

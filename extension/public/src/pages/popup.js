@@ -450,6 +450,20 @@ async function init() {
     }
   } catch (e) {}
 
+  // PRF capability gate. Only enforced when onboarding fresh — existing
+  // accounts that already have encryptedSecret will surface failure at
+  // unlock time.
+  if (!store.accounts.length) {
+    const ok = await passkeyCrypto.probePrfSupport();
+    if (!ok) {
+      store.screen = "prf-unsupported";
+      bumpInteraction();
+      startLockIdleTimer();
+      render();
+      return;
+    }
+  }
+
   // Default-locked when a passkey account exists OR when we explicitly
   // persisted a lock from a prior session. Demo-only accounts (no passkey)
   // skip the lock since they have nothing to protect.
@@ -764,6 +778,10 @@ function _renderImpl() {
       root.insertAdjacentHTML("beforeend", renderLocked());
       bindLocked();
       break;
+    case "prf-unsupported":
+      root.replaceChildren();
+      root.insertAdjacentHTML("beforeend", renderPrfUnsupported());
+      break;
     case "loading":
       root.innerHTML = renderLoading();
       break;
@@ -909,6 +927,24 @@ function bindLocked() {
     bumpInteraction();
     unlockExtension();
   });
+}
+
+// ─── Screen: PRF unsupported (browser too old) ────────
+
+function renderPrfUnsupported() {
+  return `
+    <div style="padding:32px;text-align:center;color:var(--text-warm);font-family:Inter,system-ui,sans-serif;">
+      <div style="font-size:48px;margin-bottom:16px;">🔒</div>
+      <h2 style="font-size:20px;font-weight:600;margin-bottom:12px;">Browser update required</h2>
+      <p style="color:var(--text-muted);font-size:13px;line-height:1.6;margin-bottom:24px;">
+        Celari Wallet requires Chrome 116 or later to encrypt your wallet
+        with your passkey. Please update Chrome and reopen the extension.
+      </p>
+      <a href="https://www.google.com/chrome/" target="_blank" style="display:inline-block;background:var(--gold-primary);color:#0A0A0B;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;">
+        Update Chrome
+      </a>
+    </div>
+  `;
 }
 
 // ─── Screen: Onboarding ───────────────────────────────
