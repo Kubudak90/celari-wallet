@@ -136,8 +136,14 @@ function lockExtension({ reason } = {}) {
   store.unlocking = false;
   // Clear any potentially sensitive scratch state from memory
   if (store.sendForm) store.sendForm = { to: "", amount: "", token: "zkUSD" };
-  // Persist so close/reopen remembers the lock
-  try { chrome.storage.local.set({ celari_locked: true }); } catch (e) {}
+  // Persist so close/reopen remembers the lock. Surface storage failures —
+  // if this write is lost, the popup re-opens unlocked and the user thinks
+  // they locked but didn't.
+  try {
+    chrome.storage.local.set({ celari_locked: true });
+  } catch (e) {
+    console.warn("[Celari popup] failed to persist lock state:", e?.message || e);
+  }
   setState({ screen: "locked" });
   if (reason === "idle") {
     showToast?.("Locked due to inactivity", "info");
@@ -404,17 +410,19 @@ async function init() {
     }
   } catch (e) {}
 
-  // Default-locked when a passkey account exists, OR when we explicitly
+  // Default-locked when a passkey account exists OR when we explicitly
   // persisted a lock from a prior session. Demo-only accounts (no passkey)
   // skip the lock since they have nothing to protect.
   let persistedLock = false;
   try {
     const r = await chrome.storage.local.get("celari_locked");
     persistedLock = r?.celari_locked === true;
-  } catch (e) {}
+  } catch (e) {
+    console.warn("[Celari popup] failed to read persisted lock state:", e?.message || e);
+  }
 
   if (store.accounts.length > 0) {
-    if (hasPasskeyAccount() && (persistedLock || true)) {
+    if (hasPasskeyAccount() || persistedLock) {
       store.locked = true;
       store.screen = "locked";
     } else {
