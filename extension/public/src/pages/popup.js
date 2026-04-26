@@ -94,6 +94,10 @@ const store = {
   locked: false,
   unlockError: null,
   unlocking: false,
+  // Faucet cooldown — milliseconds remaining until next claim is allowed.
+  // Refreshed lazily by refreshFaucetCooldown() and consumed by the dashboard
+  // render to label/disable the Faucet action button.
+  faucetCooldownMs: 0,
 };
 
 // Auto-lock idle window — popup re-opens almost always trigger a fresh
@@ -593,10 +597,54 @@ async function fetchRealBalances() {
 
 // ─── Faucet Request ──────────────────────────────────
 
+const FAUCET_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+
+async function getFaucetCooldownMs() {
+  try {
+    const r = await chrome.runtime.sendMessage({ type: "GET_FAUCET_RATE" });
+    const last = Number(r?.lastFaucetTime) || 0;
+    return Math.max(0, (last + FAUCET_COOLDOWN_MS) - Date.now());
+  } catch (e) {
+    return 0;
+  }
+}
+
+// Refresh the cached cooldown and re-render only if it changed enough to
+// affect the displayed minute count. Called on each dashboard render so
+// the label decrements as time passes.
+async function refreshFaucetCooldown() {
+  const next = await getFaucetCooldownMs();
+  const prevMin = Math.ceil(store.faucetCooldownMs / 60000);
+  const nextMin = Math.ceil(next / 60000);
+  if (prevMin !== nextMin) {
+    store.faucetCooldownMs = next;
+    if (store.screen === "dashboard") render();
+  } else {
+    store.faucetCooldownMs = next;
+  }
+}
+
+async function setFaucetTimestamp() {
+  try {
+    await chrome.runtime.sendMessage({
+      type: "SET_FAUCET_RATE",
+      lastFaucetTime: Date.now(),
+    });
+  } catch (e) {
+    console.warn("[Celari popup] failed to persist faucet timestamp:", e?.message || e);
+  }
+}
+
 async function handleFaucet() {
   const account = getActiveAccount();
   if (!account?.address || !account.deployed) {
     showToast("Deploy your account first", "error");
+    return;
+  }
+
+  const remaining = await getFaucetCooldownMs();
+  if (remaining > 0) {
+    showToast(`Faucet cooldown: ${Math.ceil(remaining / 60000)} min remaining`, "error");
     return;
   }
 
@@ -625,6 +673,7 @@ async function handleFaucet() {
     });
 
     showToast(`Received ${data.amount} ${data.symbol}!`, "success");
+    setFaucetTimestamp();
 
     // Auto-add faucet token to custom tokens if not already known
     if (data.tokenAddress && !store.tokenAddresses?.CLR) {
@@ -632,6 +681,8 @@ async function handleFaucet() {
     }
 
     fetchRealBalances();
+    // Re-render so the faucet button picks up the cooldown label
+    render();
   } catch (e) {
     showToast("Faucet: " + sanitizeError(e), "error");
   } finally {
@@ -1327,11 +1378,15 @@ function renderDashboard() {
         <div class="icon">${icons.download}</div>
         Receive
       </button>
-      ${store.network === "testnet" || store.network === "devnet" ? `
-      <button class="action-btn" id="btn-faucet">
+      ${store.network === "testnet" || store.network === "devnet" ? (() => {
+        const cooldownMin = Math.ceil(store.faucetCooldownMs / 60000);
+        const onCooldown = cooldownMin > 0;
+        return `
+      <button class="action-btn" id="btn-faucet"${onCooldown ? ' style="opacity:0.5;pointer-events:none;"' : ''} title="${onCooldown ? `Cooldown ${cooldownMin}m` : 'Request testnet tokens'}">
         <div class="icon">${icons.download}</div>
-        Faucet
-      </button>` : `
+        ${onCooldown ? `Faucet (${cooldownMin}m)` : 'Faucet'}
+      </button>`;
+      })() : `
       <button class="action-btn" id="btn-bridge">
         <div class="icon">${icons.send}</div>
         Bridge
@@ -1420,6 +1475,8 @@ function bindDashboard() {
   if (account?.deployed) {
     syncInterval = startSyncPolling();
   }
+  // Refresh faucet cooldown — re-renders if the minute label changed
+  refreshFaucetCooldown();
 
   document.getElementById("btn-send")?.addEventListener("click", () => setState({ screen: "send" }));
   document.getElementById("btn-receive")?.addEventListener("click", () => setState({ screen: "receive" }));
