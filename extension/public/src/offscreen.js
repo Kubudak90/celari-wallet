@@ -17,8 +17,7 @@ import { DefaultAccountContract } from "@aztec/accounts/defaults";
 import { AuthWitness } from "@aztec/stdlib/auth-witness";
 // AztecAddress already imported from @aztec/aztec.js/addresses above
 import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee/testing";
-// NO_FROM was added in v4.2.0; in v4.1.x we just use undefined
-const NO_FROM = undefined;
+import { NO_FROM } from "@aztec/aztec.js/account";
 import { getContractInstanceFromInstantiationParams } from "@aztec/stdlib/contract";
 import { loadContractArtifact } from "@aztec/aztec.js/abi";
 import { Contract } from "@aztec/aztec.js/contracts";
@@ -715,7 +714,7 @@ async function registerAccount(data) {
   try {
     console.log(`[PXE] Triggering note sync for account contract...`);
     const t0 = Date.now();
-    await wallet.pxe.getNotes({ contractAddress: accountAddr });
+    await wallet.pxe.debug.getNotes({ contractAddress: accountAddr });
     console.log(`[PXE] Note sync completed OK (${Date.now() - t0}ms)`);
   } catch (err) {
     console.warn(`[PXE] Note sync warning (non-fatal): ${err.message}`);
@@ -1046,7 +1045,7 @@ async function deployAccountClientSide(data) {
     // Get current network fees and compute gas settings with 2x margin
     const currentFees = await nodeClient.getCurrentMinFees();
     const maxFeesPerGas = currentFees.mul(2);
-    const gasSettings = GasSettings.default({ maxFeesPerGas });
+    const gasSettings = GasSettings.fallback({ maxFeesPerGas });
     paymentMethod = new FeeJuicePaymentMethodWithClaim(address, {
       claimAmount: BigInt(data.claimAmount || "1000000000000000000000"),
       claimSecret: Fr.fromHexString(data.claimSecret),
@@ -1102,7 +1101,7 @@ async function deployAccountClientSide(data) {
         : { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 };
       console.log(`[PXE] Deploy Step 4: fee method = ${paymentMethod.constructor?.name || 'unknown'}, hasGasSettings = ${!!deployGasSettings}`);
       const sendResult = await deployMethod.send({
-        from: AztecAddress.ZERO,
+        from: NO_FROM,
         fee: feeOpts,
         wait: { timeout: 900_000 },
       });
@@ -1235,7 +1234,7 @@ async function executeFaucet(data) {
     reportProgress("Admin hesap deploy ediliyor... (1/3)");
     reportProgress("Admin tx onayı bekleniyor... (1/3)");
     await (await mgr.getDeployMethod()).send({
-      from: AztecAddress.ZERO,
+      from: NO_FROM,
       fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 },
       wait: { timeout: 600_000 },
     });
@@ -1678,7 +1677,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           if (!ownerAddr || !wallet) return { nfts: [] };
 
           const { NFTContract } = await import("@aztec/noir-contracts.js/NFT");
-          const { AztecAddress } = await import("@aztec/aztec.js");
           const ownerAz = AztecAddress.fromString(ownerAddr);
           const activeWallet = accountWallets.get(ownerAddr)?.wallet;
           if (!activeWallet) return { nfts: [], error: "No active wallet" };
@@ -1724,7 +1722,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           if (!activeWallet) return { error: "No active wallet" };
 
           const { NFTContract } = await import("@aztec/noir-contracts.js/NFT");
-          const { AztecAddress, Fr } = await import("@aztec/aztec.js");
           const nft = NFTContract.at(AztecAddress.fromString(contractAddress), activeWallet);
           const fromAddr = AztecAddress.fromString(activeAddress);
           const toAddr = AztecAddress.fromString(to);

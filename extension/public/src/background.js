@@ -509,9 +509,10 @@ let state = {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Defense in depth: reject any message that doesn't originate from our own
   // extension's content scripts / popup / offscreen. externally_connectable is
-  // also locked to [] in the manifest, so external pages can't reach this
-  // listener at all — this guard catches anything unexpected that slips
-  // through (e.g. a malicious extension bridging via tab.sendMessage).
+  // omitted from the manifest (default = no external access), so external
+  // pages can't reach this listener at all — this guard catches anything
+  // unexpected that slips through (e.g. a malicious extension bridging via
+  // tab.sendMessage).
   if (sender.id && sender.id !== chrome.runtime.id) {
     sendResponse({ success: false, error: "Unauthorized sender" });
     return false;
@@ -1061,6 +1062,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     pending.txHash = result.txHash;
                     pending.blockNumber = result.blockNumber;
                     pending.deployedAt = new Date().toISOString();
+                    // Persist the signing material alongside the account so PXE
+                    // re-registration after browser restart / SW eviction works
+                    // without re-prompting passkey. Session storage (where these
+                    // also live for the current session) is wiped on restart.
+                    // TODO: encrypt at rest with passkey-derived key.
+                    if (result.secretKey) pending.secretKey = result.secretKey;
+                    if (deployData.privateKeyPkcs8) pending.privateKeyPkcs8 = deployData.privateKeyPkcs8;
                     chrome.storage.local.set({ celari_accounts: accounts });
                     console.log("Deploy result persisted to storage:", result.address);
                   }
