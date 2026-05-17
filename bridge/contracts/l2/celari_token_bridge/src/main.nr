@@ -1,4 +1,4 @@
-// Celari Token Bridge -- L2 Contract (Aztec v4.0.4)
+// Celari Token Bridge -- L2 Contract (Aztec v4.2.1)
 //
 // Handles claiming of tokens deposited on L1 and initiating withdrawals back to L1.
 // Works with the CelariBridgePortal on Ethereum (Sepolia) and BridgedToken on Aztec.
@@ -56,7 +56,7 @@ pub contract CelariTokenBridge {
     fn claim_public(
         l1_token: EthAddress,
         to: AztecAddress,
-        amount: Field,
+        amount: u128,
         secret: Field,
         leaf_index: Field,
     ) {
@@ -79,7 +79,7 @@ pub contract CelariTokenBridge {
     fn claim_private(
         l1_token: EthAddress,
         secret_for_redeeming_minted_notes: Field,
-        amount: Field,
+        amount: u128,
         secret: Field,
         leaf_index: Field,
     ) {
@@ -107,7 +107,7 @@ pub contract CelariTokenBridge {
     fn exit_to_l1_public(
         l1_token: EthAddress,
         recipient: EthAddress,
-        amount: Field,
+        amount: u128,
         caller_on_l1: EthAddress,
         authwit_nonce: Field,
     ) {
@@ -135,7 +135,7 @@ pub contract CelariTokenBridge {
         token: AztecAddress,
         l1_token: EthAddress,
         recipient: EthAddress,
-        amount: Field,
+        amount: u128,
         caller_on_l1: EthAddress,
         authwit_nonce: Field,
     ) {
@@ -162,7 +162,7 @@ pub contract CelariTokenBridge {
     #[contract_library_method]
     fn compute_deposit_content_hash(
         l1_token: EthAddress,
-        amount: Field,
+        amount: u128,
         to: AztecAddress,
         secret_hash: Field,
     ) -> Field {
@@ -173,7 +173,7 @@ pub contract CelariTokenBridge {
             hash_bytes[i] = token_bytes[i];
         }
 
-        let amount_bytes: [u8; 32] = amount.to_be_bytes();
+        let amount_bytes: [u8; 32] = (amount as Field).to_be_bytes();
         for i in 0..32 {
             hash_bytes[32 + i] = amount_bytes[i];
         }
@@ -194,7 +194,7 @@ pub contract CelariTokenBridge {
     #[contract_library_method]
     fn compute_withdraw_content_hash(
         l1_token: EthAddress,
-        amount: Field,
+        amount: u128,
         recipient: EthAddress,
         caller_on_l1: EthAddress,
     ) -> Field {
@@ -205,7 +205,7 @@ pub contract CelariTokenBridge {
             hash_bytes[i] = token_bytes[i];
         }
 
-        let amount_bytes: [u8; 32] = amount.to_be_bytes();
+        let amount_bytes: [u8; 32] = (amount as Field).to_be_bytes();
         for i in 0..32 {
             hash_bytes[32 + i] = amount_bytes[i];
         }

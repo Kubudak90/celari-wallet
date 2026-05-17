@@ -1,4 +1,4 @@
-// Celari Bridged Token -- L2 Token Contract (Aztec v4.0.4)
+// Celari Bridged Token -- L2 Token Contract (Aztec v4.2.1)
 //
 // ERC-20-like token on Aztec that represents bridged L1 tokens.
 // Only the CelariTokenBridge contract can mint/burn these tokens.
@@ -22,11 +22,11 @@ pub contract BridgedToken {
     struct Storage<Context> {
         admin: PublicMutable<AztecAddress, Context>,
         minter: PublicMutable<AztecAddress, Context>,
-        public_balances: Map<AztecAddress, PublicMutable<Field, Context>, Context>,
+        public_balances: Map<AztecAddress, PublicMutable<u128, Context>, Context>,
         name: PublicImmutable<Field, Context>,
         symbol: PublicImmutable<Field, Context>,
         decimals: PublicImmutable<u8, Context>,
-        total_supply: PublicMutable<Field, Context>,
+        total_supply: PublicMutable<u128, Context>,
     }
 
     // --- Constructor ---
@@ -64,7 +64,7 @@ pub contract BridgedToken {
     // --- Mint Functions (Bridge Only) ---
 
     #[external("public")]
-    fn mint_public(to: AztecAddress, amount: Field) {
+    fn mint_public(to: AztecAddress, amount: u128) {
         assert(
             self.storage.minter.read().eq(self.context.maybe_msg_sender().unwrap()),
             "only minter can mint",
@@ -75,7 +75,7 @@ pub contract BridgedToken {
     }
 
     #[external("public")]
-    fn mint_private(secret_hash: Field, amount: Field) {
+    fn mint_private(secret_hash: Field, amount: u128) {
         assert(
             self.storage.minter.read().eq(self.context.maybe_msg_sender().unwrap()),
             "only minter can mint",
@@ -87,16 +87,16 @@ pub contract BridgedToken {
 
     #[authorize_once("from", "authwit_nonce")]
     #[external("public")]
-    fn burn_public(from: AztecAddress, amount: Field, authwit_nonce: Field) {
+    fn burn_public(from: AztecAddress, amount: u128, authwit_nonce: Field) {
         let current = self.storage.public_balances.at(from).read();
-        assert(current as u64 >= amount as u64, "insufficient balance");
+        assert(current >= amount, "insufficient balance");
         self.storage.public_balances.at(from).write(current - amount);
         self.storage.total_supply.write(self.storage.total_supply.read() - amount);
     }
 
     #[authorize_once("from", "authwit_nonce")]
     #[external("private")]
-    fn burn_private(from: AztecAddress, amount: Field, authwit_nonce: Field) {
+    fn burn_private(from: AztecAddress, amount: u128, authwit_nonce: Field) {
         // MVP: nullifier would be emitted in full implementation
     }
 
@@ -104,9 +104,9 @@ pub contract BridgedToken {
 
     #[authorize_once("from", "authwit_nonce")]
     #[external("public")]
-    fn transfer_public(from: AztecAddress, to: AztecAddress, amount: Field, authwit_nonce: Field) {
+    fn transfer_public(from: AztecAddress, to: AztecAddress, amount: u128, authwit_nonce: Field) {
         let from_balance = self.storage.public_balances.at(from).read();
-        assert(from_balance as u64 >= amount as u64, "insufficient balance");
+        assert(from_balance >= amount, "insufficient balance");
         self.storage.public_balances.at(from).write(from_balance - amount);
         let to_balance = self.storage.public_balances.at(to).read();
         self.storage.public_balances.at(to).write(to_balance + amount);
@@ -116,13 +116,13 @@ pub contract BridgedToken {
 
     #[external("public")]
     #[view]
-    fn balance_of_public(owner: AztecAddress) -> pub Field {
+    fn balance_of_public(owner: AztecAddress) -> pub u128 {
         self.storage.public_balances.at(owner).read()
     }
 
     #[external("public")]
     #[view]
-    fn total_supply() -> pub Field {
+    fn total_supply() -> pub u128 {
         self.storage.total_supply.read()
     }
 

@@ -430,7 +430,7 @@ environment variables for Sepolia RPC and private key."
 
 **Follow-ups (out of scope here, track separately):**
 - `bridge/sdk/l2-client.ts` already uses v4.2.x subpath imports + the modern `.send({ from, fee: { paymentMethod, estimateGas, estimatedGasPadding }, wait: { timeout } })` signature — no SDK rewrite needed, only smoke-test against testnet.
-- The canonical Aztec docs pattern uses `amount: u128` while our bridge still uses `Field`; both compile under v4.2.1, but `u128` is the recommended type. Defer to a later refactor.
+- ~~The canonical Aztec docs pattern uses `amount: u128` while our bridge still uses `Field`.~~ **DONE 2026-05-17 — see Task 7b below.**
 - `mint_private` / `burn_private` in `bridged_token/src/main.nr` are still MVP stubs (don't emit notes/nullifiers). Unrelated to v4.2.x but needed before private deposits/withdrawals actually function.
 - Aztec L1 `Inbox`/`Outbox` interface drift on Sepolia (`sendL2Message`, `consume`, `version: 1` actor) — verify before redeploying `CelariBridgePortal.sol`.
 
@@ -462,6 +462,31 @@ git commit -m "feat(bridge): align L2 bridge with aztec-nr v4.2.1
 - Re-emit all 4 contract artifacts under v4.2.1; eliminates the
   utilityFetchTaggedLogs oracle call that broke v4.2.x PXE."
 ```
+
+---
+
+## Task 7b: Bridge `amount` Field → u128 Refactor (DONE)
+
+**Status:** Completed 2026-05-17. Aligns the bridge with the canonical Aztec token/bridge pattern, where token amounts are `u128` (native overflow-checked integers) rather than unconstrained `Field` values.
+
+**Files touched (source only — `target/` artifacts are gitignored):**
+- `bridge/contracts/l2/bridged_token/src/main.nr`
+- `bridge/contracts/l2/celari_token_bridge/src/main.nr`
+- `bridge/sdk/l2-client.ts`
+
+**Changes:**
+- `bridged_token`: `public_balances` + `total_supply` storage → `PublicMutable<u128>`; `mint_public` / `mint_private` / `burn_public` / `burn_private` / `transfer_public` `amount` params → `u128`; `balance_of_public` / `total_supply` return types → `u128`. Dropped the `as u64` casts in balance asserts (native `u128` comparison).
+- `celari_token_bridge`: `claim_public` / `claim_private` / `exit_to_l1_public` / `exit_to_l1_private` `amount` params → `u128`; content-hash helpers take `amount: u128` and encode via `(amount as Field).to_be_bytes::<32>()`.
+- `l2-client.ts`: `amount` args passed as plain `bigint` (the `u128` ABI param) instead of being wrapped in `new Fr(...)`. `secret` / `leaf_index` / `nonce` stay `Field`.
+
+**Content hash is byte-identical:** `(amount as Field).to_be_bytes::<32>()` produces the same 32 big-endian bytes as the old `Field` path for any valid `u128`. The L1 `CelariBridgePortal.sol` (which encodes `amount` as `uint256`) is unaffected — **no L1 redeploy needed.**
+
+**Verification:**
+- `bridged_token` + `celari_token_bridge` compile clean under `aztecprotocol/aztec:4.2.1` (exit 0).
+- `bb aztec_process`: "Successfully processed 2 artifact(s)" (AVM transpile + VK).
+- Prefix strip: 12 + 6 `__aztec_nr_internals__` prefixes removed.
+- ABI confirms all 9 `amount` params are now `{kind:integer, sign:unsigned, width:128}`.
+- `l2-client.ts` typecheck: 0 new errors (13 pre-existing errors — bare `@aztec/aztec.js` import + `.send()` API drift — identical to `HEAD`, tracked under the SDK smoke-test follow-up).
 
 ---
 

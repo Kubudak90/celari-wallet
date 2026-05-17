@@ -187,7 +187,7 @@ export class L2Client {
         .claim_public(
           EthAddress.fromString(params.l1Token),
           AztecAddress.fromString(params.to),
-          new Fr(params.amount),
+          params.amount,
           new Fr(params.secret),
           new Fr(BigInt(params.leafIndex))
         )
@@ -239,7 +239,7 @@ export class L2Client {
         .claim_private(
           EthAddress.fromString(params.l1Token),
           new Fr(secretForRedeeming),
-          new Fr(params.amount),
+          params.amount,
           new Fr(params.secret),
           new Fr(BigInt(params.leafIndex))
         )
@@ -292,7 +292,7 @@ export class L2Client {
         .exit_to_l1_public(
           EthAddress.fromString(params.l1Token),
           EthAddress.fromString(params.recipient),
-          new Fr(params.amount),
+          params.amount,
           EthAddress.fromString(params.callerOnL1),
           new Fr(params.nonce)
         )
@@ -346,7 +346,7 @@ export class L2Client {
           AztecAddress.fromString(tokenAddress),
           EthAddress.fromString(params.l1Token),
           EthAddress.fromString(params.recipient),
-          new Fr(params.amount),
+          params.amount,
           EthAddress.fromString(params.callerOnL1),
           new Fr(params.nonce)
         )
