@@ -714,7 +714,9 @@ async function registerAccount(data) {
   try {
     console.log(`[PXE] Triggering note sync for account contract...`);
     const t0 = Date.now();
-    await wallet.pxe.debug.getNotes({ contractAddress: accountAddr });
+    // v4.2.x NotesFilter requires `scopes: AztecAddress[]` (no longer optional).
+    // Omitting it triggers an internal `.filter()` on undefined.
+    await wallet.pxe.debug.getNotes({ contractAddress: accountAddr, scopes: [accountAddr] });
     console.log(`[PXE] Note sync completed OK (${Date.now() - t0}ms)`);
   } catch (err) {
     console.warn(`[PXE] Note sync warning (non-fatal): ${err.message}`);
@@ -1358,19 +1360,68 @@ function hexToBuffer(hex) {
 // dApps need the address immediately for discovery/balance UI; account-
 // scoped write methods (sendTx, createAuthWit) still require a real
 // registered wallet and will surface a clear error on their own.
+// Lazy-register a stored account in PXE when a dApp method needs it after
+// a fresh offscreen boot (SW eviction wipes the in-memory accountWallets
+// map). Pulls the account metadata + plaintext signing material from
+// background (offscreen can't reach chrome.storage directly), then runs
+// the same registerAccount() path the popup uses on unlock.
+async function ensureAccountFromBundle(fromAddress) {
+  // Already registered for this address? nothing to do.
+  if (fromAddress && accountWallets.has(fromAddress)) return;
+  let bundle;
+  try {
+    bundle = await new Promise((resolve) => {
+      chrome.runtime.sendMessage(
+        { type: "GET_ACCOUNT_BUNDLE", address: fromAddress },
+        (r) => {
+          void chrome.runtime.lastError;
+          resolve(r);
+        }
+      );
+    });
+  } catch (e) {
+    console.warn(`[PXE] ensureAccountFromBundle: bridge to background failed: ${e?.message || e}`);
+    return;
+  }
+  if (!bundle?.success) {
+    console.warn(`[PXE] ensureAccountFromBundle: ${bundle?.error || "unknown"} (code=${bundle?.code || "none"})`);
+    return;
+  }
+  console.log(`[PXE] ensureAccountFromBundle: registering ${bundle.bundle.address.slice(0, 22)}... into PXE`);
+  try {
+    await registerAccount(bundle.bundle);
+    console.log(`[PXE] ensureAccountFromBundle: registered OK`);
+  } catch (e) {
+    console.warn(`[PXE] ensureAccountFromBundle: registerAccount failed: ${e?.message || e}`);
+  }
+}
+
 async function listKnownAccounts() {
   const registered = Array.from(accountWallets.keys());
   if (registered.length > 0) {
     return registered.map(addr => ({ alias: "", item: AztecAddress.fromString(addr) }));
   }
+  // Offscreen documents cannot access chrome.storage.* directly — only
+  // chrome.runtime is available. Route the read through background.js.
   try {
     const stored = await new Promise((resolve) => {
-      chrome.storage.local.get("celari_accounts", (r) => resolve(r?.celari_accounts || []));
+      chrome.runtime.sendMessage({ type: "GET_STORED_ACCOUNTS" }, (r) => {
+        void chrome.runtime.lastError;
+        resolve(Array.isArray(r?.accounts) ? r.accounts : []);
+      });
     });
-    return stored
-      .filter(a => a?.deployed && a?.address)
-      .map(a => ({ alias: "", item: AztecAddress.fromString(a.address) }));
-  } catch {
+    const filtered = stored.filter(a => a?.deployed && a?.address);
+    console.log(`[PXE] listKnownAccounts: storage=${stored.length}, deployed=${filtered.length}`);
+    return filtered.map(a => {
+      try {
+        return { alias: a.label || "", item: AztecAddress.fromString(a.address) };
+      } catch (e) {
+        console.warn(`[PXE] listKnownAccounts: AztecAddress.fromString failed for ${a.address}: ${e.message}`);
+        return null;
+      }
+    }).filter(Boolean);
+  } catch (e) {
+    console.warn("[PXE] listKnownAccounts: bridge to background failed:", e?.message || e);
     return [];
   }
 }
@@ -1379,8 +1430,11 @@ async function handleWalletMethod(method, args) {
   if (!wallet) throw new Error("PXE not initialized");
 
   switch (method) {
-    case "getAccounts":
-      return await listKnownAccounts();
+    case "getAccounts": {
+      const accts = await listKnownAccounts();
+      console.log(`[PXE] getAccounts → ${accts.length} account(s): ${accts.map(a => a.item?.toString?.()?.slice(0, 22) + "...").join(", ") || "(none)"}`);
+      return accts;
+    }
 
     case "getChainInfo":
       return await wallet.getChainInfo();
@@ -1440,20 +1494,44 @@ async function handleWalletMethod(method, args) {
       // Auto-register the target contract if PXE doesn't know about it.
       // dApps call executeUtility to read balances etc. from arbitrary
       // contracts; PXE throws "No contract instance found" unless we
-      // register the on-chain instance first.
+      // register the on-chain instance *plus its artifact* first.
+      //
+      // v4.2.x wallet.registerContract requires the artifact (or for the
+      // contract class to be in PXE's storage already). For unknown classes
+      // we fall back to TokenContract.artifact — covers ~all dApp balance
+      // queries (USDC, USDT, custom tokens). If the contract is not actually
+      // a Token-class contract, executeUtility will still fail with a clear
+      // class-mismatch error downstream.
       const euCall = args[0];
+      const addrStr = euCall?.to?.toString?.() || String(euCall?.to || "");
       if (euCall?.to && nodeClient) {
         try {
           const { contractInstance: existing } = await wallet.getContractMetadata(euCall.to);
           if (!existing) {
+            console.log(`[PXE] executeUtility: contract ${addrStr.slice(0, 20)}... not registered, fetching from node...`);
             const onChain = await nodeClient.getContract(euCall.to);
-            if (onChain) {
-              console.log(`[PXE] executeUtility: auto-registering contract ${euCall.to.toString().slice(0, 20)}...`);
-              await wallet.registerContract(onChain);
+            if (!onChain) {
+              console.warn(`[PXE] executeUtility: node returned no contract for ${addrStr.slice(0, 20)}...`);
+            } else {
+              // First try registering with no artifact (works if class already in PXE storage).
+              try {
+                await wallet.registerContract(onChain);
+                console.log(`[PXE] executeUtility: auto-registered ${addrStr.slice(0, 20)}... via existing class artifact`);
+              } catch (e1) {
+                // Fallback: assume Token contract and supply its artifact.
+                console.log(`[PXE] executeUtility: class not in storage (${e1.message?.slice(0, 60)}), trying TokenContract artifact fallback...`);
+                const { TokenContract } = await import("@aztec/noir-contracts.js/Token");
+                try {
+                  await wallet.registerContract(onChain, TokenContract.artifact);
+                  console.log(`[PXE] executeUtility: auto-registered ${addrStr.slice(0, 20)}... as TokenContract`);
+                } catch (e2) {
+                  console.warn(`[PXE] executeUtility: TokenContract fallback failed: ${e2.message?.slice(0, 120)}`);
+                }
+              }
             }
           }
         } catch (e) {
-          console.warn(`[PXE] executeUtility: auto-register warning: ${e.message?.slice(0, 80)}`);
+          console.warn(`[PXE] executeUtility: auto-register threw: ${e.message?.slice(0, 120)}`);
         }
       }
       return await wallet.executeUtility(...args);
@@ -1465,8 +1543,18 @@ async function handleWalletMethod(method, args) {
     case "profileTx":
     case "createAuthWit":
     case "getPrivateEvents": {
-      const acctWallet = getActiveWallet();
-      if (!acctWallet) throw new Error("No account registered in PXE");
+      // Try the in-memory account registry first; if empty (fresh offscreen
+      // boot after SW eviction), lazy-register from storage + session.
+      let acctWallet = getActiveWallet();
+      if (!acctWallet) {
+        // Pull the `from` address out of args so we can match the right
+        // account when multiple are stored. Falls back to first deployed.
+        const opts = args?.[1] || args?.[0];
+        const fromAddr = opts?.from?.toString?.() || (typeof opts?.from === "string" ? opts.from : undefined);
+        await ensureAccountFromBundle(fromAddr);
+        acctWallet = getActiveWallet();
+        if (!acctWallet) throw new Error("Wallet locked — open the Celari popup and unlock to use this dApp");
+      }
       if (typeof acctWallet[method] !== "function") {
         throw new Error(`Method ${method} not available on account wallet`);
       }
@@ -1588,15 +1676,27 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           const parsed = JSON.parse(msg.rawMessage);
           const method = parsed.type;
           const rawArgs = parsed.args || [];
+          console.log(`[PXE] >>> wallet-sdk call: ${method}(${rawArgs.length} arg${rawArgs.length === 1 ? "" : "s"})`);
 
-          // Use WalletSchema Zod schemas to deserialize args into proper Aztec types
+          // Use WalletSchema Zod schemas to deserialize args into proper Aztec types.
+          // dApps may serialize args via JSON.stringify which strips trailing
+          // `undefined` slots (e.g. registerContract sent as [instance] when schema
+          // declares 3 args with the last two optional). Pad to expected arity
+          // before parsing — otherwise Zod tuple parsing rejects with "too_small",
+          // we fall back to raw string args, and downstream class-id computation
+          // sees garbage strings instead of Fr/AztecAddress objects.
           const schema = WalletSchema[method];
           let typedArgs = rawArgs;
           if (schema && typeof schema.parameters === "function") {
+            const params = schema.parameters();
+            const expectedLen = params?._def?.items?.length ?? rawArgs.length;
+            const paddedArgs = rawArgs.length < expectedLen
+              ? [...rawArgs, ...Array(expectedLen - rawArgs.length).fill(undefined)]
+              : rawArgs;
             try {
-              typedArgs = schema.parameters().parse(rawArgs);
+              typedArgs = params.parse(paddedArgs);
             } catch (e) {
-              console.warn(`[PXE] WalletSchema parse failed for ${method}, using raw args:`, e.message?.slice(0, 80));
+              console.warn(`[PXE] WalletSchema parse failed for ${method} (got ${rawArgs.length} args, expected ${expectedLen}), using raw args:`, e.message?.slice(0, 120));
             }
           }
 

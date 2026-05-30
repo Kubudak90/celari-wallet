@@ -90,6 +90,11 @@ const store = {
   wsDiscovery: null,
   wsSignId: null,
   wsSignRequest: null,
+  // True when this window was opened by the background as a dedicated unlock
+  // popup (popup.html?unlock=1) because a dApp hit the locked wallet while
+  // connecting. On unlock we notify the background to replay the parked
+  // request, then close — there's no in-popup approval step for reads.
+  wsUnlockMode: false,
   // When a dApp-launched popup (?wssign / ?confirm / ?wsapprove) finds the
   // wallet locked, we record the original target screen here, route to the
   // lock screen, and on successful unlock jump back to this screen.
@@ -154,14 +159,18 @@ if (typeof document !== "undefined") {
   }
 }
 
-// Popup unmount: wipe session and persist lock so the extension is locked
-// from the moment the popup re-opens. Direct storage calls (no DOM mutation)
-// because the popup is unmounting — toast/render won't flush.
+// Popup unmount: defer the lock to a 15-minute idle alarm instead of wiping
+// session immediately. This keeps dApp interactions (bridge.human.tech etc.)
+// working between popup-opens without forcing a re-unlock each time the user
+// closes the popup. Explicit user-initiated lockExtension() still wipes
+// instantly. On popup open we cancel the alarm (user is active again).
 if (typeof window !== "undefined") {
+  try {
+    chrome.runtime.sendMessage({ type: "CLEAR_IDLE_LOCK" }).catch(() => {});
+  } catch {}
   window.addEventListener("beforeunload", () => {
     try {
-      chrome.storage.session.remove(["celari_secret", "celari_private_key"]);
-      chrome.storage.local.set({ celari_locked: true });
+      chrome.runtime.sendMessage({ type: "SCHEDULE_IDLE_LOCK" }).catch(() => {});
     } catch (e) {}
   });
 }
@@ -271,6 +280,16 @@ async function unlockExtension() {
     store.unlocking = false;
     try { chrome.storage.local.set({ celari_locked: false }); } catch (e) {}
     bumpInteraction();
+    // Tell the background a dApp read parked while locked can now be replayed.
+    // Harmless when nothing is queued; covers both the dedicated unlock popup
+    // and a normal manual unlock that happens to race a pending dApp connect.
+    try { chrome.runtime.sendMessage({ type: "WS_WALLET_UNLOCKED" }).catch(() => {}); } catch (e) {}
+    // Dedicated unlock popup: nothing more to show — close so focus returns to
+    // the dApp. The parked request resolves over the encrypted wallet channel.
+    if (store.wsUnlockMode) {
+      window.close();
+      return;
+    }
     // If a dApp-launched popup queued an approval target before unlock, jump
     // back to it; otherwise land on the dashboard.
     const target = store.pendingApprovalScreen;
@@ -428,6 +447,15 @@ async function init() {
 
   // Check if opened for dApp transaction confirmation
   const urlParams = new URLSearchParams(window.location.search);
+
+  // Dedicated unlock popup (popup.html?unlock=1): the background opened this
+  // because a dApp request hit the locked wallet. We don't early-return — let
+  // normal init load accounts so the lock-state derivation below routes to the
+  // lock screen; unlockExtension() then notifies the background and closes.
+  if (urlParams.get("unlock")) {
+    store.wsUnlockMode = true;
+  }
+
   const confirmId = urlParams.get("confirm");
   if (confirmId) {
     store.pendingSignRequestId = confirmId;
@@ -577,19 +605,32 @@ async function init() {
     }
   }
 
-  // Default-locked when a passkey account exists OR when we explicitly
-  // persisted a lock from a prior session. Demo-only accounts (no passkey)
-  // skip the lock since they have nothing to protect.
+  // Lock state is derived from chrome.storage.session: while celari_secret
+  // is alive, the wallet is functionally unlocked — both the popup UI and
+  // background signing can use it. Forcing a re-unlock every popup-open even
+  // when the secret is still in session is hostile UX and (more importantly)
+  // breaks dApp flows like bridge.human.tech that read accounts while the
+  // popup is closed: if the popup re-locks on next open, the user-perception
+  // is "wallet keeps locking itself". The persisted `celari_locked` flag is
+  // still honored for explicit/idle-fired locks (those wipe the secret too).
   let persistedLock = false;
+  let secretInSession = false;
   try {
-    const r = await chrome.storage.local.get("celari_locked");
-    persistedLock = r?.celari_locked === true;
+    const [localR, sessionR] = await Promise.all([
+      chrome.storage.local.get("celari_locked"),
+      chrome.storage.session.get("celari_secret"),
+    ]);
+    persistedLock = localR?.celari_locked === true;
+    secretInSession = !!sessionR?.celari_secret;
   } catch (e) {
-    console.warn("[Celari popup] failed to read persisted lock state:", e?.message || e);
+    console.warn("[Celari popup] failed to read lock state:", e?.message || e);
   }
 
   if (store.accounts.length > 0) {
-    if (hasPasskeyAccount() || persistedLock) {
+    // Only force lock when the secret is gone (idle/explicit lock wiped it)
+    // or storage explicitly says we're locked. If the secret is alive, the
+    // wallet is usable — show dashboard regardless of passkey-account status.
+    if (persistedLock || (!secretInSession && hasPasskeyAccount())) {
       store.locked = true;
       store.screen = "locked";
     } else {
@@ -600,6 +641,15 @@ async function init() {
     store.locked = false;
     store.screen = "onboarding";
     try { chrome.storage.local.set({ celari_locked: false }); } catch (e) {}
+  }
+
+  // Dedicated unlock popup but the wallet is already unlocked (race: user
+  // unlocked elsewhere first). Nothing to show — tell the background to replay
+  // the parked dApp request and close immediately.
+  if (store.wsUnlockMode && !store.locked) {
+    try { chrome.runtime.sendMessage({ type: "WS_WALLET_UNLOCKED" }).catch(() => {}); } catch (e) {}
+    window.close();
+    return;
   }
 
   if (store.accounts.length > 0) {

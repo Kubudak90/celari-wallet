@@ -10,6 +10,7 @@
  */
 
 import { sanitizeRpcError } from "./lib/sanitize.js";
+import { WS_WRITE_METHODS, classifySecureMessage } from "./lib/ws-lock-gate.js";
 
 // --- Network Presets -------------------------------------------------
 
@@ -144,8 +145,18 @@ const _wsPendingDiscoveries  = new Map(); // requestId → { tabId, origin, appI
 const _wsActiveSessions      = new Map(); // sessionId → { tabId, origin, appId, encryptionKey, verificationHash }
 const _wsPendingSignRequests = new Map(); // signId → { sessionId, tabId, origin, method, decrypted, encryptionKey }
 
-// Methods that mutate wallet state and require explicit user confirmation
-const _WS_WRITE_METHODS = new Set(["sendTx", "createAuthWit"]);
+// dApp read-class requests that arrived while the wallet was locked, parked
+// until the user unlocks. Keyed by an internal id. Drained by
+// _wsDrainLockedReads() when WS_WALLET_UNLOCKED arrives from the popup.
+const _wsPendingLockedReads = new Map(); // id → { decrypted, session, sessionId, timer }
+let _wsUnlockWindowId = null;             // single shared unlock popup window
+const _WS_UNLOCK_TIMEOUT_MS = 5 * 60_000; // give up (and error) if never unlocked
+
+// Reap the shared unlock-popup handle when the user closes it so a later
+// dApp request can spawn a fresh one instead of focusing a dead window id.
+chrome.windows.onRemoved.addListener((windowId) => {
+  if (windowId === _wsUnlockWindowId) _wsUnlockWindowId = null;
+});
 
 async function _wsHandleProtocolMessage(message, sender) {
   const tabId = sender.tab?.id;
@@ -236,10 +247,18 @@ async function _wsHandleProtocolMessage(message, sender) {
         return;
       }
 
-      // Write-class methods (sendTx, createAuthWit) must show a user
-      // confirmation popup. Read-class methods go through immediately.
+      // Route by method + lock state:
+      //  - write methods → wssign confirmation popup (self-gates unlock)
+      //  - locked read   → unlock popup + queue, replay once unlocked
+      //  - unlocked read → straight to PXE
       const methodName = decrypted?.type;
-      if (_WS_WRITE_METHODS.has(methodName)) {
+      const action = classifySecureMessage({
+        method: methodName,
+        locked: await _bgIsLocked(),
+        writeMethods: WS_WRITE_METHODS,
+      });
+
+      if (action === "sign-popup") {
         const signId = `sign_${Date.now()}_${Math.random().toString(36).slice(2)}`;
         _wsPendingSignRequests.set(signId, {
           sessionId,
@@ -267,7 +286,15 @@ async function _wsHandleProtocolMessage(message, sender) {
         break;
       }
 
-      // Read-class methods: run immediately
+      if (action === "unlock-then-resume") {
+        // Locked + read-class — typically the connect handshake's
+        // requestCapabilities / getAccounts. Surface the unlock screen and
+        // replay this request once the user unlocks (response is sent later).
+        _wsQueueLockedRead(decrypted, session, sessionId);
+        break;
+      }
+
+      // "forward": unlocked read — run immediately.
       await _wsForwardToPxe(decrypted, session, sessionId);
       break;
     }
@@ -356,6 +383,85 @@ async function _wsSendSignError(pending, errorMsg) {
   }
 }
 
+// ─── Unlock-on-connect: locked read-class requests ───────────────────
+// When a dApp sends a read-class wallet-sdk message (the connect handshake)
+// to a locked wallet, we open the unlock popup and park the request here
+// instead of failing it. _wsDrainLockedReads() replays them after unlock.
+
+// Open (or focus) the unlock popup. Deduped via _wsUnlockWindowId so a burst
+// of read calls during a single connect shares one window.
+async function _wsOpenUnlockPopup() {
+  if (_wsUnlockWindowId != null) {
+    try {
+      await chrome.windows.update(_wsUnlockWindowId, { focused: true });
+      return;
+    } catch {
+      _wsUnlockWindowId = null; // window was closed — fall through and recreate
+    }
+  }
+  try {
+    const win = await chrome.windows.create({
+      url: "popup.html?unlock=1",
+      type: "popup",
+      width: 380,
+      height: 600,
+      focused: true,
+    });
+    _wsUnlockWindowId = win?.id ?? null;
+  } catch (e) {
+    console.warn("[WalletSDK] unlock popup create failed:", e?.message || e);
+  }
+}
+
+// Park a locked read request and ensure the unlock popup is showing. Each
+// request self-expires (and errors back to the dApp) if never unlocked, so a
+// dismissed popup never leaves the dApp hanging forever.
+function _wsQueueLockedRead(decrypted, session, sessionId) {
+  const id = `lr_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const timer = setTimeout(() => {
+    const pending = _wsPendingLockedReads.get(id);
+    if (!pending) return;
+    _wsPendingLockedReads.delete(id);
+    _wsSendLockedError(pending).catch(() => {});
+  }, _WS_UNLOCK_TIMEOUT_MS);
+  _wsPendingLockedReads.set(id, { decrypted, session, sessionId, timer });
+  _wsOpenUnlockPopup();
+}
+
+// Encrypted "Wallet locked" error for a queued read the user never unlocked.
+async function _wsSendLockedError(pending) {
+  try {
+    const payload = JSON.stringify({
+      messageId: pending.decrypted.messageId,
+      error: "Wallet locked",
+      code: "WALLET_LOCKED",
+      walletId: CELARI_WALLET_ID_WS,
+    });
+    const encrypted = await _wsEncrypt(pending.session.encryptionKey, payload);
+    chrome.tabs.sendMessage(pending.session.tabId, {
+      origin: _WS_BG,
+      type: "secure-response",
+      sessionId: pending.sessionId,
+      content: encrypted,
+    }).catch(() => {});
+  } catch (e) {
+    console.warn("[WalletSDK] locked-error send failed:", e?.message || e);
+  }
+}
+
+// Replay all parked reads after unlock. _wsForwardToPxe re-checks the lock,
+// so a failed/partial unlock degrades safely to the locked error.
+function _wsDrainLockedReads() {
+  if (_wsPendingLockedReads.size === 0) return;
+  const pending = [..._wsPendingLockedReads.values()];
+  _wsPendingLockedReads.clear();
+  for (const p of pending) {
+    clearTimeout(p.timer);
+    _wsForwardToPxe(p.decrypted, p.session, p.sessionId)
+      .catch((e) => console.warn("[WalletSDK] resume-after-unlock failed:", e?.message || e));
+  }
+}
+
 // --- Offscreen Document (PXE WASM Engine) ----------------------------
 
 let offscreenReady = false;
@@ -369,6 +475,36 @@ async function _bgIsLocked() {
     return !r?.celari_secret;
   } catch (e) {
     return true;
+  }
+}
+
+// ─── Idle lock ─────────────────────────────────────────────────────────
+// Wipe plaintext signing material from chrome.storage.session after
+// IDLE_LOCK_MINUTES of inactivity. Popup-close and dApp activity reset
+// the countdown so a user actively using the wallet (popup open, dApp
+// interactions, signing) never gets locked out mid-flow.
+const IDLE_LOCK_MINUTES = 15;
+const IDLE_LOCK_ALARM = "celari_idle_lock";
+
+async function _scheduleIdleLock() {
+  try {
+    await chrome.alarms.create(IDLE_LOCK_ALARM, { delayInMinutes: IDLE_LOCK_MINUTES });
+  } catch (e) {
+    console.warn("[Celari] idle lock schedule failed:", e?.message || e);
+  }
+}
+
+async function _clearIdleLock() {
+  try { await chrome.alarms.clear(IDLE_LOCK_ALARM); } catch {}
+}
+
+async function _runIdleLock() {
+  console.log(`[Celari] Idle lock fired after ${IDLE_LOCK_MINUTES}min — wiping session signing material`);
+  try {
+    await chrome.storage.session.remove(["celari_secret", "celari_private_key", "celari_keys"]);
+    await chrome.storage.local.set({ celari_locked: true });
+  } catch (e) {
+    console.warn("[Celari] idle lock wipe failed:", e?.message || e);
   }
 }
 
@@ -520,6 +656,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Wallet-SDK v4.2.0 internal protocol (content script → background)
   if (message?.origin === _WS_CS) {
+    // Any dApp interaction counts as activity — push the idle lock back.
+    if (message.type === "secure-message") _scheduleIdleLock();
     _wsHandleProtocolMessage(message, sender).catch(e => console.warn("[WalletSDK]", e.message));
     return false; // fire-and-forget, no sendResponse needed
   }
@@ -533,6 +671,74 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       console.log("Offscreen JS loaded — listener active");
       sendResponse({ success: true });
       return;
+
+    // Idle lock control — popup uses these to defer locking instead of
+    // wiping session immediately on close.
+    case "SCHEDULE_IDLE_LOCK":
+      _scheduleIdleLock();
+      sendResponse({ success: true, lockInMinutes: IDLE_LOCK_MINUTES });
+      return;
+    case "CLEAR_IDLE_LOCK":
+      _clearIdleLock();
+      sendResponse({ success: true });
+      return;
+
+    // Offscreen document proxy for chrome.storage.local — offscreen pages
+    // cannot reach chrome.storage themselves (only chrome.runtime is
+    // available there), so dApp-driven flows like getAccounts route through
+    // here.
+    case "GET_STORED_ACCOUNTS":
+      chrome.storage.local.get("celari_accounts", (data) => {
+        sendResponse({ success: true, accounts: data?.celari_accounts || [] });
+      });
+      return true; // async sendResponse
+
+    // Bundle stored account metadata + in-session plaintext signing material
+    // so offscreen can lazy-register the account in PXE when a dApp method
+    // (simulateTx / sendTx / createAuthWit) needs it after a fresh offscreen
+    // boot. Requires the wallet to be unlocked (celari_secret in session) —
+    // returns locked=true otherwise.
+    case "GET_ACCOUNT_BUNDLE":
+      (async () => {
+        try {
+          const [localR, sessionR] = await Promise.all([
+            chrome.storage.local.get("celari_accounts"),
+            chrome.storage.session.get(["celari_secret", "celari_private_key"]),
+          ]);
+          const accounts = (localR?.celari_accounts || []).filter(a => a?.deployed && a?.address);
+          if (accounts.length === 0) {
+            sendResponse({ success: false, error: "No deployed accounts" });
+            return;
+          }
+          const target = message.address
+            ? accounts.find(a => a.address?.toLowerCase() === String(message.address).toLowerCase())
+            : accounts[0];
+          if (!target) {
+            sendResponse({ success: false, error: `No stored account for address ${message.address}` });
+            return;
+          }
+          const secret = sessionR?.celari_secret;
+          const privateKey = sessionR?.celari_private_key;
+          if (!secret || !privateKey) {
+            sendResponse({ success: false, error: "Wallet locked", code: "WALLET_LOCKED" });
+            return;
+          }
+          sendResponse({
+            success: true,
+            bundle: {
+              address: target.address,
+              publicKeyX: target.publicKeyX,
+              publicKeyY: target.publicKeyY,
+              salt: target.salt,
+              secretKey: secret,
+              privateKeyPkcs8: privateKey,
+            },
+          });
+        } catch (e) {
+          sendResponse({ success: false, error: e?.message || String(e) });
+        }
+      })();
+      return true;
 
     // Wallet-SDK v4.2.0: popup approval flow for dApp discovery
     case "WS_GET_PENDING_DISCOVERY": {
@@ -623,6 +829,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       _wsPendingSignRequests.delete(message.requestId);
       sendResponse({ success: true });
       _wsSendSignError(req, "User rejected the request").catch(() => {});
+      break;
+    }
+
+    // Popup unlocked the wallet — replay any dApp read-class requests that
+    // were parked while locked (e.g. a connect handshake). Fired from the
+    // dedicated unlock popup and from a normal manual unlock alike.
+    case "WS_WALLET_UNLOCKED": {
+      _wsDrainLockedReads();
+      sendResponse({ success: true });
       break;
     }
 
@@ -1382,6 +1597,8 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     } catch (e) {
       console.warn("Celari: keep-alive cycle failed —", e.message || e);
     }
+  } else if (alarm.name === IDLE_LOCK_ALARM) {
+    await _runIdleLock();
   }
 });
 
