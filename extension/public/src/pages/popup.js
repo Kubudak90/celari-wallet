@@ -19,6 +19,8 @@
 import * as passkeyCrypto from "../lib/passkey-crypto.js";
 import { detectLegacyPlaintext, validateAccountsArray, purgePending } from "../lib/account-schema.js";
 import { remainingCooldownMs, cooldownMinutes } from "../lib/faucet-cooldown.js";
+import { isFaucetNetwork } from "../lib/faucet-networks.js";
+import { createLogBuffer } from "../lib/log-buffer.js";
 
 // ─── Security: HTML Escaping ──────────────────────────
 
@@ -117,6 +119,24 @@ const store = {
   // render to label/disable the Faucet action button.
   faucetCooldownMs: 0,
 };
+
+// ─── Log capture ──────────────────────────────────────
+// A session ring buffer feeding the Logs screen. We tee console.* so existing
+// [Celari …] diagnostics show up without sprinkling new calls everywhere.
+const logBuffer = createLogBuffer(200);
+function logEvent(level, ...args) {
+  logBuffer.push(level, args, Date.now());
+}
+if (typeof console !== "undefined" && !console.__celariTapped) {
+  for (const level of ["log", "info", "warn", "error"]) {
+    const orig = console[level].bind(console);
+    console[level] = (...a) => {
+      try { logBuffer.push(level === "log" ? "info" : level, a, Date.now()); } catch {}
+      orig(...a);
+    };
+  }
+  console.__celariTapped = true;
+}
 
 // Auto-lock idle window — popup re-opens almost always trigger a fresh
 // init() that locks regardless, so this matters only while the popup
