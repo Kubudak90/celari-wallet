@@ -1665,7 +1665,7 @@ function renderDashboard() {
         <div class="icon">${icons.download}</div>
         Receive
       </button>
-      ${store.network === "testnet" || store.network === "devnet" ? (() => {
+      ${isFaucetNetwork(store.network) ? (() => {
         const cooldownMin = cooldownMinutes(store.faucetCooldownMs);
         const onCooldown = cooldownMin > 0;
         return `
