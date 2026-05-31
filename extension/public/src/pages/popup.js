@@ -1104,51 +1104,24 @@ function renderLoading() {
 // ─── Screen: Locked ───────────────────────────────────
 
 function renderLocked() {
-  const account = getActiveAccount();
-  const isPasskey = account?.type === "passkey";
-  const idLabel = account
-    ? `${account.address.slice(0, 8)}…${account.address.slice(-6)}`
-    : "";
   const errorBlock = store.unlockError
-    ? `<div style="margin-top:14px;padding:10px 12px;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.25);color:var(--red);font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:0.5px;border-radius:var(--radius-md);max-width:280px;text-align:left">${escapeHtml(store.unlockError)}</div>`
+    ? `<div style="margin-top:14px;padding:10px 12px;border-radius:6px;background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.25);color:var(--c-down);font-size:12px;max-width:280px;text-align:left">${escapeHtml(store.unlockError)}</div>`
     : "";
 
   return `
-    <div class="onboarding" style="padding:48px 24px 32px;display:flex;flex-direction:column;align-items:center;text-align:center">
-      <div style="margin-bottom:20px">
-        <img src="icons/logo-lockup.svg" alt="Celari" style="height:40px;display:block"/>
+    <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center;box-sizing:border-box">
+      <div style="color:var(--c-ink);margin-bottom:22px">${celariMark(48)}</div>
+      <div style="width:64px;height:64px;border-radius:999px;border:1.5px solid var(--c-ink);display:flex;align-items:center;justify-content:center;margin-bottom:20px">
+        ${svgIcon("lock", 26)}
       </div>
-
-      <div style="margin:8px 0 6px;font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:2.5px;color:var(--text-muted);text-transform:uppercase">Locked</div>
-      <h2 style="font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:18px;color:var(--text-warm);margin:4px 0 6px">Unlock with passkey</h2>
-      <p style="font-family:Inter,system-ui,sans-serif;font-size:12px;color:var(--text-body);max-width:260px;line-height:1.5;margin:0 0 20px">
-        ${isPasskey
-          ? "Use Face ID, Touch ID, or your device passkey to continue."
-          : "Tap unlock to continue."}
-      </p>
-
-      ${idLabel
-        ? `<div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:0.5px;color:var(--text-dim);margin-bottom:24px">${escapeHtml(idLabel)}</div>`
-        : ""}
-
-      <button id="btn-unlock" ${store.unlocking ? "disabled" : ""} style="
-        display:inline-flex;align-items:center;justify-content:center;gap:8px;
-        min-width:240px;padding:14px 18px;
-        background:linear-gradient(180deg, var(--gold-glow), var(--gold-soft));
-        border:none;border-radius:var(--radius-lg);
-        color:var(--bg);
-        font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:14px;letter-spacing:0.5px;
-        cursor:${store.unlocking ? "default" : "pointer"};
-        opacity:${store.unlocking ? "0.7" : "1"};
-        box-shadow:0 0 24px rgba(212,168,83,0.18);
-        transition:transform 0.15s ease, box-shadow 0.15s ease;
-      ">
-        ${store.unlocking
-          ? `<span class="spinner" style="width:14px;height:14px;border-width:2px;border-color:var(--bg) transparent var(--bg) var(--bg)"></span> Verifying…`
-          : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Unlock with passkey`}
-      </button>
-
+      <h1 class="cel-display" style="font-size:26px;margin-bottom:8px">Wallet <em>locked</em></h1>
+      <p style="font-size:13px;color:var(--c-muted);max-width:230px;margin-bottom:28px">Unlock with your passkey to continue. Your keys never leave this device.</p>
       ${errorBlock}
+      <button id="btn-unlock" ${store.unlocking ? "disabled" : ""} class="cel-btn cel-btn--primary cel-btn--block" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;margin-top:${store.unlockError ? "14px" : "0"}">
+        ${store.unlocking
+          ? `<span class="spinner" style="width:14px;height:14px;border-width:2px"></span> Verifying…`
+          : `${svgIcon("face-id", 16)} Unlock with passkey`}
+      </button>
     </div>`;
 }
 
