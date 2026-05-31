@@ -1162,3 +1162,7 @@ body {
 .cel-ic svg { width:18px; height:18px; stroke:var(--c-ink); stroke-width:1.5; fill:none; }
 
 @keyframes celPulse { 0%,100% { opacity:1; } 50% { opacity:0.35; } }
+
+/* ─── Dashboard tab active/inactive (Aztec restyle) ─── */
+.tabs .tab { color: var(--c-subtle); border-bottom: 2px solid transparent; }
+.tabs .tab.active { color: var(--c-ink); border-bottom: 2px solid var(--c-ink); }

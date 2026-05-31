@@ -1642,55 +1642,61 @@ function renderDashboard() {
   return `
     ${renderHeader()}
 
-    <div class="balance-card">
-      <div class="privacy-badge">${icons.lock} Shielded</div>
-      <div class="balance-label">Total Balance</div>
-      <div class="balance-amount">${escapeHtml(totalValue)}</div>
-      <div class="balance-address">
-        ${account?.address ? `<code>${escapeHtml(shortAddr)}</code>
-        <button class="copy-btn" id="btn-copy-addr" title="Copy address">${icons.copy}</button>` : `<code style="color:var(--text-faint)">Preparing address...</code>`}
-        <span style="margin-left:4px;font-family:IBM Plex Mono,monospace;font-size:8px;letter-spacing:2px;color:${isDeployed ? 'var(--green)' : isPasskey ? 'var(--copper)' : 'var(--text-dim)'}">${isDeployed ? 'DEPLOYED' : isPasskey ? 'PENDING' : 'DEMO'}</span>
+    <div class="cel-card" style="margin:14px 16px;padding:18px">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">
+        <span class="cel-eyebrow">Total balance</span>
+        <span class="cel-state cel-state--priv" style="margin-left:auto"><span class="cel-dot cel-dot--priv"></span>Shielded</span>
+      </div>
+      <div class="cel-num" style="font-size:30px;font-weight:600;letter-spacing:-0.03em;color:var(--c-ink)">${escapeHtml(totalValue)}</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:12px;padding-top:12px;border-top:1px solid var(--c-hairline)">
+        ${account?.address
+          ? `<code class="cel-mono" style="font-size:12px;color:var(--c-muted)">${escapeHtml(shortAddr)}</code>
+             <button class="copy-btn" id="btn-copy-addr" title="Copy address" style="background:none;border:0;color:var(--c-subtle);cursor:pointer;display:flex">${icons.copy}</button>`
+          : `<code class="cel-mono" style="font-size:12px;color:var(--c-subtle)">Preparing address…</code>`}
+        <span class="cel-mono" style="margin-left:auto;font-size:9px;letter-spacing:0.12em;color:${isDeployed ? "var(--c-up)" : isPasskey ? "var(--c-proving)" : "var(--c-subtle)"}">${isDeployed ? "DEPLOYED" : isPasskey ? "PENDING" : "DEMO"}</span>
       </div>
     </div>
 
-    ${needsDeploy ? renderDeployBanner() : ''}
-    ${!needsDeploy && isDeployed ? renderSyncBar() : ''}
+    ${needsDeploy ? renderDeployBanner() : ""}
+    ${!needsDeploy && isDeployed ? renderSyncBar() : ""}
 
     ${renderAccountSelector()}
 
-    <div class="actions">
-      <button class="action-btn" id="btn-send">
-        <div class="icon">${icons.send}</div>
-        Send
+    <div style="display:flex;justify-content:space-around;padding:4px 16px 16px">
+      <button class="action-btn" id="btn-send" style="display:flex;flex-direction:column;align-items:center;gap:7px;background:none;border:0;cursor:pointer;color:var(--c-ink)">
+        <span style="width:46px;height:46px;border-radius:999px;border:1.5px solid var(--c-ink);display:flex;align-items:center;justify-content:center;background:var(--c-card)">${svgIcon("send", 18)}</span>
+        <span class="cel-mono" style="font-size:10px">Send</span>
       </button>
-      <button class="action-btn" id="btn-receive">
-        <div class="icon">${icons.download}</div>
-        Receive
+      <button class="action-btn" id="btn-receive" style="display:flex;flex-direction:column;align-items:center;gap:7px;background:none;border:0;cursor:pointer;color:var(--c-ink)">
+        <span style="width:46px;height:46px;border-radius:999px;border:1.5px solid var(--c-ink);display:flex;align-items:center;justify-content:center;background:var(--c-card)">${svgIcon("download", 18)}</span>
+        <span class="cel-mono" style="font-size:10px">Receive</span>
       </button>
-      ${isFaucetNetwork(store.network) ? (() => {
-        const cooldownMin = cooldownMinutes(store.faucetCooldownMs);
-        const onCooldown = cooldownMin > 0;
-        return `
-      <button class="action-btn" id="btn-faucet"${onCooldown ? ' style="opacity:0.5;pointer-events:none;"' : ''} title="${onCooldown ? `Cooldown ${cooldownMin}m` : 'Request testnet tokens'}">
-        <div class="icon">${icons.download}</div>
-        ${onCooldown ? `Faucet (${cooldownMin}m)` : 'Faucet'}
+      ${isFaucetNetwork(store.network)
+        ? (() => {
+            const cooldownMin = cooldownMinutes(store.faucetCooldownMs);
+            const onCooldown = cooldownMin > 0;
+            return `
+      <button class="action-btn" id="btn-faucet"${onCooldown ? ' style="display:flex;flex-direction:column;align-items:center;gap:7px;background:none;border:0;opacity:0.5;pointer-events:none;color:var(--c-ink)"' : ' style="display:flex;flex-direction:column;align-items:center;gap:7px;background:none;border:0;cursor:pointer;color:var(--c-ink)"'} title="${onCooldown ? `Cooldown ${cooldownMin}m` : "Request testnet tokens"}">
+        <span style="width:46px;height:46px;border-radius:999px;border:1.5px solid var(--c-ink);display:flex;align-items:center;justify-content:center;background:var(--c-card)">${svgIcon("drop", 18)}</span>
+        <span class="cel-mono" style="font-size:10px">${onCooldown ? `Faucet ${cooldownMin}m` : "Faucet"}</span>
       </button>`;
-      })() : `
-      <button class="action-btn" id="btn-bridge">
-        <div class="icon">${icons.send}</div>
-        Bridge
+          })()
+        : `
+      <button class="action-btn" id="btn-bridge" style="display:flex;flex-direction:column;align-items:center;gap:7px;background:none;border:0;cursor:pointer;color:var(--c-ink)">
+        <span style="width:46px;height:46px;border-radius:999px;border:1.5px solid var(--c-ink);display:flex;align-items:center;justify-content:center;background:var(--c-card)">${svgIcon("link", 18)}</span>
+        <span class="cel-mono" style="font-size:10px">Bridge</span>
       </button>`}
-      <button class="action-btn" id="btn-card">
-        <div class="icon">${icons.shield}</div>
-        Shield
+      <button class="action-btn" id="btn-card" style="display:flex;flex-direction:column;align-items:center;gap:7px;background:none;border:0;cursor:pointer;color:var(--c-ink)">
+        <span style="width:46px;height:46px;border-radius:999px;border:1.5px solid var(--c-ink);display:flex;align-items:center;justify-content:center;background:var(--c-card)">${svgIcon("shield-half", 18)}</span>
+        <span class="cel-mono" style="font-size:10px">Shield</span>
       </button>
     </div>
 
-    <div class="tabs">
-      <div class="tab active" id="tab-tokens">Tokens</div>
-      <div class="tab" id="tab-nfts">NFTs</div>
-      <div class="tab" id="tab-activity">Activity</div>
-      <button id="btn-add-token" title="Add custom token" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:4px 8px;font-size:16px;font-family:IBM Plex Mono,monospace;transition:color 0.2s;margin-left:auto">+</button>
+    <div class="tabs" style="display:flex;border-bottom:1px solid var(--c-hairline);padding:0 16px;align-items:center">
+      <div class="tab active" id="tab-tokens" style="padding:10px 14px 9px;cursor:pointer;font-family:var(--font-mono);font-size:11px;letter-spacing:0.06em;text-transform:uppercase;border-bottom:2px solid var(--c-ink);color:var(--c-ink)">Tokens</div>
+      <div class="tab" id="tab-nfts" style="padding:10px 14px 9px;cursor:pointer;font-family:var(--font-mono);font-size:11px;letter-spacing:0.06em;text-transform:uppercase;border-bottom:2px solid transparent;color:var(--c-subtle)">NFTs</div>
+      <div class="tab" id="tab-activity" style="padding:10px 14px 9px;cursor:pointer;font-family:var(--font-mono);font-size:11px;letter-spacing:0.06em;text-transform:uppercase;border-bottom:2px solid transparent;color:var(--c-subtle)">Activity</div>
+      <button id="btn-add-token" title="Add custom token" style="background:none;border:none;color:var(--c-subtle);cursor:pointer;padding:4px 8px;font-size:16px;font-family:var(--font-mono);margin-left:auto">+</button>
     </div>
 
     <div class="token-list" id="content-area">
