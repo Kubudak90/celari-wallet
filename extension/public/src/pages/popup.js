@@ -935,6 +935,13 @@ function svgIcon(name, size = 16) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block">${paths}</svg>`;
 }
 
+function celariMark(size = 28) {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 1024 1024" style="display:block"><path fill="currentColor" d="M 781 243 A 380 380 0 1 0 781 781 L 696 696 A 260 260 0 1 1 696 328 Z"/><g transform="translate(720 512) rotate(-22)"><path fill="currentColor" d="M -130 0 Q 0 -52 130 0 Q 0 52 -130 0 Z"/></g></svg>`;
+}
+function celariLockup(size = 22) {
+  return `<span style="display:inline-flex;align-items:center;gap:9px;color:var(--c-ink)">${celariMark(size)}<span class="cel-display" style="font-size:${Math.round(size * 0.92)}px;letter-spacing:0.01em;line-height:1">cel<em>a</em>ri</span></span>`;
+}
+
 // Back-compat map: existing templates use `icons.send` etc. Each renders the
 // new geometric glyph at the same call sites.
 const icons = {
@@ -1174,38 +1181,32 @@ function renderPrfUnsupported() {
 // ─── Screen: Onboarding ───────────────────────────────
 
 function renderOnboarding() {
+  const feats = [
+    { icon: "shield-half", label: "Self-custody" },
+    { icon: "face-id",    label: "Passkey login" },
+    { icon: "eye-off",    label: "No tracking" },
+  ];
+  const featRows = feats.map(f => `
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="cel-ic">${svgIcon(f.icon, 15)}</div>
+      <span style="font-size:14px;font-weight:500">${f.label}</span>
+    </div>`).join("");
+
   return `
-    <div class="onboarding">
-      <div class="onboarding-icon">${LOGO_LARGE}</div>
-      <h2>Celari</h2>
-      <div class="deco-separator">
-        <div class="line"></div>
-        <div class="diamond"></div>
-        <div class="line"></div>
+    <div style="padding:28px 24px 24px;text-align:center;display:flex;flex-direction:column;height:100%;box-sizing:border-box">
+      <div style="flex:0.5"></div>
+      <div style="display:flex;justify-content:center;margin-bottom:20px;color:var(--c-ink)">${celariMark(56)}</div>
+      <h1 class="cel-display" style="font-size:30px;margin-bottom:10px">Welcome to <em>cel</em>ari</h1>
+      <p style="font-size:13px;color:var(--c-muted);margin:0 auto 26px;max-width:250px">A privacy wallet on Aztec. Private by default, public when you choose.</p>
+      <div style="display:flex;flex-direction:column;gap:12px;text-align:left;margin-bottom:8px">
+        ${featRows}
       </div>
-      <div class="subtitle">celāre — to hide, to conceal</div>
-      <p>Privacy-first wallet on Aztec. No seed phrases — just your fingerprint.</p>
-
-      <div class="feature-list">
-        <div class="feature-item">
-          <div class="icon"><span>${icons.shield}</span></div>
-          <span class="text"><strong>Private by Default</strong> — balance, amount, address hidden</span>
-        </div>
-        <div class="feature-item">
-          <div class="icon"><span>${icons.lock}</span></div>
-          <span class="text"><strong>Passkey Auth</strong> — Face ID / fingerprint</span>
-        </div>
-        <div class="feature-item">
-          <div class="icon"><span>${icons.send}</span></div>
-          <span class="text"><strong>Cross-chain</strong> — ETH, L2, Aztec bridge</span>
-        </div>
-      </div>
-
-      <button id="btn-create-passkey" class="btn btn-passkey" style="margin-bottom:10px">
-        Create Wallet
+      <div style="flex:1"></div>
+      <button id="btn-create-passkey" class="cel-btn cel-btn--primary cel-btn--block" style="display:inline-flex;align-items:center;justify-content:center;gap:8px">
+        ${svgIcon("face-id", 16)} Create with passkey
       </button>
-      <button id="btn-demo" class="btn btn-secondary" style="font-size:9px;letter-spacing:2px">
-        Demo Mode
+      <button id="btn-demo" style="background:none;border:0;color:var(--c-muted);font-family:var(--font-mono,monospace);font-size:12px;margin-top:12px;cursor:pointer">
+        Restore existing account
       </button>
     </div>`;
 }
