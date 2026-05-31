@@ -2113,47 +2113,64 @@ function renderSend() {
   return `
     ${renderSubHeader("Send", "dashboard")}
 
-    <div class="send-form">
-      <div class="form-group">
-        <label class="form-label">Transfer Type</label>
-        <div style="display:flex;gap:6px;margin-bottom:4px" id="transfer-type-group">
-          <button class="transfer-type-btn active" data-type="private" style="flex:1;padding:8px 4px;border:1px solid rgba(74,222,128,0.3);background:rgba(74,222,128,0.08);color:var(--green);font-family:IBM Plex Mono,monospace;font-size:8px;cursor:pointer;letter-spacing:1px">PRIVATE</button>
-          <button class="transfer-type-btn" data-type="public" style="flex:1;padding:8px 4px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-dim);font-family:IBM Plex Mono,monospace;font-size:8px;cursor:pointer;letter-spacing:1px">PUBLIC</button>
-          <button class="transfer-type-btn" data-type="shield" style="flex:1;padding:8px 4px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-dim);font-family:IBM Plex Mono,monospace;font-size:8px;cursor:pointer;letter-spacing:1px">SHIELD</button>
-          <button class="transfer-type-btn" data-type="unshield" style="flex:1;padding:8px 4px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-dim);font-family:IBM Plex Mono,monospace;font-size:8px;cursor:pointer;letter-spacing:1px">UNSHIELD</button>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+
+      <!-- Amount card -->
+      <div class="cel-card" style="padding:22px 16px;text-align:center;position:relative">
+        <div class="cel-eyebrow" style="margin-bottom:6px">Amount</div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:8px">
+          <input type="text" id="send-amount" class="cel-num" placeholder="0.00" autocomplete="off"
+            style="background:none;border:none;outline:none;font-size:36px;font-weight:600;letter-spacing:-0.03em;color:var(--c-ink);text-align:center;width:100%;min-width:0" />
+        </div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px">
+          <select id="send-token" class="cel-mono" style="background:none;border:none;outline:none;font-size:11px;color:var(--c-subtle);cursor:pointer;text-align:center">
+            ${store.tokens.map(t => {
+              const pub = t.publicBalance || t.balance || "0";
+              const priv = t.privateBalance || "0";
+              return `<option value="${escapeHtml(t.symbol)}">${escapeHtml(t.icon)} ${escapeHtml(t.symbol)} — Pub: ${escapeHtml(pub)} / Priv: ${escapeHtml(priv)}</option>`;
+            }).join("")}
+          </select>
+          <button id="btn-max" class="cel-btn cel-btn--ghost" style="padding:3px 8px;font-size:9px;letter-spacing:0.08em;height:auto;line-height:1.4">MAX</button>
         </div>
       </div>
 
-      <div class="form-group">
-        <label class="form-label">Token</label>
-        <select class="form-input" id="send-token" style="cursor:pointer;background:var(--bg-input);color:var(--text-warm)">
-          ${store.tokens.map(t => {
-            const pub = t.publicBalance || t.balance || "0";
-            const priv = t.privateBalance || "0";
-            return `<option value="${escapeHtml(t.symbol)}">${escapeHtml(t.icon)} ${escapeHtml(t.symbol)} — Pub: ${escapeHtml(pub)} / Priv: ${escapeHtml(priv)}</option>`;
-          }).join("")}
-        </select>
+      <!-- Transfer-type toggle -->
+      <div id="transfer-type-group" style="display:flex;gap:6px">
+        <button class="transfer-type-btn cel-btn cel-btn--primary" data-type="private" style="flex:1;height:34px;font-size:10px;letter-spacing:0.06em;text-transform:uppercase">Private</button>
+        <button class="transfer-type-btn cel-btn cel-btn--ghost" data-type="public" style="flex:1;height:34px;font-size:10px;letter-spacing:0.06em;text-transform:uppercase">Public</button>
+        <button class="transfer-type-btn cel-btn cel-btn--ghost" data-type="shield" style="flex:1;height:34px;font-size:10px;letter-spacing:0.06em;text-transform:uppercase">Shield</button>
+        <button class="transfer-type-btn cel-btn cel-btn--ghost" data-type="unshield" style="flex:1;height:34px;font-size:10px;letter-spacing:0.06em;text-transform:uppercase">Unshield</button>
       </div>
 
-      <div class="form-group" style="position:relative">
-        <label class="form-label">Amount</label>
-        <input type="text" class="form-input amount" id="send-amount" placeholder="0.00" autocomplete="off" />
-        <button class="max-btn" id="btn-max">MAX</button>
+      <!-- Recipient field -->
+      <div>
+        <div class="cel-eyebrow" style="margin-bottom:6px">To</div>
+        <input type="text" id="send-to" class="cel-field" placeholder="Address or Celari ID" autocomplete="off" />
       </div>
 
-      <div class="form-group">
-        <label class="form-label">Recipient Address</label>
-        <input type="text" class="form-input" id="send-to" placeholder="0x..." autocomplete="off" />
+      <!-- Network card -->
+      <div class="cel-card" style="padding:14px;display:flex;align-items:center;gap:10px">
+        <span style="color:var(--c-ink)">${celariMark(24)}</span>
+        <div style="flex:1">
+          <div class="cel-eyebrow">Network</div>
+          <div style="font-size:13px;font-weight:500;margin-top:2px">Aztec Alpha</div>
+        </div>
+        <span class="cel-state cel-state--priv"><span class="cel-dot cel-dot--priv"></span>Private</span>
       </div>
 
-      <div id="transfer-info-box" style="background:var(--green-glow);border:1px solid rgba(74,222,128,0.15);padding:10px 12px;margin-bottom:16px;display:flex;align-items:center;gap:8px">
-        <span style="color:var(--green)">${icons.lock}</span>
-        <span style="font-size:10px;color:var(--green);font-family:IBM Plex Mono,monospace;letter-spacing:0.5px">Fully private transfer — invisible to observers</span>
+      <!-- Fee card + info box -->
+      <div class="cel-card" style="padding:14px;display:flex;justify-content:space-between;align-items:center">
+        <div class="cel-eyebrow">Estimated fee</div>
+        <div id="transfer-info-box" style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:13px;font-weight:500;color:var(--c-up)">Sponsored</span>
+        </div>
       </div>
 
-      <button id="btn-confirm-send" class="btn btn-passkey" ${store.loading ? "disabled" : ""}>
-        ${store.loading ? '<div class="spinner"></div> Signing...' : 'Sign & Send'}
+      <!-- Submit -->
+      <button id="btn-confirm-send" class="cel-btn cel-btn--primary cel-btn--block" style="margin-top:4px" ${store.loading ? "disabled" : ""}>
+        ${store.loading ? '<div class="spinner"></div> Signing...' : 'Review transaction'}
       </button>
+
     </div>`;
 }
 
@@ -2294,30 +2311,32 @@ function renderReceive() {
   const address = account?.address || "0x...";
 
   return `
-    ${renderSubHeader("My Address", "dashboard")}
+    ${renderSubHeader("Receive", "dashboard")}
 
-    <div style="padding:20px 16px;text-align:center">
-      <div style="width:200px;height:200px;margin:0 auto 8px;background:#E8D8CC;display:flex;align-items:center;justify-content:center;position:relative">
-        ${renderSimpleQR(address)}
-        <div style="position:absolute;background:#1C1616;width:36px;height:36px;display:flex;align-items:center;justify-content:center;">
-          <span style="font-family:Inter,system-ui,sans-serif;font-weight:300;font-size:18px;color:var(--gold-primary)">C</span>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+
+      <!-- QR card -->
+      <div class="cel-card" style="padding:20px;text-align:center">
+        <div style="display:flex;justify-content:center;margin-bottom:14px">${celariLockup(20)}</div>
+        <div style="width:170px;height:170px;margin:0 auto;background:#fff;border-radius:10px;padding:12px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;position:relative">
+          ${renderSimpleQR(address)}
         </div>
       </div>
-      <div style="font-family:IBM Plex Mono,monospace;font-size:7px;color:var(--text-faint);margin-bottom:12px;letter-spacing:1px;opacity:0.6">DECORATIVE ONLY — USE COPY BUTTON BELOW</div>
 
-      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;letter-spacing:4px;color:var(--text-faint);margin-bottom:8px;text-transform:uppercase">My Address on Aztec</div>
-
-      <div style="background:var(--bg-card);border:1px solid var(--border);padding:12px;word-break:break-all;font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--copper);margin-bottom:12px;text-align:left;letter-spacing:0.5px">
-        ${escapeHtml(address)}
-      </div>
-
-      <button id="btn-copy-full" class="btn btn-primary" style="margin-bottom:10px">Copy Address</button>
-
-      <div style="background:var(--green-glow);border:1px solid rgba(74,222,128,0.15);padding:10px;margin-top:8px">
-        <div style="font-size:10px;color:var(--green);display:flex;align-items:center;gap:6px;justify-content:center;font-family:IBM Plex Mono,monospace;letter-spacing:0.5px">
-          ${icons.lock} Incoming transfers are automatically shielded
+      <!-- Address card -->
+      <div class="cel-card" style="padding:14px">
+        <div class="cel-eyebrow" style="margin-bottom:6px">Your address on Aztec</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <code class="cel-mono" style="font-size:10px;color:var(--c-muted);word-break:break-all;flex:1">${escapeHtml(address)}</code>
+          <span style="color:var(--c-subtle);flex-shrink:0">${svgIcon("copy", 15)}</span>
         </div>
       </div>
+
+      <!-- Copy button -->
+      <button id="btn-copy-full" class="cel-btn cel-btn--ghost cel-btn--block">
+        ${svgIcon("copy", 15)} Copy address
+      </button>
+
     </div>`;
 }
 
