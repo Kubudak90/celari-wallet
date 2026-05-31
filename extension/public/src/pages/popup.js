@@ -1179,7 +1179,7 @@ function renderOnboarding() {
         ${svgIcon("face-id", 16)} Create with passkey
       </button>
       <button id="btn-demo" style="background:none;border:0;color:var(--c-muted);font-family:var(--font-mono,monospace);font-size:12px;margin-top:12px;cursor:pointer">
-        Restore existing account
+        Try demo mode
       </button>
     </div>`;
 }
