@@ -3124,33 +3124,43 @@ function renderWsApprove() {
   const d = store.wsDiscovery || {};
   let hostname = d.origin || "unknown";
   try { hostname = new URL(d.origin).hostname; } catch {}
+  const perms = ["See your Aztec account address", "Request transaction signatures", "Read public contract state"];
   return `
-    <div class="onboarding" style="padding:24px 20px;gap:12px;justify-content:flex-start">
-      <div class="onboarding-icon" style="margin-bottom:4px">${LOGO_LARGE}</div>
-      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--copper);letter-spacing:3px;text-transform:uppercase">Connection Request</div>
-      <h2 style="font-size:18px;letter-spacing:4px;margin:4px 0 8px">Connect Wallet?</h2>
-      <div class="deco-separator" style="margin-bottom:8px">
-        <div class="line"></div><div class="diamond"></div><div class="line"></div>
+    <div style="padding:16px;display:flex;flex-direction:column;height:100%;box-sizing:border-box;gap:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        ${celariLockup(18)}
+        <span class="cel-eyebrow">Connection request</span>
       </div>
 
-      <div style="background:var(--bg-card);border:1px solid var(--border);padding:14px;width:100%;border-radius:var(--radius-md);box-shadow:var(--shadow)">
-        <div style="font-size:8px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Site</div>
-        <div style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--text-warm);word-break:break-all;font-weight:500">${escapeHtml(hostname)}</div>
+      <div class="cel-card" style="padding:18px;text-align:center">
+        <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:14px">
+          <div style="width:44px;height:44px;border-radius:10px;background:var(--c-ground-2);display:flex;align-items:center;justify-content:center;border:1px solid var(--c-hairline);color:var(--c-ink)">${svgIcon("globe", 22)}</div>
+          <span style="color:var(--c-subtle)">${svgIcon("link", 16)}</span>
+          <div style="color:var(--c-ink)">${celariMark(40)}</div>
+        </div>
+        <div style="font-size:16px;font-weight:500;color:var(--c-ink)">${escapeHtml(hostname)}</div>
+        <div class="cel-mono" style="font-size:11px;color:var(--c-subtle);margin-top:3px">wants to connect</div>
       </div>
 
-      <div style="background:var(--bg-section);border:1px solid var(--border);padding:12px;width:100%;border-radius:var(--radius-md)">
-        <div style="font-size:10px;color:var(--text-muted);line-height:1.6">This site will be able to:</div>
-        <ul style="font-size:10px;color:var(--text-body);line-height:1.8;margin:8px 0 0 16px;padding:0">
-          <li>See your Aztec account address</li>
-          <li>Request transaction signatures</li>
-          <li>Read public contract state</li>
-        </ul>
-        <div style="font-size:9px;color:var(--text-dim);line-height:1.5;margin-top:8px">You will approve every transaction individually.</div>
+      <div class="cel-card" style="padding:14px">
+        <div class="cel-eyebrow" style="margin-bottom:10px">This app will be able to</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${perms.map(x => `
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="color:var(--c-ink)">${svgIcon("check", 15)}</span>
+            <span style="font-size:13px;color:var(--c-ink)">${escapeHtml(x)}</span>
+          </div>`).join("")}
+        </div>
       </div>
 
-      <div style="display:flex;gap:10px;width:100%;margin-top:auto;padding-top:16px">
-        <button id="btn-ws-reject" class="btn btn-secondary" style="flex:1">Reject</button>
-        <button id="btn-ws-approve" class="btn btn-primary" style="flex:1">Connect</button>
+      <div style="display:flex;align-items:center;gap:6px;padding:0 2px">
+        <span class="cel-dot cel-dot--priv"></span>
+        <span class="cel-mono" style="font-size:10px;color:var(--c-subtle)">Private balances stay hidden unless you approve each transfer.</span>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:auto">
+        <button id="btn-ws-reject" class="cel-btn cel-btn--ghost cel-btn--block" style="flex:1">Reject</button>
+        <button id="btn-ws-approve" class="cel-btn cel-btn--primary cel-btn--block" style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px">${svgIcon("face-id", 16)} Connect</button>
       </div>
     </div>`;
 }
@@ -3178,30 +3188,31 @@ function renderWsSign() {
     : r.method === "createAuthWit" ? "Create Authorization"
     : (r.method || "Signature Request");
   return `
-    <div style="padding:18px 20px;display:flex;flex-direction:column;gap:10px;height:100%">
-      <div style="text-align:center">
-        <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--copper);letter-spacing:3px;text-transform:uppercase;margin-bottom:4px">Review &amp; Sign</div>
-        <h2 style="font-size:18px;letter-spacing:3px;color:var(--text-warm);font-weight:500;margin:0 0 2px">${escapeHtml(methodLabel)}</h2>
-        <div style="font-size:10px;color:var(--text-dim);font-family:IBM Plex Mono,monospace">${escapeHtml(r.method || "")}</div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:10px;height:100%;box-sizing:border-box">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        ${celariLockup(18)}
+        <span class="cel-eyebrow">Signature request</span>
       </div>
 
-      <div style="background:var(--bg-card);border:1px solid var(--border);padding:10px 12px;border-radius:var(--radius-md)">
-        <div style="font-size:8px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Requested by</div>
-        <div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--text-warm);word-break:break-all;font-weight:500">${escapeHtml(hostname)}</div>
+      <div class="cel-card" style="padding:14px">
+        <div class="cel-eyebrow" style="margin-bottom:6px">Requested by</div>
+        <div class="cel-mono" style="font-size:13px;font-weight:500;color:var(--c-ink);word-break:break-all">${escapeHtml(hostname)}</div>
+        <div class="cel-mono" style="font-size:11px;color:var(--c-subtle);margin-top:3px">${escapeHtml(methodLabel)}</div>
       </div>
 
-      <div style="background:var(--bg-section);border:1px solid var(--border);padding:10px 12px;border-radius:var(--radius-md);flex:1;min-height:0;display:flex;flex-direction:column">
-        <div style="font-size:8px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">Payload</div>
-        <pre style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-body);white-space:pre-wrap;word-break:break-all;margin:0;flex:1;overflow-y:auto;line-height:1.4">${escapeHtml(r.summary || "(empty)")}</pre>
+      <div class="cel-card" style="padding:14px;flex:1;min-height:0;display:flex;flex-direction:column">
+        <div class="cel-eyebrow" style="margin-bottom:8px">Payload</div>
+        <pre class="cel-mono" style="font-size:9px;color:var(--c-muted);white-space:pre-wrap;word-break:break-all;margin:0;flex:1;overflow-y:auto;line-height:1.5">${escapeHtml(r.summary || "(empty)")}</pre>
       </div>
 
-      <div style="background:rgba(244,130,37,0.06);border:1px solid rgba(244,130,37,0.25);padding:8px 10px;border-radius:var(--radius-sm);font-size:9px;color:var(--copper);line-height:1.5">
-        Review the payload carefully. Once signed, the transaction cannot be undone.
+      <div style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:color-mix(in srgb,var(--c-proving) 8%,transparent);border:1px solid color-mix(in srgb,var(--c-proving) 30%,transparent);border-radius:6px">
+        <span class="cel-dot cel-dot--proving" style="margin-top:3px;flex-shrink:0"></span>
+        <span class="cel-mono" style="font-size:10px;color:var(--c-proving);line-height:1.5">Review the payload carefully. Once signed, the transaction cannot be undone.</span>
       </div>
 
       <div style="display:flex;gap:10px">
-        <button id="btn-ws-sign-reject" class="btn btn-secondary" style="flex:1">Reject</button>
-        <button id="btn-ws-sign-approve" class="btn btn-primary" style="flex:1">Approve</button>
+        <button id="btn-ws-sign-reject" class="cel-btn cel-btn--ghost cel-btn--block" style="flex:1">Reject</button>
+        <button id="btn-ws-sign-approve" class="cel-btn cel-btn--primary cel-btn--block" style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px">${svgIcon("face-id", 16)} Approve</button>
       </div>
     </div>`;
 }
@@ -3960,27 +3971,31 @@ function renderWcApprove() {
   if (!proposal) return renderLoading();
 
   return `
-    <div class="onboarding" style="padding:28px 20px;gap:16px">
-      <div style="width:48px;height:48px;background:var(--burgundy);transform:rotate(45deg);display:flex;align-items:center;justify-content:center;margin-bottom:4px">
-        <span style="transform:rotate(-45deg);font-size:18px;color:var(--copper)">WC</span>
-      </div>
-      <h2 style="font-family:Inter,sans-serif;font-weight:300;font-size:18px;letter-spacing:2px;margin:0">SESSION REQUEST</h2>
-      <p style="font-size:10px;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase;margin:0">A dApp wants to connect</p>
-
-      <div style="width:100%;background:var(--bg-card);border:1px solid var(--border);padding:16px;margin:8px 0">
-        <div style="display:flex;justify-content:space-between;margin-bottom:10px">
-          <span style="font-size:10px;color:var(--text-dim);letter-spacing:1px">DAPP</span>
-          <span style="font-size:11px;color:var(--text-warm);font-family:IBM Plex Mono,monospace">${escapeHtml(proposal.peerName || "Unknown")}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between">
-          <span style="font-size:10px;color:var(--text-dim);letter-spacing:1px">URL</span>
-          <span style="font-size:11px;color:var(--copper);font-family:IBM Plex Mono,monospace">${escapeHtml(proposal.peerUrl || "")}</span>
-        </div>
+    <div style="padding:16px;display:flex;flex-direction:column;height:100%;box-sizing:border-box;gap:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        ${celariLockup(18)}
+        <span class="cel-eyebrow">Session request</span>
       </div>
 
-      <div style="display:flex;gap:12px;width:100%;margin-top:8px">
-        <button id="btn-wc-reject" class="btn btn-secondary" style="flex:1">Reject</button>
-        <button id="btn-wc-approve" class="btn btn-primary" style="flex:1">Approve</button>
+      <div class="cel-card" style="padding:18px;text-align:center">
+        <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:14px">
+          <div style="width:44px;height:44px;border-radius:10px;background:var(--c-ground-2);display:flex;align-items:center;justify-content:center;border:1px solid var(--c-hairline);color:var(--c-ink)">${svgIcon("globe", 22)}</div>
+          <span style="color:var(--c-subtle)">${svgIcon("link", 16)}</span>
+          <div style="color:var(--c-ink)">${celariMark(40)}</div>
+        </div>
+        <div style="font-size:16px;font-weight:500;color:var(--c-ink)">${escapeHtml(proposal.peerName || "Unknown")}</div>
+        <div class="cel-mono" style="font-size:11px;color:var(--c-subtle);margin-top:3px;word-break:break-all">${escapeHtml(proposal.peerUrl || "")}</div>
+        <div class="cel-mono" style="font-size:11px;color:var(--c-subtle);margin-top:2px">wants to connect via WalletConnect</div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:6px;padding:0 2px">
+        <span class="cel-dot cel-dot--priv"></span>
+        <span class="cel-mono" style="font-size:10px;color:var(--c-subtle)">You will approve every transaction individually.</span>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:auto">
+        <button id="btn-wc-reject" class="cel-btn cel-btn--ghost cel-btn--block" style="flex:1">Reject</button>
+        <button id="btn-wc-approve" class="cel-btn cel-btn--primary cel-btn--block" style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px">${svgIcon("face-id", 16)} Approve</button>
       </div>
     </div>`;
 }
