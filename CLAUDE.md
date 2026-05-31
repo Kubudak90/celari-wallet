@@ -25,8 +25,12 @@
 - Native prover (Swoirenberg) being stabilized — WASM is current fallback
 
 ## Aztec SDK
-- **Current version:** v4.3.0 — JS/TS packages (13 `@aztec/*` in root package.json), matching testnet node 4.3.0.
-  - **Contracts (aztec-nr) still pinned to v4.2.1** (see Nargo.toml). Recompiling them to v4.3.0 is a deliberate follow-up: it changes contract class IDs → deployed account addresses + SponsoredFPC, so it needs `aztec-up 4.3.0` and likely redeploy.
+- **Current version:** v4.3.0 — JS/TS packages (13 `@aztec/*` in root package.json) AND contracts (aztec-nr tag in Nargo.toml), matching testnet node 4.3.0.
+  - Contracts compile with `aztec compile` (nargo + AVM transpile + VK gen). **Recompiling changes contract class IDs → deployed account addresses change; re-onboard accounts after a contract bump.**
+  - **Toolchain (native/dockerless since 4.3.0):** managed by `~/.aztec/bin/aztec-up`; per-version binaries live in `~/.aztec/current/bin` (all `aztec-` prefixed: `aztec`, `aztec-nargo`, `aztec-bb`, `aztec-forge`…). `aztec --version` → `4.3.0`; `aztec compile` runs natively. Setup notes:
+    - Requires **bash ≥4.4** — the npm `aztec` wrapper uses `shopt -s inherit_errexit`, which macOS stock bash 3.2 rejects (`invalid shell option name`). Fix: `brew install bash` and keep `/opt/homebrew/bin` ahead of `/bin` on PATH (brew shellenv) so `#!/usr/bin/env bash` picks up bash 5.
+    - PATH (in `~/.zshrc`): `export PATH="$HOME/.aztec/current/bin:$HOME/.aztec/bin:$PATH"`.
+    - Reinstall: remove the old docker-based `~/.aztec` first (the native installer refuses otherwise); docker images are unaffected. `aztec-up` install URL moved to `install.aztec-labs.com` (301 from the old `.network` host).
 - SponsoredFPC address is deterministic per SDK version (artifact hash + salt). **v4.3.0 testnet SponsoredFPC (salt=0):** `0x08b888c4be63ed67f61a622fdd013ea028326bac22a8982a3b5a7e9ec62f765b` (verified DEPLOYED on testnet).
 - Testnet may not have SponsoredFPC — always verify with `/network-check`
 - After SDK version changes: `rm -rf node_modules package-lock.json && npm install --legacy-peer-deps`
