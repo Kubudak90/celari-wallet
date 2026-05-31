@@ -2430,44 +2430,54 @@ function renderAddToken() {
   return `
     ${renderSubHeader("Add Token", "dashboard")}
     <div style="padding:16px">
-      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:12px">Custom Token</div>
+      <div class="cel-eyebrow" style="margin-bottom:12px">Custom Token</div>
 
-      <div class="form-group">
-        <label class="form-label">Contract Address</label>
-        <input type="text" class="form-input" id="token-address" placeholder="0x..." autocomplete="off" />
+      <div style="margin-bottom:12px">
+        <label style="display:block">
+          <div class="cel-eyebrow" style="margin-bottom:6px">Contract Address</div>
+          <input type="text" class="cel-field" id="token-address" placeholder="0x..." autocomplete="off" />
+        </label>
       </div>
 
-      <div class="form-group">
-        <label class="form-label">Token Name</label>
-        <input type="text" class="form-input" id="token-name" placeholder="e.g. My Token" autocomplete="off" maxlength="32" />
+      <div style="margin-bottom:12px">
+        <label style="display:block">
+          <div class="cel-eyebrow" style="margin-bottom:6px">Token Name</div>
+          <input type="text" class="cel-field" id="token-name" placeholder="e.g. My Token" autocomplete="off" maxlength="32" />
+        </label>
       </div>
 
-      <div style="display:flex;gap:10px">
-        <div class="form-group" style="flex:1">
-          <label class="form-label">Symbol</label>
-          <input type="text" class="form-input" id="token-symbol" placeholder="e.g. MTK" autocomplete="off" maxlength="10" />
+      <div style="display:flex;gap:10px;margin-bottom:12px">
+        <div style="flex:1">
+          <label style="display:block">
+            <div class="cel-eyebrow" style="margin-bottom:6px">Symbol</div>
+            <input type="text" class="cel-field" id="token-symbol" placeholder="e.g. MTK" autocomplete="off" maxlength="10" />
+          </label>
         </div>
-        <div class="form-group" style="flex:1">
-          <label class="form-label">Decimals</label>
-          <input type="number" class="form-input" id="token-decimals" value="18" min="0" max="36" autocomplete="off" />
+        <div style="flex:1">
+          <label style="display:block">
+            <div class="cel-eyebrow" style="margin-bottom:6px">Decimals</div>
+            <input type="number" class="cel-field" id="token-decimals" value="18" min="0" max="36" autocomplete="off" />
+          </label>
         </div>
       </div>
 
       <div id="token-validation-status" style="display:none;padding:10px 12px;margin-bottom:14px;font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:0.5px"></div>
 
-      <button id="btn-save-token" class="btn btn-primary">Add Token</button>
+      <button id="btn-save-token" class="cel-btn cel-btn--primary cel-btn--block">Add Token</button>
 
       ${store.customTokens.length > 0 ? `
-      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-top:20px;margin-bottom:8px">Custom Tokens (${store.customTokens.length})</div>
-      <div style="background:var(--bg-card);border:1px solid var(--border);overflow:hidden">
+      <div class="cel-eyebrow" style="margin-top:20px;margin-bottom:8px">Custom Tokens (${store.customTokens.length})</div>
+      <div class="cel-card" style="overflow:hidden">
         ${store.customTokens.map(t => `
-        <div style="padding:10px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)">
-          <div class="token-icon" style="width:24px;height:24px;border-color:#5bc4d4;font-size:11px"><span style="transform:rotate(-45deg);color:#5bc4d4;font-family:Inter,system-ui,sans-serif;font-weight:300">${escapeHtml((t.symbol || "?")[0])}</span></div>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:11px;color:var(--text-warm)">${escapeHtml(t.name)}</div>
-            <div style="font-size:8px;color:var(--text-dim);font-family:IBM Plex Mono,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.contractAddress)}</div>
+        <div class="cel-row" style="padding:10px 12px;border-bottom:1px solid var(--c-hairline)">
+          <div class="cel-ic" style="width:28px;height:28px;flex-shrink:0;border-color:var(--c-ink);color:var(--c-ink)">
+            <span class="cel-mono" style="font-size:10px">${escapeHtml((t.symbol || "?")[0])}</span>
           </div>
-          <button class="btn-remove-custom-token" data-symbol="${escapeHtml(t.symbol)}" style="background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:14px;padding:2px 6px;transition:color 0.2s">&times;</button>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:11px;color:var(--c-ink)">${escapeHtml(t.name)}</div>
+            <div class="cel-mono" style="font-size:8px;color:var(--c-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.contractAddress)}</div>
+          </div>
+          <button class="btn-remove-custom-token" data-symbol="${escapeHtml(t.symbol)}" style="background:none;border:none;color:var(--c-muted);cursor:pointer;font-size:14px;padding:2px 6px;transition:color 0.2s">&times;</button>
         </div>`).join("")}
       </div>` : ''}
     </div>`;
@@ -3261,28 +3271,28 @@ window.addEventListener("beforeunload", () => {
 function renderAddAccount() {
   return `
     ${renderSubHeader("Add Account", "dashboard")}
-    <div class="onboarding" style="padding:24px">
-      <div style="width:100%;margin-bottom:16px">
-        <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:12px">Choose Method</div>
+    <div style="padding:24px">
+      <div class="cel-eyebrow" style="margin-bottom:12px">Choose Method</div>
 
-        <div id="btn-new-passkey-account" class="settings-row" style="background:var(--bg-card);border:1px solid var(--border);padding:16px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;gap:12px">
-          <div style="width:36px;height:36px;border:1px solid var(--border);transform:rotate(45deg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <span style="transform:rotate(-45deg);color:var(--copper)">${icons.lock}</span>
-          </div>
+      <div id="btn-new-passkey-account" class="cel-card" style="padding:16px;margin-bottom:10px;cursor:pointer">
+        <div class="cel-row">
+          <div class="cel-ic" style="width:36px;height:36px;flex-shrink:0">${svgIcon("face-id", 16)}</div>
           <div>
-            <div style="font-weight:400;font-size:13px;color:var(--text-warm);margin-bottom:2px">New Passkey Account</div>
-            <div style="font-size:10px;color:var(--text-dim)">Create with Face ID / fingerprint</div>
+            <div style="font-size:13px;font-weight:500;color:var(--c-ink);margin-bottom:2px">New Passkey Account</div>
+            <div class="cel-mono" style="font-size:10px;color:var(--c-muted)">Create with Face ID / fingerprint</div>
           </div>
+          <div style="color:var(--c-subtle);margin-left:auto">${svgIcon("chevron-right", 14)}</div>
         </div>
+      </div>
 
-        <div id="btn-import-backup-account" class="settings-row" style="background:var(--bg-card);border:1px solid var(--border);padding:16px;cursor:pointer;display:flex;align-items:center;gap:12px">
-          <div style="width:36px;height:36px;border:1px solid var(--border);transform:rotate(45deg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <span style="transform:rotate(-45deg);color:var(--copper)">${icons.download}</span>
-          </div>
+      <div id="btn-import-backup-account" class="cel-card" style="padding:16px;cursor:pointer">
+        <div class="cel-row">
+          <div class="cel-ic" style="width:36px;height:36px;flex-shrink:0">${svgIcon("download", 16)}</div>
           <div>
-            <div style="font-weight:400;font-size:13px;color:var(--text-warm);margin-bottom:2px">Import from Backup</div>
-            <div style="font-size:10px;color:var(--text-dim)">Restore encrypted JSON backup</div>
+            <div style="font-size:13px;font-weight:500;color:var(--c-ink);margin-bottom:2px">Import from Backup</div>
+            <div class="cel-mono" style="font-size:10px;color:var(--c-muted)">Restore encrypted JSON backup</div>
           </div>
+          <div style="color:var(--c-subtle);margin-left:auto">${svgIcon("chevron-right", 14)}</div>
         </div>
       </div>
     </div>`;
@@ -3340,28 +3350,32 @@ function renderBackup() {
   return `
     ${renderSubHeader("Export Backup", "settings")}
     <div style="padding:16px">
-      <div style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);padding:12px;margin-bottom:16px">
-        <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--red);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">Warning</div>
-        <div style="font-size:10px;color:var(--text-dim);line-height:1.5">This backup contains your private keys. Store it securely and never share it.</div>
+      <div style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);padding:12px;border-radius:6px;margin-bottom:16px">
+        <div class="cel-eyebrow" style="color:var(--c-down);margin-bottom:4px">Warning</div>
+        <div class="cel-mono" style="font-size:10px;color:var(--c-muted);line-height:1.5">This backup contains your private keys. Store it securely and never share it.</div>
       </div>
 
-      <div style="background:var(--bg-card);border:1px solid var(--border);padding:12px;margin-bottom:16px">
-        <div style="font-size:11px;color:var(--text-warm);margin-bottom:4px">${escapeHtml(account?.label || "Account")}</div>
-        <div style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--text-dim);word-break:break-all">${escapeHtml(account?.address || "")}</div>
+      <div class="cel-card" style="padding:12px;margin-bottom:16px">
+        <div style="font-size:11px;color:var(--c-ink);margin-bottom:4px">${escapeHtml(account?.label || "Account")}</div>
+        <div class="cel-mono" style="font-size:9px;color:var(--c-muted);word-break:break-all">${escapeHtml(account?.address || "")}</div>
       </div>
 
-      <div class="form-group">
-        <label class="form-label">Encryption Password</label>
-        <input type="password" class="form-input" id="backup-password" placeholder="Enter a strong password" autocomplete="new-password" />
+      <div style="margin-bottom:12px">
+        <label style="display:block">
+          <div class="cel-eyebrow" style="margin-bottom:6px">Encryption Password</div>
+          <input type="password" class="cel-field" id="backup-password" placeholder="Enter a strong password" autocomplete="new-password" />
+        </label>
       </div>
-      <div class="form-group">
-        <label class="form-label">Confirm Password</label>
-        <input type="password" class="form-input" id="backup-password-confirm" placeholder="Repeat password" autocomplete="new-password" />
+      <div style="margin-bottom:12px">
+        <label style="display:block">
+          <div class="cel-eyebrow" style="margin-bottom:6px">Confirm Password</div>
+          <input type="password" class="cel-field" id="backup-password-confirm" placeholder="Repeat password" autocomplete="new-password" />
+        </label>
       </div>
 
       <div id="backup-status" style="display:none;padding:10px;margin-bottom:14px;font-family:IBM Plex Mono,monospace;font-size:9px"></div>
 
-      <button id="btn-do-backup" class="btn btn-primary">Export Encrypted Backup</button>
+      <button id="btn-do-backup" class="cel-btn cel-btn--primary cel-btn--block">Export Encrypted Backup</button>
     </div>`;
 }
 
@@ -3453,26 +3467,30 @@ function renderRestore() {
   return `
     ${renderSubHeader("Import Backup", store.accounts.length > 0 ? "settings" : "onboarding")}
     <div style="padding:16px">
-      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:12px">Encrypted Backup</div>
+      <div class="cel-eyebrow" style="margin-bottom:12px">Encrypted Backup</div>
 
-      <div id="restore-drop-zone" style="background:var(--bg-card);border:2px dashed var(--border);padding:24px;text-align:center;margin-bottom:16px;cursor:pointer;transition:border-color 0.3s">
-        <div style="font-size:24px;margin-bottom:8px;opacity:0.3;color:var(--copper)">&#9671;</div>
-        <div style="font-size:10px;color:var(--text-dim);letter-spacing:1px">Click or drop .celari-backup.json file</div>
+      <div id="restore-drop-zone" class="cel-card" style="border-style:dashed;border-width:2px;padding:28px 16px;text-align:center;margin-bottom:16px;cursor:pointer;transition:border-color 0.3s">
+        <div class="cel-ic" style="width:44px;height:44px;margin:0 auto 10px;color:var(--c-muted)">${svgIcon("download", 18)}</div>
+        <div class="cel-mono" style="font-size:10px;color:var(--c-muted);letter-spacing:1px">Click or drop .celari-backup.json file</div>
         <input type="file" id="restore-file" accept=".json" style="display:none" />
       </div>
 
-      <div id="restore-file-info" style="display:none;background:var(--bg-card);border:1px solid var(--border);padding:12px;margin-bottom:16px">
-        <div style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--copper)" id="restore-filename"></div>
+      <div id="restore-file-info" style="display:none;margin-bottom:16px">
+        <div class="cel-card" style="padding:12px">
+          <div class="cel-mono" style="font-size:9px;color:var(--c-ink)" id="restore-filename"></div>
+        </div>
       </div>
 
-      <div class="form-group">
-        <label class="form-label">Decryption Password</label>
-        <input type="password" class="form-input" id="restore-password" placeholder="Enter backup password" autocomplete="off" />
+      <div style="margin-bottom:12px">
+        <label style="display:block">
+          <div class="cel-eyebrow" style="margin-bottom:6px">Decryption Password</div>
+          <input type="password" class="cel-field" id="restore-password" placeholder="Enter backup password" autocomplete="off" />
+        </label>
       </div>
 
       <div id="restore-status" style="display:none;padding:10px;margin-bottom:14px;font-family:IBM Plex Mono,monospace;font-size:9px"></div>
 
-      <button id="btn-do-restore" class="btn btn-primary" disabled>Decrypt & Import</button>
+      <button id="btn-do-restore" class="cel-btn cel-btn--primary cel-btn--block" disabled>Decrypt &amp; Import</button>
     </div>`;
 }
 
@@ -3635,28 +3653,27 @@ async function handleRestoreDecrypt() {
 
 function renderNftList() {
   if (store.nfts.length === 0) {
-    return `<div style="text-align:center;padding:32px 16px;color:var(--text-dim)">
-      <div style="font-size:24px;margin-bottom:8px;opacity:0.3">&#9671;</div>
-      <p style="font-size:10px;letter-spacing:2px;text-transform:uppercase;margin:0">No NFTs found</p>
-      <button id="btn-add-nft-contract" class="btn btn-secondary" style="margin-top:12px;padding:8px 16px;font-size:8px">ADD NFT CONTRACT</button>
+    return `<div style="text-align:center;padding:32px 16px;color:var(--c-muted)">
+      <div class="cel-ic" style="width:48px;height:48px;margin:0 auto 12px">${svgIcon("drop", 20)}</div>
+      <p class="cel-mono" style="font-size:10px;letter-spacing:2px;text-transform:uppercase;margin:0 0 12px">No NFTs found</p>
+      <button id="btn-add-nft-contract" class="cel-btn cel-btn--ghost">Add NFT Contract</button>
     </div>`;
   }
-  return store.nfts.map(nft => `
-    <div class="token-item nft-item" data-contract="${escapeHtml(nft.contractAddress)}" data-token-id="${escapeHtml(nft.tokenId)}" style="cursor:pointer">
-      <div class="token-icon" style="border-color:#5bc4d4">
-        <span style="transform:rotate(-45deg);color:#5bc4d4;font-family:Inter,system-ui,sans-serif;font-weight:300;font-size:10px">NFT</span>
-      </div>
-      <div class="token-info">
-        <div class="token-name">${escapeHtml(nft.contractSymbol || "NFT")} #${escapeHtml(nft.tokenId)}</div>
-        <div class="token-symbol">${escapeHtml(nft.contractName || "Unknown")}${nft.isPrivate ? ' <span style="color:var(--green);font-size:7px">SHIELDED</span>' : ''}</div>
-      </div>
-      <div style="font-size:8px;color:var(--text-faint);font-family:IBM Plex Mono,monospace">
-        ${nft.isPrivate ? 'Private' : 'Public'}
+  return `<div style="padding:8px 16px">` +
+    store.nfts.map(nft => `
+    <div class="cel-card nft-item" data-contract="${escapeHtml(nft.contractAddress)}" data-token-id="${escapeHtml(nft.tokenId)}" style="cursor:pointer;margin-bottom:8px">
+      <div class="cel-row" style="padding:12px">
+        <div class="cel-ic" style="width:36px;height:36px;flex-shrink:0;color:var(--c-ink)">${svgIcon("drop", 16)}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:500;color:var(--c-ink)">${escapeHtml(nft.contractSymbol || "NFT")} #${escapeHtml(nft.tokenId)}</div>
+          <div class="cel-mono" style="font-size:10px;color:var(--c-muted)">${escapeHtml(nft.contractName || "Unknown")}${nft.isPrivate ? ' &middot; <span style="color:var(--c-up)">Shielded</span>' : ''}</div>
+        </div>
+        <div class="cel-mono" style="font-size:9px;color:var(--c-muted)">${nft.isPrivate ? 'Private' : 'Public'}</div>
       </div>
     </div>`).join("") + `
-    <div style="padding:8px 0;text-align:center">
-      <button id="btn-add-nft-contract" style="background:none;border:1px dashed var(--border);color:var(--text-faint);cursor:pointer;padding:6px 12px;font-family:IBM Plex Mono,monospace;font-size:8px;letter-spacing:1px">+ ADD NFT CONTRACT</button>
-    </div>`;
+    <div style="padding:4px 0 8px;text-align:center">
+      <button id="btn-add-nft-contract" class="cel-btn cel-btn--ghost" style="font-size:10px">+ Add NFT Contract</button>
+    </div></div>`;
 }
 
 function bindNftItems() {
@@ -3678,41 +3695,43 @@ function renderNftDetail() {
   );
   if (!nft) {
     return `${renderSubHeader("NFT Detail", "dashboard")}
-    <div style="padding:32px 16px;text-align:center;color:var(--text-dim)">NFT not found</div>`;
+    <div style="padding:32px 16px;text-align:center;color:var(--c-muted)">NFT not found</div>`;
   }
   return `
     ${renderSubHeader("NFT Detail", "dashboard")}
     <div style="padding:16px">
-      <div style="background:var(--bg-card);border:1px solid var(--border);padding:20px;text-align:center;margin-bottom:16px">
-        <div style="width:80px;height:80px;margin:0 auto 12px;border:2px solid var(--bronze);transform:rotate(45deg);display:flex;align-items:center;justify-content:center">
-          <span style="transform:rotate(-45deg);font-family:Inter,system-ui,sans-serif;font-weight:300;font-size:24px;color:var(--bronze)">NFT</span>
-        </div>
-        <div style="font-family:Inter,system-ui,sans-serif;font-weight:300;font-size:20px;color:var(--text-warm);letter-spacing:2px">${escapeHtml(nft.contractSymbol)} #${escapeHtml(nft.tokenId)}</div>
-        <div style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--text-dim);margin-top:4px">${escapeHtml(nft.contractName)}</div>
-        <div style="margin-top:8px;font-size:8px;padding:3px 10px;display:inline-block;font-family:IBM Plex Mono,monospace;letter-spacing:2px;
-          background:${nft.isPrivate ? 'var(--green-glow)' : 'rgba(200,121,65,0.08)'};
-          border:1px solid ${nft.isPrivate ? 'rgba(74,222,128,0.15)' : 'rgba(200,121,65,0.2)'};
-          color:${nft.isPrivate ? 'var(--green)' : 'var(--copper)'}">
-          ${nft.isPrivate ? 'PRIVATE' : 'PUBLIC'}
+      <div class="cel-card" style="padding:20px;text-align:center;margin-bottom:16px">
+        <div class="cel-ic" style="width:72px;height:72px;margin:0 auto 12px;color:var(--c-ink)">${svgIcon("drop", 28)}</div>
+        <div class="cel-serif" style="font-size:20px;color:var(--c-ink);letter-spacing:0.04em">${escapeHtml(nft.contractSymbol)} #${escapeHtml(nft.tokenId)}</div>
+        <div class="cel-mono" style="font-size:9px;color:var(--c-muted);margin-top:4px">${escapeHtml(nft.contractName)}</div>
+        <div style="margin-top:8px;display:inline-block">
+          <span class="${nft.isPrivate ? 'cel-state cel-state--priv' : 'cel-state cel-state--pub'}">
+            <span class="cel-dot cel-dot--${nft.isPrivate ? 'priv' : 'pub'}"></span>
+            ${nft.isPrivate ? 'Private' : 'Public'}
+          </span>
         </div>
       </div>
 
-      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Contract</div>
-      <div style="background:var(--bg-card);border:1px solid var(--border);padding:10px 12px;margin-bottom:16px;font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--text-dim);word-break:break-all">${escapeHtml(nft.contractAddress)}</div>
-
-      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Transfer</div>
-      <div class="form-group">
-        <label class="form-label">Recipient Address</label>
-        <input type="text" class="form-input" id="nft-transfer-to" placeholder="0x..." autocomplete="off" />
+      <div class="cel-eyebrow" style="margin-bottom:8px">Contract</div>
+      <div class="cel-card" style="padding:10px 12px;margin-bottom:16px">
+        <div class="cel-mono" style="font-size:9px;color:var(--c-muted);word-break:break-all">${escapeHtml(nft.contractAddress)}</div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Transfer Type</label>
+
+      <div class="cel-eyebrow" style="margin-bottom:8px">Transfer</div>
+      <div style="margin-bottom:12px">
+        <label style="display:block">
+          <div class="cel-eyebrow" style="margin-bottom:6px">Recipient Address</div>
+          <input type="text" class="cel-field" id="nft-transfer-to" placeholder="0x..." autocomplete="off" />
+        </label>
+      </div>
+      <div style="margin-bottom:12px">
+        <div class="cel-eyebrow" style="margin-bottom:6px">Transfer Type</div>
         <div style="display:flex;gap:6px" id="nft-transfer-type-group">
-          <button class="transfer-type-btn active" data-type="private" style="flex:1;padding:8px 4px;border:1px solid rgba(74,222,128,0.3);background:rgba(74,222,128,0.08);color:var(--green);font-family:IBM Plex Mono,monospace;font-size:8px;cursor:pointer;letter-spacing:1px">PRIVATE</button>
-          <button class="transfer-type-btn" data-type="public" style="flex:1;padding:8px 4px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-dim);font-family:IBM Plex Mono,monospace;font-size:8px;cursor:pointer;letter-spacing:1px">PUBLIC</button>
+          <button class="transfer-type-btn active cel-btn cel-btn--primary" data-type="private" style="flex:1;height:34px;font-size:10px;letter-spacing:0.06em;text-transform:uppercase">Private</button>
+          <button class="transfer-type-btn cel-btn cel-btn--ghost" data-type="public" style="flex:1;height:34px;font-size:10px;letter-spacing:0.06em;text-transform:uppercase">Public</button>
         </div>
       </div>
-      <button id="btn-nft-transfer" class="btn btn-primary">Transfer NFT</button>
+      <button id="btn-nft-transfer" class="cel-btn cel-btn--primary cel-btn--block">Transfer NFT</button>
     </div>`;
 }
 
@@ -3786,30 +3805,36 @@ function renderAddNftContract() {
   return `
     ${renderSubHeader("Add NFT Contract", "dashboard")}
     <div style="padding:16px">
-      <div class="form-group">
-        <label class="form-label">NFT Contract Address</label>
-        <input type="text" class="form-input" id="nft-contract-address" placeholder="0x..." autocomplete="off" />
+      <div style="margin-bottom:12px">
+        <label style="display:block">
+          <div class="cel-eyebrow" style="margin-bottom:6px">NFT Contract Address</div>
+          <input type="text" class="cel-field" id="nft-contract-address" placeholder="0x..." autocomplete="off" />
+        </label>
       </div>
-      <div class="form-group">
-        <label class="form-label">Name</label>
-        <input type="text" class="form-input" id="nft-contract-name" placeholder="e.g. Aztec Punks" autocomplete="off" maxlength="32" />
+      <div style="margin-bottom:12px">
+        <label style="display:block">
+          <div class="cel-eyebrow" style="margin-bottom:6px">Name</div>
+          <input type="text" class="cel-field" id="nft-contract-name" placeholder="e.g. Aztec Punks" autocomplete="off" maxlength="32" />
+        </label>
       </div>
-      <div class="form-group">
-        <label class="form-label">Symbol</label>
-        <input type="text" class="form-input" id="nft-contract-symbol" placeholder="e.g. APUNK" autocomplete="off" maxlength="10" />
+      <div style="margin-bottom:12px">
+        <label style="display:block">
+          <div class="cel-eyebrow" style="margin-bottom:6px">Symbol</div>
+          <input type="text" class="cel-field" id="nft-contract-symbol" placeholder="e.g. APUNK" autocomplete="off" maxlength="10" />
+        </label>
       </div>
-      <button id="btn-save-nft-contract" class="btn btn-primary" style="margin-bottom:16px">Add NFT Contract</button>
+      <button id="btn-save-nft-contract" class="cel-btn cel-btn--primary cel-btn--block" style="margin-bottom:16px">Add NFT Contract</button>
 
       ${store.customNftContracts.length > 0 ? `
-      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Tracked NFT Contracts (${store.customNftContracts.length})</div>
-      <div style="background:var(--bg-card);border:1px solid var(--border);overflow:hidden">
+      <div class="cel-eyebrow" style="margin-bottom:8px">Tracked NFT Contracts (${store.customNftContracts.length})</div>
+      <div class="cel-card" style="overflow:hidden">
         ${store.customNftContracts.map(c => `
-        <div style="padding:10px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)">
+        <div class="cel-row" style="padding:10px 12px;border-bottom:1px solid var(--c-hairline)">
           <div style="flex:1;min-width:0">
-            <div style="font-size:11px;color:var(--text-warm)">${escapeHtml(c.name)} (${escapeHtml(c.symbol)})</div>
-            <div style="font-size:8px;color:var(--text-dim);font-family:IBM Plex Mono,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(c.address)}</div>
+            <div style="font-size:11px;color:var(--c-ink)">${escapeHtml(c.name)} (${escapeHtml(c.symbol)})</div>
+            <div class="cel-mono" style="font-size:8px;color:var(--c-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(c.address)}</div>
           </div>
-          <button class="btn-remove-nft-contract" data-address="${escapeHtml(c.address)}" style="background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:14px;padding:2px 4px;transition:color 0.2s">&times;</button>
+          <button class="btn-remove-nft-contract" data-address="${escapeHtml(c.address)}" style="background:none;border:none;color:var(--c-muted);cursor:pointer;font-size:14px;padding:2px 4px;transition:color 0.2s">&times;</button>
         </div>`).join("")}
       </div>` : ''}
     </div>`;
@@ -3879,27 +3904,30 @@ function renderWalletConnect() {
   return `
     ${renderSubHeader("WalletConnect", "dashboard")}
     <div style="padding:16px">
-      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:12px">New Connection</div>
+      <div class="cel-eyebrow" style="margin-bottom:12px">New Connection</div>
 
-      <div class="form-group">
-        <label class="form-label">WalletConnect URI</label>
-        <input type="text" class="form-input" id="wc-uri" placeholder="wc:..." autocomplete="off" style="font-size:10px" />
+      <div style="margin-bottom:12px">
+        <label style="display:block">
+          <div class="cel-eyebrow" style="margin-bottom:6px">WalletConnect URI</div>
+          <input type="text" class="cel-field" id="wc-uri" placeholder="wc:..." autocomplete="off" style="font-size:10px" />
+        </label>
       </div>
-      <button id="btn-wc-pair" class="btn btn-primary" style="margin-bottom:20px">Connect</button>
+      <button id="btn-wc-pair" class="cel-btn cel-btn--primary cel-btn--block" style="margin-bottom:16px">Connect</button>
 
       <div id="wc-pair-status" style="display:none;padding:10px;margin-bottom:14px;font-family:IBM Plex Mono,monospace;font-size:9px"></div>
 
-      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Active Sessions (${store.wcSessions.length})</div>
+      <div class="cel-eyebrow" style="margin-bottom:8px">Active Sessions (${store.wcSessions.length})</div>
       ${store.wcSessions.length === 0
-        ? `<div style="text-align:center;padding:20px;color:var(--text-dim);font-size:10px">No active sessions</div>`
-        : `<div style="background:var(--bg-card);border:1px solid var(--border);overflow:hidden">
+        ? `<div style="text-align:center;padding:20px;color:var(--c-muted)" class="cel-mono" style="font-size:10px">No active sessions</div>`
+        : `<div class="cel-card" style="overflow:hidden">
           ${store.wcSessions.map(s => `
-          <div style="padding:12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)">
+          <div class="cel-row" style="padding:12px;border-bottom:1px solid var(--c-hairline)">
+            <div class="cel-ic" style="width:32px;height:32px;flex-shrink:0">${svgIcon("globe", 14)}</div>
             <div style="flex:1;min-width:0">
-              <div style="font-size:11px;color:var(--text-warm)">${escapeHtml(s.peerName || "Unknown dApp")}</div>
-              <div style="font-size:8px;color:var(--text-dim);font-family:IBM Plex Mono,monospace">${escapeHtml(s.peerUrl || "")}</div>
+              <div style="font-size:13px;font-weight:500;color:var(--c-ink)">${escapeHtml(s.peerName || "Unknown dApp")}</div>
+              <div class="cel-mono" style="font-size:9px;color:var(--c-muted)">${escapeHtml(s.peerUrl || "")}</div>
             </div>
-            <button class="btn-wc-disconnect" data-topic="${escapeHtml(s.topic)}" style="background:none;border:1px solid rgba(239,68,68,0.3);color:var(--red);cursor:pointer;padding:4px 8px;font-family:IBM Plex Mono,monospace;font-size:7px;letter-spacing:1px">DISCONNECT</button>
+            <button class="btn-wc-disconnect cel-btn cel-btn--ghost" data-topic="${escapeHtml(s.topic)}" style="color:var(--c-down);border-color:rgba(239,68,68,0.3);font-size:9px;padding:4px 8px;height:auto">Disconnect</button>
           </div>`).join("")}
         </div>`}
     </div>`;
