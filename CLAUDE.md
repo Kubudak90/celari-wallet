@@ -25,15 +25,19 @@
 - Native prover (Swoirenberg) being stabilized — WASM is current fallback
 
 ## Aztec SDK
-- **Current version:** v4.1.2 (stable, matching testnet)
-- SponsoredFPC address is deterministic per SDK version (artifact hash + salt)
+- **Current version:** v4.3.0 — JS/TS packages (13 `@aztec/*` in root package.json), matching testnet node 4.3.0.
+  - **Contracts (aztec-nr) still pinned to v4.2.1** (see Nargo.toml). Recompiling them to v4.3.0 is a deliberate follow-up: it changes contract class IDs → deployed account addresses + SponsoredFPC, so it needs `aztec-up 4.3.0` and likely redeploy.
+- SponsoredFPC address is deterministic per SDK version (artifact hash + salt). **v4.3.0 testnet SponsoredFPC (salt=0):** `0x08b888c4be63ed67f61a622fdd013ea028326bac22a8982a3b5a7e9ec62f765b` (verified DEPLOYED on testnet).
 - Testnet may not have SponsoredFPC — always verify with `/network-check`
-- After SDK version changes: `rm -rf node_modules && npm install --legacy-peer-deps`
-- **v4.1.2 breaking changes:**
-  - `.send()` / `.simulate()` now return `offchainEffects` + `offchainMessages`
-  - Public event pagination: `getPublicEvents` now accepts `{ from, limit }`
-  - L2-to-L1 message witness: takes `(message, txHash)` instead of epoch
-  - `PublicFeePaymentMethod` and `PrivateFeePaymentMethod` deprecated
+- After SDK version changes: `rm -rf node_modules package-lock.json && npm install --legacy-peer-deps`
+- **v4.3.0 notes (4.2 → 4.3):**
+  - `sendTx` is generic: `sendTx<W>(payload, SendOptions<W>): SendReturn<W>` (wait behavior in options)
+  - AuthWitnesses passed to send: `action.send({ authWitnesses: [w] })` (old `wallet.addAuthWitness` removed)
+  - Deploy: salt/deployer/publicKeys move to construction; `deploy.getAddress()` is async; `deployWithPublicKeys` removed
+  - `proveTx(req, { scopes })` (options bag); `batch` now accepts all methods
+  - aztec-nr: `set_sender_for_tags` now scoped to calling contract (wallet SDK supplies default from tx `from`) — remove redundant calls in account entrypoints; `attempt_note_discovery` → `process_private_note_msg` (custom handlers); `emit_private_log_unsafe` → `emit_private_log_vec_unsafe`
+  - CLI binaries now `aztec-` prefixed (`aztec-nargo`, `aztec-forge`, `aztec-bb`)
+- **Earlier (v4.1.2):** `.send()`/`.simulate()` return `offchainEffects`+`offchainMessages`; `getPublicEvents({ from, limit })`; L2-to-L1 witness takes `(message, txHash)`; `PublicFeePaymentMethod`/`PrivateFeePaymentMethod` deprecated
 - **Testnet RPC:** `https://rpc.testnet.aztec-labs.com/`
 - **Mainnet RPC:** `https://rpc.aztec.network/`
 
