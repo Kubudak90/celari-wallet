@@ -906,6 +906,7 @@ const LOGO_LOCKUP = `<img src="icons/logo-lockup.svg" height="22" alt="Celari" s
 
 const ICON_PATHS = {
   send: "M12 19V5M5 12l7-7 7 7",
+  bolt: "M13 2L4 14h7l-1 8 9-12h-7l1-8z",
   download: "M12 5v14M19 12l-7 7-7-7",
   shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
   "shield-half": "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z M12 2v20",
