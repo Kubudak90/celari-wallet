@@ -118,6 +118,8 @@ const store = {
   // Refreshed lazily by refreshFaucetCooldown() and consumed by the dashboard
   // render to label/disable the Faucet action button.
   faucetCooldownMs: 0,
+  // Screen to return to when leaving the Logs viewer (set by whoever opens it).
+  logsReturnScreen: "settings",
 };
 
 // ─── Log capture ──────────────────────────────────────
@@ -1590,12 +1592,15 @@ function startSyncPolling() {
       if (!dot || !text) return;
       if (res?.success && res.synced) {
         dot.style.background = "var(--green)";
+        dot.style.animation = "none";
         text.textContent = `Synced · Block ${res.nodeBlock} · ${res.accountCount || 0} account(s)`;
       } else if (res?.success) {
         dot.style.background = "var(--copper)";
+        dot.style.animation = "celPulse 1.6s ease-in-out infinite";
         text.textContent = "PXE not ready";
       } else {
         dot.style.background = "var(--text-faint)";
+        dot.style.animation = "celPulse 1.6s ease-in-out infinite";
         text.textContent = "Sync unavailable";
       }
     });
@@ -1767,7 +1772,10 @@ function bindDashboard() {
   document.getElementById("btn-add-token")?.addEventListener("click", () => setState({ screen: "add-token" }));
   document.getElementById("btn-bridge")?.addEventListener("click", () => showToast("Bridge — coming soon", "success"));
   document.getElementById("btn-faucet")?.addEventListener("click", handleFaucet);
-  document.getElementById("btn-sync-pill")?.addEventListener("click", () => setState({ screen: "logs" }));
+  document.getElementById("btn-sync-pill")?.addEventListener("click", () => {
+    store.logsReturnScreen = "dashboard";
+    setState({ screen: "logs" });
+  });
   document.getElementById("btn-card")?.addEventListener("click", () => {
     store.sendForm.transferType = "shield";
     setState({ screen: "send" });
@@ -2396,7 +2404,7 @@ function renderLogs() {
 }
 
 function bindLogs() {
-  document.getElementById("btn-back")?.addEventListener("click", () => setState({ screen: "settings" }));
+  document.getElementById("btn-back")?.addEventListener("click", () => setState({ screen: store.logsReturnScreen || "settings" }));
   document.getElementById("btn-logs-clear")?.addEventListener("click", () => {
     logBuffer.clear();
     render();
@@ -2718,7 +2726,10 @@ function renderNetworkRow(id, name, url, isCustom = false) {
 
 function bindSettings() {
   document.getElementById("btn-back")?.addEventListener("click", () => setState({ screen: "dashboard" }));
-  document.getElementById("btn-open-logs")?.addEventListener("click", () => setState({ screen: "logs" }));
+  document.getElementById("btn-open-logs")?.addEventListener("click", () => {
+    store.logsReturnScreen = "settings";
+    setState({ screen: "logs" });
+  });
 
   const switchNetwork = (network) => {
     chrome.runtime.sendMessage({ type: "SET_NETWORK", network }, (resp) => {
