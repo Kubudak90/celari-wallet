@@ -1711,19 +1711,24 @@ function renderTokenList() {
 
 function renderActivityList() {
   if (store.activities.length === 0) {
-    return `<div style="text-align:center;padding:32px 16px;color:var(--text-dim)">
-      <div style="font-size:24px;margin-bottom:8px;opacity:0.3">◇</div>
-      <p style="font-size:10px;letter-spacing:2px;text-transform:uppercase;margin:0">No transactions yet</p>
+    return `<div style="text-align:center;padding:32px 16px">
+      <div class="cel-mono" style="font-size:24px;margin-bottom:8px;opacity:0.3;color:var(--c-subtle)">◇</div>
+      <p class="cel-mono" style="font-size:10px;letter-spacing:2px;text-transform:uppercase;margin:0;color:var(--c-subtle)">No transactions yet</p>
     </div>`;
   }
-  return store.activities.map(a => `
-    <div class="activity-item">
-      <div class="activity-icon ${escapeHtml(a.type)}"><span style="transform:rotate(-45deg)">${a.type === "send" ? "↗" : "↙"}</span></div>
-      <div class="activity-info">
-        <div class="activity-type">${escapeHtml(a.label)} ${a.private ? '<span style="color:var(--green);font-size:9px">●</span>' : ''}</div>
-        <div class="activity-detail">${escapeHtml(a.time)}</div>
+  const dirIcon = t => t === "send" ? "send" : t === "shield" || t === "unshield" ? "shield-half" : "download";
+  const dotClass = a => a.private === false ? "cel-dot cel-dot--pub" : "cel-dot cel-dot--priv";
+  return store.activities.map((a, i) => `
+    <div class="cel-row" style="padding:6px 0;border-bottom:${i < store.activities.length - 1 ? "1px solid var(--c-hairline)" : "none"}">
+      <div class="cel-ic" style="width:32px;height:32px;flex-shrink:0">${svgIcon(dirIcon(a.type), 15)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:13px;font-weight:500;color:var(--c-ink)">${escapeHtml(a.label)}</span>
+          <span class="${dotClass(a)}"></span>
+        </div>
+        <span class="cel-mono" style="font-size:10px;color:var(--c-subtle)">${escapeHtml(a.time)}</span>
       </div>
-      <div class="activity-amount ${a.type === "send" ? "negative" : "positive"}">${escapeHtml(a.amount)}</div>
+      <div class="cel-num" style="font-size:12px;font-weight:500;color:${(a.amount || "").startsWith("+") ? "var(--c-up)" : "var(--c-ink)"}">${escapeHtml(a.amount)}</div>
     </div>
   `).join("");
 }
