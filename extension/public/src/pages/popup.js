@@ -1594,7 +1594,7 @@ function renderAccountSelector() {
         const isActive = i === store.activeAccountIndex;
         const short = acc.address ? acc.address.slice(0, 6) + "..." + acc.address.slice(-4) : "New";
         const label = escapeHtml(acc.label || `Account ${i + 1}`);
-        return `<button class="account-chip ${isActive ? 'active' : ''}" data-index="${i}" title="Double-click to rename" class="cel-mono" style="
+        return `<button class="account-chip cel-mono ${isActive ? 'active' : ''}" data-index="${i}" title="Double-click to rename" style="
           padding:5px 10px;border-radius:999px;
           border:1px solid ${isActive ? 'var(--c-cta)' : 'var(--c-hairline-2)'};
           background:${isActive ? 'color-mix(in srgb,var(--c-cta) 12%,transparent)' : 'transparent'};
@@ -1692,7 +1692,7 @@ function renderTokenList() {
     const hasPublic = t.publicBalance && t.publicBalance !== "—";
     const borderColor = idx < store.tokens.length - 1 ? "1px solid var(--c-hairline)" : "none";
     return `
-    <div class="cel-row" style="padding:10px 16px;border-bottom:${borderColor}">
+    <div class="cel-row" style="padding:10px 0;border-bottom:${borderColor}">
       <div class="cel-ic" style="width:32px;height:32px;flex-shrink:0;border-color:${escapeHtml(t.color)};color:${escapeHtml(t.color)}">
         <span class="cel-mono" style="font-size:12px;font-weight:600">${escapeHtml(t.icon)}</span>
       </div>
@@ -1782,6 +1782,7 @@ function bindDashboard() {
     }
   });
   document.getElementById("btn-settings")?.addEventListener("click", () => setState({ screen: "settings" }));
+  document.getElementById("btn-network-toggle")?.addEventListener("click", () => setState({ screen: "settings" }));
 
   // Claim Fee Juice from Nethermind — direct API call to the dev faucet
   // (same endpoint the iOS wallet uses, no captcha required).
