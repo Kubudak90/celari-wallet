@@ -124,9 +124,6 @@ const store = {
 // A session ring buffer feeding the Logs screen. We tee console.* so existing
 // [Celari …] diagnostics show up without sprinkling new calls everywhere.
 const logBuffer = createLogBuffer(200);
-function logEvent(level, ...args) {
-  logBuffer.push(level, args, Date.now());
-}
 if (typeof console !== "undefined" && !console.__celariTapped) {
   for (const level of ["log", "info", "warn", "error"]) {
     const orig = console[level].bind(console);
