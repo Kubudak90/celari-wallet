@@ -885,15 +885,48 @@ const LOGO_LARGE = `<img src="icons/logo-mark.svg" width="70" height="70" alt="C
 
 const LOGO_LOCKUP = `<img src="icons/logo-lockup.svg" height="22" alt="Celari" style="display:block"/>`;
 
+const ICON_PATHS = {
+  send: "M12 19V5M5 12l7-7 7 7",
+  download: "M12 5v14M19 12l-7 7-7-7",
+  shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
+  "shield-half": "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z M12 2v20",
+  copy: "M9 9h11v11H9zM5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1",
+  back: "M15 6l-6 6 6 6",
+  "chevron-right": "M9 6l6 6-6 6",
+  settings: "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z M19.4 13a7.8 7.8 0 0 0 0-2l2-1.5-2-3.4-2.3 1a7.8 7.8 0 0 0-1.7-1l-.4-2.5h-4l-.4 2.5a7.8 7.8 0 0 0-1.7 1l-2.3-1-2 3.4 2 1.5a7.8 7.8 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7.8 7.8 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.8 7.8 0 0 0 1.7-1l2.3 1 2-3.4z",
+  lock: "M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4",
+  check: "M20 6L9 17l-5-5",
+  eye: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
+  "eye-off": "M3 3l18 18M10.6 10.6a3 3 0 0 0 4 4M9.4 5.2A9.5 9.5 0 0 1 12 5c6.5 0 10 7 10 7a16 16 0 0 1-3 3.8M6.1 6.1A16 16 0 0 0 2 12s3.5 7 10 7a9.5 9.5 0 0 0 2.6-.4",
+  globe: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18",
+  link: "M9 15l6-6M10 6l1-1a4 4 0 0 1 6 6l-1 1M14 18l-1 1a4 4 0 0 1-6-6l1-1",
+  drop: "M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z",
+  terminal: "M4 5h16v14H4zM7 9l3 3-3 3M13 15h4",
+  "face-id": "M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M9 9v1M15 9v1M12 9v4h-1M9.5 15a3.5 3.5 0 0 0 5 0",
+  x: "M18 6L6 18M6 6l12 12",
+};
+
+function svgIcon(name, size = 16) {
+  const d = ICON_PATHS[name] || "";
+  const paths = d
+    .split("M")
+    .filter(Boolean)
+    .map((seg) => `<path d="M${seg.trim()}"/>`)
+    .join("");
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block">${paths}</svg>`;
+}
+
+// Back-compat map: existing templates use `icons.send` etc. Each renders the
+// new geometric glyph at the same call sites.
 const icons = {
-  send: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold-primary)" stroke-width="1.5"><path d="M12 5l0 14M5 12l7-7 7 7"/></svg>`,
-  download: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold-primary)" stroke-width="1.5"><path d="M12 19l0-14M19 12l-7 7-7-7"/></svg>`,
-  shield: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold-primary)" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
-  copy: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`,
-  back: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>`,
-  settings: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>`,
-  lock: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`,
-  check: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold-primary)" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>`,
+  send: svgIcon("send", 14),
+  download: svgIcon("download", 14),
+  shield: svgIcon("shield", 14),
+  copy: svgIcon("copy", 12),
+  back: svgIcon("back", 18),
+  settings: svgIcon("settings", 14),
+  lock: svgIcon("lock", 12),
+  check: svgIcon("check", 14),
 };
 
 // ─── Render Engine ────────────────────────────────────
