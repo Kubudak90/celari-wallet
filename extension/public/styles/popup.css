@@ -1121,3 +1121,44 @@ body {
   background: var(--aztec-dark);
   color: #FFFFFF;
 }
+
+/* ============================================================
+   Aztec component layer (ported from celari-wallet-new-ui/wallet.css).
+   Uses the global --c-*/--font-* tokens defined above.
+   ============================================================ */
+.cel-display { font-family:var(--font-display); font-weight:300; line-height:1.02; letter-spacing:-0.04em; }
+.cel-display em { font-style:italic; font-weight:300; }
+.cel-serif { font-family:var(--font-serif); }
+.cel-mono { font-family:var(--font-mono); letter-spacing:0; }
+.cel-num { font-family:var(--font-mono); font-feature-settings:"tnum" 1; letter-spacing:-0.01em; }
+.cel-eyebrow { font-family:var(--font-mono); font-size:10px; font-weight:500; letter-spacing:0.14em; text-transform:uppercase; color:var(--c-muted); }
+
+.cel-card { background:var(--c-card); border:1px solid var(--c-hairline); border-radius:6px; }
+
+.cel-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; border-radius:999px; font-family:var(--font-mono); font-size:13px; font-weight:500; border:1px solid transparent; cursor:pointer; transition:background .14s var(--ease-out), border-color .14s var(--ease-out), transform .12s var(--ease-out), color .14s var(--ease-out); -webkit-appearance:none; appearance:none; }
+.cel-btn:active { transform:translateY(1px); }
+.cel-btn--primary { background:var(--c-cta); color:var(--c-cta-fg); }
+.cel-btn--primary:hover { background:var(--c-cta-hover); }
+.cel-btn--ghost { background:transparent; color:var(--c-ink); border-color:var(--c-hairline-2); }
+.cel-btn--ghost:hover { border-color:var(--c-ink); }
+.cel-btn--block { width:100%; height:48px; }
+
+.cel-dot { width:8px; height:8px; border-radius:999px; display:inline-block; flex-shrink:0; }
+.cel-dot--priv { background:var(--c-priv-dot); }
+.cel-dot--pub { background:transparent; border:1.5px solid var(--c-pub-ring); }
+.cel-dot--proving { background:var(--c-proving); }
+
+.cel-state { display:inline-flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:10px; letter-spacing:0.08em; text-transform:uppercase; }
+.cel-state--priv { color:var(--c-priv); }
+.cel-state--pub { color:var(--c-pub); }
+
+.cel-field { width:100%; background:var(--c-field); border:1px solid var(--c-hairline); border-radius:6px; color:var(--c-ink); font-family:var(--font-body); font-size:15px; padding:13px 14px; outline:none; transition:border-color .15s var(--ease-out); box-sizing:border-box; }
+.cel-field::placeholder { color:var(--c-subtle); }
+.cel-field:focus { border-color:var(--c-ink); }
+
+.cel-hr { height:1px; background:var(--c-hairline); border:0; margin:0; }
+.cel-row { display:flex; align-items:center; gap:12px; min-height:56px; }
+.cel-ic { width:40px; height:40px; border-radius:999px; display:flex; align-items:center; justify-content:center; border:1px solid var(--c-hairline-2); flex-shrink:0; }
+.cel-ic svg { width:18px; height:18px; stroke:var(--c-ink); stroke-width:1.5; fill:none; }
+
+@keyframes celPulse { 0%,100% { opacity:1; } 50% { opacity:0.35; } }
