@@ -1096,8 +1096,9 @@ function _renderImpl() {
 function renderLoading() {
   return `
     <div class="onboarding">
-      <div class="spinner" style="width:32px;height:32px;border-width:3px;margin-bottom:12px"></div>
-      <p style="color:var(--text-dim);font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:3px">LOADING</p>
+      <div style="color:var(--c-ink);margin-bottom:16px">${celariMark(40)}</div>
+      <div class="spinner" style="width:28px;height:28px;border-width:2px;margin-bottom:12px"></div>
+      <p id="loading-progress-text" class="cel-mono" style="font-size:9px;color:var(--c-muted);letter-spacing:0.12em">LOADING</p>
     </div>`;
 }
 
@@ -1137,14 +1138,16 @@ function bindLocked() {
 
 function renderPrfUnsupported() {
   return `
-    <div style="padding:32px;text-align:center;color:var(--text-warm);font-family:Inter,system-ui,sans-serif;">
-      <div style="font-size:48px;margin-bottom:16px;">🔒</div>
-      <h2 style="font-size:20px;font-weight:600;margin-bottom:12px;">Browser update required</h2>
-      <p style="color:var(--text-muted);font-size:13px;line-height:1.6;margin-bottom:24px;">
-        Celari Wallet requires Chrome 116 or later to encrypt your wallet
-        with your passkey. Please update Chrome and reopen the extension.
-      </p>
-      <a href="https://www.google.com/chrome/" target="_blank" style="display:inline-block;background:var(--gold-primary);color:#0A0A0B;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;">
+    <div style="padding:32px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:16px">
+      <div class="cel-ic" style="width:52px;height:52px;border-color:var(--c-down)">${svgIcon("lock", 22)}</div>
+      <div class="cel-card" style="padding:20px;text-align:left">
+        <div style="font-size:16px;font-weight:500;color:var(--c-ink);margin-bottom:10px">Browser update required</div>
+        <p class="cel-mono" style="font-size:11px;color:var(--c-muted);line-height:1.7;margin:0">
+          Celari Wallet requires Chrome 116 or later to encrypt your wallet
+          with your passkey. Please update Chrome and reopen the extension.
+        </p>
+      </div>
+      <a href="https://www.google.com/chrome/" target="_blank" class="cel-btn cel-btn--primary cel-btn--block" style="text-decoration:none;text-align:center">
         Update Chrome
       </a>
     </div>
@@ -1470,37 +1473,35 @@ function renderDeployBanner() {
     ? `Fee Juice claim loaded · ${(Number(BigInt(store.pendingClaim.claimAmount)) / 1e18).toFixed(4)} ETH`
     : "";
   return `
-    <div style="margin:0 16px 12px;padding:14px;background:var(--bg-card);border:1px solid var(--border);position:relative">
-      <div style="position:absolute;top:6px;left:6px;width:12px;height:12px;border-top:1px solid var(--border-warm);border-left:1px solid var(--border-warm);opacity:0.5"></div>
-      <div style="position:absolute;bottom:6px;right:6px;width:12px;height:12px;border-bottom:1px solid var(--border-warm);border-right:1px solid var(--border-warm);opacity:0.5"></div>
+    <div class="cel-card" style="margin:0 16px 12px;padding:14px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        ${icons.shield}
-        <span style="font-family:IBM Plex Mono,monospace;font-size:8px;font-weight:500;letter-spacing:3px;color:var(--copper);text-transform:uppercase">Account Deploy</span>
+        <div class="cel-ic" style="width:28px;height:28px;flex-shrink:0">${svgIcon("shield-half", 14)}</div>
+        <span class="cel-mono" style="font-size:8px;font-weight:600;letter-spacing:0.2em;color:var(--c-muted);text-transform:uppercase">Account Deploy</span>
       </div>
-      <p style="font-size:11px;color:var(--text-dim);margin:0 0 10px;line-height:1.5">
-        Deploy your account on ${escapeHtml(networkName)}. This may take 30-120 seconds.
-        ${store.network === "mainnet" || store.network === "testnet" ? '<br/><span style="color:var(--copper);font-size:10px">Paste your Fee Juice claim JSON below (from bridge.human.tech or any L1→L2 bridge).</span>' : ''}
+      <p class="cel-mono" style="font-size:11px;color:var(--c-muted);margin:0 0 10px;line-height:1.5">
+        Deploy your account on ${escapeHtml(networkName)}. This may take 30–120 seconds.
+        ${store.network === "mainnet" || store.network === "testnet" ? '<br/><span style="color:var(--c-proving)">Paste your Fee Juice claim JSON below (from bridge.human.tech or any L1→L2 bridge).</span>' : ''}
       </p>
 
       ${(store.network === "testnet" || store.network === "mainnet") && !hasClaim ? `
-      <button id="btn-claim-nethermind" style="width:100%;padding:10px;margin-bottom:8px;border:1px solid var(--aztec-dark);background:var(--aztec-dark);color:var(--bg);font-family:IBM Plex Mono,monospace;font-size:9px;cursor:pointer;font-weight:600;letter-spacing:2px;text-transform:uppercase;border-radius:var(--radius-sm)">
-        ⚡ Claim Fee Juice from Nethermind
+      <button id="btn-claim-nethermind" class="cel-btn cel-btn--primary cel-btn--block" style="margin-bottom:8px;font-size:9px;letter-spacing:0.12em">
+        ${svgIcon("bolt", 13)} Claim Fee Juice from Nethermind
       </button>` : ''}
 
       <details id="claim-details" style="margin-bottom:10px" ${hasClaim ? 'open' : ''}>
-        <summary style="cursor:pointer;padding:8px 10px;border:1px solid ${hasClaim ? 'var(--green)' : 'var(--border)'};background:${hasClaim ? 'rgba(72,168,104,0.06)' : 'var(--bg-section)'};color:${hasClaim ? 'var(--green)' : 'var(--text-muted)'};font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;user-select:none;list-style:none">
+        <summary style="cursor:pointer;padding:8px 10px;border:1px solid ${hasClaim ? 'var(--c-up)' : 'var(--c-hairline)'};border-radius:5px;background:${hasClaim ? 'color-mix(in srgb,var(--c-up) 8%,transparent)' : 'var(--c-ground-2)'};color:${hasClaim ? 'var(--c-up)' : 'var(--c-muted)'};font-family:var(--font-mono,monospace);font-size:9px;letter-spacing:0.08em;text-transform:uppercase;user-select:none;list-style:none">
           ${hasClaim ? '✓ ' + escapeHtml(claimStatusText) : '+ Paste Fee Juice claim (JSON) manually'}
         </summary>
-        <textarea id="claim-input" rows="5" placeholder='Paste the bridge JSON here — e.g. { "claimSecret": "0x...", "claimAmount": "...", "messageLeafIndex": "0" }' style="width:100%;margin-top:8px;padding:10px;background:var(--bg-input);border:1px solid var(--border);color:var(--text-warm);font-family:IBM Plex Mono,monospace;font-size:9px;line-height:1.4;outline:none;resize:vertical;border-radius:var(--radius-sm)">${hasClaim ? escapeHtml(JSON.stringify(store.pendingClaim, null, 2)) : ''}</textarea>
-        <div id="claim-parse-result" style="margin-top:6px;font-family:IBM Plex Mono,monospace;font-size:9px;min-height:12px"></div>
+        <textarea id="claim-input" rows="5" placeholder='Paste the bridge JSON here — e.g. { "claimSecret": "0x...", "claimAmount": "...", "messageLeafIndex": "0" }' style="width:100%;margin-top:8px;padding:10px;background:var(--c-ground-2);border:1px solid var(--c-hairline);color:var(--c-ink);font-family:var(--font-mono,monospace);font-size:9px;line-height:1.4;outline:none;resize:vertical;border-radius:5px;box-sizing:border-box">${hasClaim ? escapeHtml(JSON.stringify(store.pendingClaim, null, 2)) : ''}</textarea>
+        <div id="claim-parse-result" class="cel-mono" style="margin-top:6px;font-size:9px;min-height:12px"></div>
       </details>
 
-      <div id="deploy-status" style="display:none;margin-bottom:10px;padding:8px 10px;font-family:IBM Plex Mono,monospace;font-size:9px;line-height:1.6;border:1px solid var(--border)"></div>
+      <div id="deploy-status" class="cel-mono" style="display:none;margin-bottom:10px;padding:8px 10px;font-size:9px;line-height:1.6;border:1px solid var(--c-hairline);border-radius:4px"></div>
       <div style="display:flex;gap:8px">
-        <button id="btn-deploy-account" style="flex:1;padding:10px;border:1px solid rgba(244,130,37,0.35);background:rgba(244,130,37,0.08);color:var(--copper);font-family:IBM Plex Mono,monospace;font-size:9px;cursor:pointer;font-weight:600;letter-spacing:2px;text-transform:uppercase;border-radius:var(--radius-sm)">
+        <button id="btn-deploy-account" class="cel-btn cel-btn--primary" style="flex:1;font-size:9px;letter-spacing:0.12em">
           Deploy
         </button>
-        <button id="btn-import-deployed" style="padding:10px 14px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-muted);font-family:IBM Plex Mono,monospace;font-size:9px;cursor:pointer;letter-spacing:1px;text-transform:uppercase;border-radius:var(--radius-sm)">
+        <button id="btn-import-deployed" class="cel-btn cel-btn--ghost" style="padding:0 14px;font-size:9px;letter-spacing:0.08em">
           JSON
         </button>
       </div>
@@ -1592,14 +1593,15 @@ function renderAccountSelector() {
         const isActive = i === store.activeAccountIndex;
         const short = acc.address ? acc.address.slice(0, 6) + "..." + acc.address.slice(-4) : "New";
         const label = escapeHtml(acc.label || `Account ${i + 1}`);
-        return `<button class="account-chip ${isActive ? 'active' : ''}" data-index="${i}" title="Double-click to rename" style="
-          padding:6px 10px;border:1px solid ${isActive ? 'rgba(200,121,65,0.4)' : 'var(--border)'};
-          background:${isActive ? 'rgba(200,121,65,0.08)' : 'var(--bg-elevated)'};
-          color:${isActive ? 'var(--copper)' : 'var(--text-dim)'};
-          font-family:IBM Plex Mono,monospace;font-size:8px;cursor:pointer;white-space:nowrap;letter-spacing:0.5px
-        "><span class="chip-label">${label}</span> <span style="opacity:0.6">${escapeHtml(short)}</span></button>`;
+        return `<button class="account-chip ${isActive ? 'active' : ''}" data-index="${i}" title="Double-click to rename" class="cel-mono" style="
+          padding:5px 10px;border-radius:999px;
+          border:1px solid ${isActive ? 'var(--c-cta)' : 'var(--c-hairline-2)'};
+          background:${isActive ? 'color-mix(in srgb,var(--c-cta) 12%,transparent)' : 'transparent'};
+          color:${isActive ? 'var(--c-cta)' : 'var(--c-muted)'};
+          font-family:var(--font-mono,monospace);font-size:8px;cursor:pointer;white-space:nowrap;letter-spacing:0.06em;font-weight:${isActive ? '600' : '400'}
+        "><span class="chip-label">${label}</span> <span style="opacity:0.55">${escapeHtml(short)}</span></button>`;
       }).join("")}
-      <button id="btn-add-account" style="padding:6px 10px;border:1px dashed var(--border);background:none;color:var(--text-faint);font-family:IBM Plex Mono,monospace;font-size:10px;cursor:pointer">+</button>
+      <button id="btn-add-account" style="padding:5px 10px;border-radius:999px;border:1px dashed var(--c-hairline-2);background:none;color:var(--c-subtle);font-family:var(--font-mono,monospace);font-size:10px;cursor:pointer;letter-spacing:0.06em">+</button>
     </div>`;
 }
 
@@ -1680,30 +1682,36 @@ function renderDashboard() {
 
 function renderTokenList() {
   if (store.tokens.length === 0) {
-    return `<div style="text-align:center;padding:32px 16px;color:var(--text-dim)">
-      <div style="font-size:24px;margin-bottom:8px;opacity:0.3">◇</div>
-      <p style="font-size:10px;letter-spacing:2px;text-transform:uppercase;margin:0">No tokens found</p>
+    return `<div style="text-align:center;padding:32px 16px">
+      <p class="cel-mono" style="font-size:10px;color:var(--c-subtle);letter-spacing:0.12em;margin:0">No tokens found</p>
     </div>`;
   }
   return store.tokens.map((t, idx) => {
     const hasPrivate = t.privateBalance && t.privateBalance !== "0" && t.privateBalance !== "—";
     const hasPublic = t.publicBalance && t.publicBalance !== "—";
+    const borderColor = idx < store.tokens.length - 1 ? "1px solid var(--c-hairline)" : "none";
     return `
-    <div class="token-item">
-      <div class="token-icon" style="border-color:${escapeHtml(t.color)}"><span style="transform:rotate(-45deg);color:${escapeHtml(t.color)};font-family:Inter,system-ui,sans-serif;font-weight:300;font-size:14px">${escapeHtml(t.icon)}</span></div>
-      <div class="token-info">
-        <div class="token-name">${escapeHtml(t.name)}</div>
-        <div class="token-symbol">${escapeHtml(t.symbol)}${t.isCustom ? ' <span style="color:var(--text-faint);font-size:7px">CUSTOM</span>' : ''}</div>
+    <div class="cel-row" style="padding:10px 16px;border-bottom:${borderColor}">
+      <div class="cel-ic" style="width:32px;height:32px;flex-shrink:0;border-color:${escapeHtml(t.color)};color:${escapeHtml(t.color)}">
+        <span class="cel-mono" style="font-size:12px;font-weight:600">${escapeHtml(t.icon)}</span>
       </div>
-      <div class="token-balance" style="display:flex;align-items:center;gap:6px">
-        <div>
-          <div class="amount">${escapeHtml(t.balance)}</div>
-          ${hasPublic || hasPrivate ? `<div style="font-size:8px;font-family:IBM Plex Mono,monospace;color:var(--text-faint);margin-top:2px">
-            ${hasPublic ? `<span title="Public balance">P:${escapeHtml(t.publicBalance)}</span>` : ''}
-            ${hasPrivate ? `<span style="color:var(--green);margin-left:4px" title="Private balance">S:${escapeHtml(t.privateBalance)}</span>` : ''}
-          </div>` : `<div class="value">${escapeHtml(t.value)}</div>`}
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:5px">
+          <span style="font-size:13px;font-weight:500;color:var(--c-ink)">${escapeHtml(t.name)}</span>
+          ${hasPrivate ? `<span class="cel-dot cel-dot--priv" title="Private balance"></span>` : ''}
+          ${hasPublic && !hasPrivate ? `<span class="cel-dot cel-dot--pub" title="Public balance"></span>` : ''}
         </div>
-        ${t.isCustom ? `<button class="btn-remove-token" data-symbol="${escapeHtml(t.symbol)}" title="Remove token" style="background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:14px;padding:2px 4px;transition:color 0.2s">&times;</button>` : ''}
+        <span class="cel-mono" style="font-size:10px;color:var(--c-subtle)">${escapeHtml(t.symbol)}${t.isCustom ? ' <span style="font-size:7px;letter-spacing:0.1em">CUSTOM</span>' : ''}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;text-align:right">
+        <div>
+          <div class="cel-num" style="font-size:13px;font-weight:500;color:var(--c-ink)">${escapeHtml(t.balance)}</div>
+          ${hasPublic || hasPrivate ? `<div class="cel-mono" style="font-size:8px;color:var(--c-subtle);margin-top:2px">
+            ${hasPublic ? `<span title="Public">P:${escapeHtml(t.publicBalance)}</span>` : ''}
+            ${hasPrivate ? `<span style="color:var(--c-up);margin-left:4px" title="Private">S:${escapeHtml(t.privateBalance)}</span>` : ''}
+          </div>` : `<div class="cel-num" style="font-size:10px;color:var(--c-subtle)">${escapeHtml(t.value)}</div>`}
+        </div>
+        ${t.isCustom ? `<button class="btn-remove-token" data-symbol="${escapeHtml(t.symbol)}" title="Remove token" style="background:none;border:none;color:var(--c-subtle);cursor:pointer;font-size:14px;padding:2px 4px;transition:color 0.2s">&times;</button>` : ''}
       </div>
     </div>`;
   }).join("");
@@ -2937,27 +2945,24 @@ function bindSettings() {
 
 function renderHeader() {
   return `
-    <div class="header">
-      <div class="header-logo" style="display:flex;align-items:center">${LOGO_LOCKUP}</div>
+    <div class="header" style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid var(--c-hairline);flex-shrink:0">
+      <div style="display:flex;align-items:center">${celariLockup(18)}</div>
       <div style="display:flex;align-items:center;gap:8px">
-        <div class="header-network" id="btn-network-toggle">
-          <div class="network-dot ${store.connected ? '' : 'disconnected'}"></div>
-          ${store.network === "devnet" ? "Devnet" : store.network === "testnet" ? "Testnet" : store.network === "mainnet" ? "Mainnet" : store.network === "local" ? "Sandbox" : escapeHtml(store.customNetworks.find(n => n.id === store.network)?.name || "Custom")}
+        <div id="btn-network-toggle" style="display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--c-hairline);border-radius:999px;cursor:pointer">
+          <span class="cel-dot" style="background:${store.connected ? 'var(--c-up)' : 'var(--c-subtle)'}"></span>
+          <span class="cel-mono" style="font-size:10px;color:var(--c-muted)">Aztec Alpha</span>
         </div>
-        <button id="btn-walletconnect" title="WalletConnect" style="background:none;border:none;color:${store.wcSessions.length ? 'var(--green)' : 'var(--text-dim)'};cursor:pointer;padding:4px;display:flex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5.5 8.5c3.6-3.6 9.4-3.6 13 0"/><path d="M8 11c2.2-2.2 5.8-2.2 8 0"/><path d="M10.5 13.5c.8-.8 2.2-.8 3 0"/></svg></button>
-        <button id="btn-settings" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:4px;display:flex">${icons.settings}</button>
+        <button id="btn-walletconnect" title="WalletConnect" style="background:none;border:none;color:${store.wcSessions.length ? 'var(--c-up)' : 'var(--c-subtle)'};cursor:pointer;padding:4px;display:flex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5.5 8.5c3.6-3.6 9.4-3.6 13 0"/><path d="M8 11c2.2-2.2 5.8-2.2 8 0"/><path d="M10.5 13.5c.8-.8 2.2-.8 3 0"/></svg></button>
+        <button id="btn-settings" style="background:none;border:none;color:var(--c-subtle);cursor:pointer;padding:4px;display:flex">${icons.settings}</button>
       </div>
     </div>`;
 }
 
 function renderSubHeader(title, backScreen) {
   return `
-    <div class="header">
-      <div style="display:flex;align-items:center;gap:8px">
-        <button id="btn-back" class="back-btn">${icons.back}</button>
-        <span style="font-family:Inter,system-ui,sans-serif;font-weight:300;font-size:14px;letter-spacing:4px;text-transform:uppercase">${escapeHtml(title)}</span>
-      </div>
-      <div class="header-logo">${LOGO_SVG}</div>
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--c-hairline)">
+      <button id="btn-back" style="width:30px;height:30px;border-radius:999px;border:1px solid var(--c-hairline-2);background:none;color:var(--c-ink);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">${svgIcon("back", 15)}</button>
+      <div class="cel-serif" style="font-size:17px;font-weight:500">${escapeHtml(title)}</div>
     </div>`;
 }
 
@@ -3051,39 +3056,38 @@ function renderConfirmTx() {
     : contract;
 
   return `
-    <div class="onboarding" style="padding:28px 20px;gap:16px">
-      <div style="width:48px;height:48px;background:var(--burgundy);transform:rotate(45deg);display:flex;align-items:center;justify-content:center;margin-bottom:4px">
-        <span style="transform:rotate(-45deg);font-size:22px;color:var(--copper)">⚡</span>
+    <div style="padding:24px 16px;display:flex;flex-direction:column;align-items:center;gap:16px">
+      <div class="cel-ic" style="width:48px;height:48px">${svgIcon("bolt", 20)}</div>
+      <div style="text-align:center">
+        <h2 class="cel-mono" style="font-size:14px;font-weight:600;letter-spacing:0.16em;color:var(--c-ink);margin:0 0 4px">SIGN REQUEST</h2>
+        <p class="cel-mono" style="font-size:10px;color:var(--c-muted);margin:0">A dApp is requesting your signature</p>
       </div>
-      <h2 style="font-family:'Inter',sans-serif;font-weight:300;font-size:20px;color:var(--gold);letter-spacing:2px;margin:0">
-        SIGN REQUEST
-      </h2>
-      <p style="font-size:10px;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase;margin:0">
-        A dApp is requesting your signature
-      </p>
 
-      <div style="width:100%;background:var(--surface);border:1px solid var(--border);padding:16px;margin:8px 0">
+      <div class="cel-card" style="width:100%;padding:16px">
         <div style="display:flex;justify-content:space-between;margin-bottom:10px">
-          <span style="font-size:10px;color:var(--text-dim);letter-spacing:1px">ORIGIN</span>
-          <span style="font-size:11px;color:var(--text-primary);font-family:'IBM Plex Mono',monospace">${origin}</span>
+          <span class="cel-mono" style="font-size:10px;color:var(--c-subtle);letter-spacing:0.08em">ORIGIN</span>
+          <span class="cel-mono" style="font-size:11px;color:var(--c-ink)">${origin}</span>
         </div>
         <div style="display:flex;justify-content:space-between;margin-bottom:10px">
-          <span style="font-size:10px;color:var(--text-dim);letter-spacing:1px">FUNCTION</span>
-          <span style="font-size:11px;color:var(--copper);font-family:'IBM Plex Mono',monospace">${fnName}</span>
+          <span class="cel-mono" style="font-size:10px;color:var(--c-subtle);letter-spacing:0.08em">FUNCTION</span>
+          <span class="cel-mono" style="font-size:11px;color:var(--c-proving)">${fnName}</span>
         </div>
         <div style="display:flex;justify-content:space-between">
-          <span style="font-size:10px;color:var(--text-dim);letter-spacing:1px">CONTRACT</span>
-          <span style="font-size:11px;color:var(--text-primary);font-family:'IBM Plex Mono',monospace" title="${contract}">${shortContract}</span>
+          <span class="cel-mono" style="font-size:10px;color:var(--c-subtle);letter-spacing:0.08em">CONTRACT</span>
+          <span class="cel-mono" style="font-size:11px;color:var(--c-ink)" title="${contract}">${shortContract}</span>
         </div>
       </div>
 
-      <p style="font-size:10px;color:var(--burgundy);text-align:center;margin:0;line-height:1.5">
-        Review the details above carefully.<br>Only approve transactions from trusted dApps.
-      </p>
+      <div style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:color-mix(in srgb,var(--c-down) 6%,transparent);border:1px solid color-mix(in srgb,var(--c-down) 20%,transparent);border-radius:6px;width:100%;box-sizing:border-box">
+        <span class="cel-dot" style="background:var(--c-down);margin-top:3px;flex-shrink:0"></span>
+        <p class="cel-mono" style="font-size:10px;color:var(--c-down);margin:0;line-height:1.5">
+          Review the details above carefully. Only approve transactions from trusted dApps.
+        </p>
+      </div>
 
-      <div style="display:flex;gap:12px;width:100%;margin-top:8px">
-        <button id="btnRejectTx" class="btn btn-secondary" style="flex:1">Reject</button>
-        <button id="btnApproveTx" class="btn btn-primary" style="flex:1">Approve</button>
+      <div style="display:flex;gap:10px;width:100%">
+        <button id="btnRejectTx" class="cel-btn cel-btn--ghost cel-btn--block" style="flex:1">Reject</button>
+        <button id="btnApproveTx" class="cel-btn cel-btn--primary cel-btn--block" style="flex:1">Approve</button>
       </div>
     </div>`;
 }
