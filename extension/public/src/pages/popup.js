@@ -2554,32 +2554,37 @@ function renderSettings() {
   return `
     ${renderSubHeader("Settings", "dashboard")}
     <div style="padding:12px 16px">
-      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px;margin-top:4px">Account</div>
-      <div style="background:var(--bg-card);border:1px solid var(--border);margin-bottom:16px;overflow:hidden">
-        <div style="padding:12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)">
-          <div style="width:28px;height:28px;border:1px solid var(--border);transform:rotate(45deg);display:flex;align-items:center;justify-content:center">
-            <span style="transform:rotate(-45deg);color:var(--copper);font-size:12px">${isPasskey ? icons.lock : "D"}</span>
-          </div>
+
+      ${isFaucetNetwork(store.network) ? `
+      <div style="padding:11px 14px;border:1px solid var(--c-proving);border-radius:6px;display:flex;gap:10px;align-items:flex-start;margin-bottom:16px;background:color-mix(in srgb, var(--c-proving) 8%, transparent)">
+        <span class="cel-dot cel-dot--proving" style="margin-top:4px"></span>
+        <span class="cel-mono" style="font-size:11px;color:var(--c-proving);letter-spacing:0.06em">ALPHA — testnet funds only</span>
+      </div>` : ""}
+
+      <div class="cel-eyebrow" style="margin-bottom:8px;margin-top:4px">Account</div>
+      <div class="cel-card" style="margin-bottom:16px;overflow:hidden">
+        <div class="cel-row" style="padding:0 14px;border-bottom:1px solid var(--c-hairline)">
+          <div class="cel-ic">${svgIcon(isPasskey ? "lock" : "settings", 18)}</div>
           <div style="flex:1">
-            <div style="font-weight:400;font-size:12px;color:var(--text-warm)">${escapeHtml(account?.label || "Account")}</div>
-            <div style="font-size:10px;color:var(--text-dim)">${isPasskey ? "Passkey (P256)" : "Demo mode"}</div>
+            <div style="font-size:14px;color:var(--c-ink)">${escapeHtml(account?.label || "Account")}</div>
+            <div class="cel-mono" style="font-size:10px;color:var(--c-subtle)">${isPasskey ? "Passkey (P256)" : "Demo mode"}</div>
           </div>
-          <span style="font-size:8px;padding:3px 8px;font-family:IBM Plex Mono,monospace;letter-spacing:2px;background:${isPasskey ? 'var(--green-glow)' : 'rgba(200,121,65,0.08)'};color:${isPasskey ? 'var(--green)' : 'var(--copper)'};border:1px solid ${isPasskey ? 'rgba(74,222,128,0.15)' : 'rgba(200,121,65,0.2)'}">${isPasskey ? "ACTIVE" : "DEMO"}</span>
+          <span class="cel-mono" style="font-size:9px;padding:3px 8px;letter-spacing:0.12em;background:${isPasskey ? 'color-mix(in srgb, var(--c-up) 12%, transparent)' : 'color-mix(in srgb, var(--c-proving) 10%, transparent)'};color:${isPasskey ? 'var(--c-up)' : 'var(--c-proving)'};border:1px solid ${isPasskey ? 'color-mix(in srgb, var(--c-up) 28%, transparent)' : 'color-mix(in srgb, var(--c-proving) 28%, transparent)'};border-radius:4px">${isPasskey ? "ACTIVE" : "DEMO"}</span>
         </div>
-        <div style="padding:12px;font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--text-dim);word-break:break-all;letter-spacing:0.5px">
+        <div class="cel-mono" style="padding:10px 14px;font-size:9px;color:var(--c-subtle);word-break:break-all;letter-spacing:0.03em">
           ${escapeHtml(account?.address || "")}
         </div>
       </div>
 
-      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Appearance</div>
-      <div style="background:var(--bg-card);border:1px solid var(--border);margin-bottom:16px;display:flex;border-radius:var(--radius-md);overflow:hidden">
+      <div class="cel-eyebrow" style="margin-bottom:8px">Appearance</div>
+      <div class="cel-card" style="margin-bottom:16px;display:flex;overflow:hidden">
         ${["system","dark","light"].map(p => `
-          <button data-theme-pref="${p}" style="flex:1;padding:10px 8px;background:${store.themePref===p ? 'linear-gradient(180deg,var(--gold-glow),var(--gold-soft))' : 'transparent'};color:${store.themePref===p ? 'var(--bg)' : 'var(--text-muted)'};border:none;cursor:pointer;font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;font-weight:${store.themePref===p ? '600' : '400'};transition:all 0.15s">${p}</button>
+          <button data-theme-pref="${p}" style="flex:1;padding:10px 8px;background:${store.themePref===p ? 'var(--c-cta)' : 'transparent'};color:${store.themePref===p ? 'var(--c-cta-fg)' : 'var(--c-muted)'};border:none;cursor:pointer;font-family:var(--font-mono,monospace);font-size:9px;letter-spacing:0.12em;text-transform:uppercase;font-weight:${store.themePref===p ? '600' : '400'};transition:background 0.15s,color 0.15s">${p}</button>
         `).join("")}
       </div>
 
-      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Network</div>
-      <div style="background:var(--bg-card);border:1px solid var(--border);margin-bottom:16px;overflow:hidden">
+      <div class="cel-eyebrow" style="margin-bottom:8px">Network</div>
+      <div class="cel-card" style="margin-bottom:16px;overflow:hidden">
         ${renderNetworkRow("local", "Local Sandbox", "localhost:8080")}
         ${renderNetworkRow("devnet", "Aztec Devnet", "devnet-6.aztec-labs.com")}
         ${renderNetworkRow("testnet", "Aztec Testnet", "rpc.testnet.aztec-labs.com")}
@@ -2592,8 +2597,8 @@ function renderSettings() {
       </div>
 
       <div id="custom-rpc-section" style="margin-bottom:16px">
-        <button id="btn-toggle-add-rpc" style="width:100%;padding:10px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:2px;transition:all 0.2s">+ ADD CUSTOM RPC</button>
-        <div id="add-rpc-form" style="display:none;background:var(--bg-card);border:1px solid var(--border);border-top:none;padding:12px">
+        <button id="btn-toggle-add-rpc" style="width:100%;padding:10px 14px;background:var(--c-card);border:1px solid var(--c-hairline);border-radius:6px;color:var(--c-muted);cursor:pointer;font-family:var(--font-mono,monospace);font-size:9px;letter-spacing:0.12em;text-align:left;transition:color 0.2s">+ ADD CUSTOM RPC</button>
+        <div id="add-rpc-form" style="display:none;background:var(--c-card);border:1px solid var(--c-hairline);border-top:none;border-radius:0 0 6px 6px;padding:12px">
           <div class="form-group" style="margin-bottom:8px">
             <label class="form-label">Name</label>
             <input type="text" class="form-input" id="rpc-name" placeholder="My Node" autocomplete="off" maxlength="24" style="padding:8px 10px;font-size:12px" />
@@ -2602,7 +2607,7 @@ function renderSettings() {
             <label class="form-label">RPC URL</label>
             <input type="text" class="form-input" id="rpc-url" placeholder="https://..." autocomplete="off" style="padding:8px 10px;font-size:12px" />
           </div>
-          <div id="rpc-test-result" style="display:none;padding:8px 10px;margin-bottom:8px;font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:0.5px"></div>
+          <div id="rpc-test-result" style="display:none;padding:8px 10px;margin-bottom:8px;font-family:var(--font-mono,monospace);font-size:9px;letter-spacing:0.03em;border-radius:4px"></div>
           <div style="display:flex;gap:8px">
             <button id="btn-test-rpc" class="btn btn-secondary" style="flex:1;padding:8px;font-size:8px">TEST</button>
             <button id="btn-save-rpc" class="btn btn-primary" style="flex:1;padding:8px;font-size:8px">SAVE</button>
@@ -2610,43 +2615,45 @@ function renderSettings() {
         </div>
       </div>
       ${store.connected && store.nodeInfo ? `
-      <div style="background:var(--bg-card);border:1px solid var(--border);margin-bottom:16px;padding:10px 12px;font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--text-dim)">
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>Version</span><span style="color:var(--text-muted)">${escapeHtml(store.nodeInfo?.nodeVersion || '-')}</span></div>
-        <div style="display:flex;justify-content:space-between"><span>Chain ID</span><span style="color:var(--text-muted)">${escapeHtml(String(store.nodeInfo?.l1ChainId || '-'))}</span></div>
+      <div class="cel-card cel-mono" style="margin-bottom:16px;padding:10px 14px;font-size:9px;color:var(--c-subtle)">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>Version</span><span style="color:var(--c-muted)">${escapeHtml(store.nodeInfo?.nodeVersion || '-')}</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Chain ID</span><span style="color:var(--c-muted)">${escapeHtml(String(store.nodeInfo?.l1ChainId || '-'))}</span></div>
       </div>` : ''}
 
-      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Security</div>
-      <div style="background:var(--bg-card);border:1px solid var(--border);margin-bottom:16px;overflow:hidden">
-        <div style="padding:12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)">
-          <span style="color:var(--copper)">${icons.lock}</span>
+      <div class="cel-eyebrow" style="margin-bottom:8px">Security</div>
+      <div class="cel-card" style="margin-bottom:16px;overflow:hidden">
+        <div class="cel-row" style="padding:0 14px;border-bottom:1px solid var(--c-hairline)">
+          <div class="cel-ic">${svgIcon("lock", 18)}</div>
           <div style="flex:1">
-            <div style="font-weight:400;font-size:12px;color:var(--text-warm)">Passkey Management</div>
-            <div style="font-size:10px;color:var(--text-dim)">Face ID / Fingerprint settings</div>
+            <div style="font-size:14px;color:var(--c-ink)">Passkey Management</div>
+            <div class="cel-mono" style="font-size:10px;color:var(--c-subtle)">Face ID / Fingerprint settings</div>
           </div>
+          <span style="color:var(--c-subtle)">${svgIcon("chevron-right", 13)}</span>
         </div>
-        <div style="padding:12px;display:flex;align-items:center;gap:10px">
-          <span style="color:var(--copper)">${icons.shield}</span>
+        <div class="cel-row" style="padding:0 14px">
+          <div class="cel-ic">${svgIcon("shield-half", 18)}</div>
           <div style="flex:1">
-            <div style="font-weight:400;font-size:12px;color:var(--text-warm)">Public Key</div>
-            <div style="font-size:9px;color:var(--text-dim);word-break:break-all;font-family:IBM Plex Mono,monospace">${escapeHtml(account?.publicKeyX?.slice(0, 20) || "")}...</div>
+            <div style="font-size:14px;color:var(--c-ink)">Public Key</div>
+            <div class="cel-mono" style="font-size:9px;color:var(--c-subtle);word-break:break-all">${escapeHtml(account?.publicKeyX?.slice(0, 20) || "")}…</div>
           </div>
         </div>
       </div>
 
-      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Security</div>
-      <div style="background:var(--bg-card);border:1px solid var(--border);margin-bottom:16px;overflow:hidden">
-        <div id="btn-lock-now" class="settings-row" style="padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer;border-bottom:1px solid var(--border)">
-          <span style="color:var(--gold-primary)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
+      <div class="cel-eyebrow" style="margin-bottom:8px">Lock &amp; Signing</div>
+      <div class="cel-card" style="margin-bottom:16px;overflow:hidden">
+        <div id="btn-lock-now" class="settings-row cel-row" style="padding:0 14px;border-bottom:1px solid var(--c-hairline);cursor:pointer">
+          <div class="cel-ic">${svgIcon("lock", 18)}</div>
           <div style="flex:1">
-            <div style="font-weight:400;font-size:12px;color:var(--text-warm)">Lock now</div>
-            <div style="font-size:10px;color:var(--text-dim)">Require passkey to reopen the wallet</div>
+            <div style="font-size:14px;color:var(--c-ink)">Lock now</div>
+            <div class="cel-mono" style="font-size:10px;color:var(--c-subtle)">Require passkey to reopen the wallet</div>
           </div>
+          <span style="color:var(--c-subtle)">${svgIcon("chevron-right", 13)}</span>
         </div>
-        <div class="settings-row" style="padding:12px;display:flex;align-items:center;gap:10px">
-          <span style="color:var(--gold-primary)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12l2 2 4-4"/><path d="M12 3 L20 5 V11 C20 15.5 16.5 19.5 12 22 C7.5 19.5 4 15.5 4 11 V5 Z"/></svg></span>
+        <div class="settings-row cel-row" style="padding:0 14px">
+          <div class="cel-ic">${svgIcon("shield-half", 18)}</div>
           <div style="flex:1">
-            <div style="font-weight:400;font-size:12px;color:var(--text-warm)">Require passkey for each transaction</div>
-            <div style="font-size:10px;color:var(--text-dim)">Adds a Touch ID / Face ID prompt before every signing op. Otherwise one unlock covers the whole popup session.</div>
+            <div style="font-size:14px;color:var(--c-ink)">Require passkey for each transaction</div>
+            <div class="cel-mono" style="font-size:10px;color:var(--c-subtle)">Adds a Touch ID / Face ID prompt before every signing op. Otherwise one unlock covers the whole popup session.</div>
           </div>
           <label class="celari-toggle">
             <input type="checkbox" id="setting-tx-passkey" ${store.requirePasskeyPerTx ? "checked" : ""}>
@@ -2655,54 +2662,56 @@ function renderSettings() {
         </div>
       </div>
 
-      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Backup & Recovery</div>
-      <div style="background:var(--bg-card);border:1px solid var(--border);margin-bottom:16px;overflow:hidden">
-        <div id="btn-backup-export" class="settings-row" style="padding:12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);cursor:pointer">
-          <span style="color:var(--copper)">${icons.shield}</span>
+      <div class="cel-eyebrow" style="margin-bottom:8px">Backup &amp; Recovery</div>
+      <div class="cel-card" style="margin-bottom:16px;overflow:hidden">
+        <div id="btn-backup-export" class="settings-row cel-row" style="padding:0 14px;border-bottom:1px solid var(--c-hairline);cursor:pointer">
+          <div class="cel-ic">${svgIcon("shield-half", 18)}</div>
           <div style="flex:1">
-            <div style="font-weight:400;font-size:12px;color:var(--text-warm)">Export Backup</div>
-            <div style="font-size:10px;color:var(--text-dim)">Encrypted JSON file</div>
+            <div style="font-size:14px;color:var(--c-ink)">Export Backup</div>
+            <div class="cel-mono" style="font-size:10px;color:var(--c-subtle)">Encrypted JSON file</div>
           </div>
+          <span style="color:var(--c-subtle)">${svgIcon("chevron-right", 13)}</span>
         </div>
-        <div id="btn-backup-import" class="settings-row" style="padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer">
-          <span style="color:var(--copper)">${icons.download}</span>
+        <div id="btn-backup-import" class="settings-row cel-row" style="padding:0 14px;cursor:pointer">
+          <div class="cel-ic">${svgIcon("drop", 18)}</div>
           <div style="flex:1">
-            <div style="font-weight:400;font-size:12px;color:var(--text-warm)">Import Backup</div>
-            <div style="font-size:10px;color:var(--text-dim)">Restore from encrypted file</div>
+            <div style="font-size:14px;color:var(--c-ink)">Import Backup</div>
+            <div class="cel-mono" style="font-size:10px;color:var(--c-subtle)">Restore from encrypted file</div>
           </div>
+          <span style="color:var(--c-subtle)">${svgIcon("chevron-right", 13)}</span>
         </div>
       </div>
 
-      <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Actions</div>
-      <div style="background:var(--bg-card);border:1px solid var(--border);margin-bottom:16px;overflow:hidden">
-        <div id="btn-open-logs" class="settings-row" style="padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer;border-bottom:1px solid var(--border)">
-          <span style="color:var(--c-ink)">${icons.settings}</span>
+      <div class="cel-eyebrow" style="margin-bottom:8px">Actions</div>
+      <div class="cel-card" style="margin-bottom:16px;overflow:hidden">
+        <div id="btn-open-logs" class="settings-row cel-row" style="padding:0 14px;cursor:pointer;border-bottom:1px solid var(--c-hairline)">
+          <div class="cel-ic">${svgIcon("terminal", 18)}</div>
           <div style="flex:1">
-            <div style="font-weight:400;font-size:12px;color:var(--text-warm)">Logs</div>
-            <div style="font-size:10px;color:var(--text-dim)">PXE sync &amp; diagnostics (this session)</div>
+            <div style="font-size:14px;color:var(--c-ink)">Logs</div>
+            <div class="cel-mono" style="font-size:10px;color:var(--c-subtle)">PXE sync &amp; diagnostics (this session)</div>
           </div>
           <span style="color:var(--c-subtle)">${svgIcon("chevron-right", 13)}</span>
         </div>
         ${store.accounts.length > 1 ? `
-        <div id="btn-delete-account" class="settings-row" style="padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer;border-bottom:1px solid var(--border)">
-          <span style="color:var(--red)">&times;</span>
+        <div id="btn-delete-account" class="settings-row cel-row" style="padding:0 14px;cursor:pointer;border-bottom:1px solid var(--c-hairline)">
+          <div class="cel-ic" style="border-color:color-mix(in srgb, var(--c-down) 30%, transparent)">${svgIcon("x", 18)}</div>
           <div style="flex:1">
-            <div style="font-weight:400;font-size:12px;color:var(--red)">Delete Account</div>
-            <div style="font-size:10px;color:var(--text-dim)">Remove "${escapeHtml(account?.label || 'this account')}" permanently</div>
+            <div style="font-size:14px;color:var(--c-down)">Delete Account</div>
+            <div class="cel-mono" style="font-size:10px;color:var(--c-subtle)">Remove &ldquo;${escapeHtml(account?.label || 'this account')}&rdquo; permanently</div>
           </div>
         </div>` : ''}
-        <div id="btn-logout" class="settings-row" style="padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer">
-          <span style="color:var(--red)">${icons.back}</span>
+        <div id="btn-logout" class="settings-row cel-row" style="padding:0 14px;cursor:pointer">
+          <div class="cel-ic" style="border-color:color-mix(in srgb, var(--c-down) 30%, transparent)">${svgIcon("back", 18)}</div>
           <div style="flex:1">
-            <div style="font-weight:400;font-size:12px;color:var(--red)">Log Out</div>
-            <div style="font-size:10px;color:var(--text-dim)">Reset wallet and return to onboarding</div>
+            <div style="font-size:14px;color:var(--c-down)">Log Out</div>
+            <div class="cel-mono" style="font-size:10px;color:var(--c-subtle)">Reset wallet and return to onboarding</div>
           </div>
         </div>
       </div>
 
-      <div style="text-align:center;padding:12px 0;color:var(--text-faint);font-family:IBM Plex Mono,monospace;font-size:8px;letter-spacing:2px">
-        CELARI v0.4.0 · AZTEC SDK v3 · PHASE 2<br/>
-        <span style="font-family:Tenor Sans,serif;font-size:11px;font-style:italic;letter-spacing:0;color:var(--text-dim);margin-top:4px;display:block">celāre — to hide, to conceal</span>
+      <div style="text-align:center;padding:12px 0">
+        <div class="cel-mono" style="font-size:9px;color:var(--c-subtle);letter-spacing:0.12em">CELARI v0.4.0 · AZTEC SDK v4.3.0</div>
+        <div class="cel-serif" style="font-size:12px;font-style:italic;color:var(--c-muted);margin-top:5px">celāre — to hide, to conceal</div>
       </div>
     </div>`;
 }
@@ -2710,16 +2719,16 @@ function renderSettings() {
 function renderNetworkRow(id, name, url, isCustom = false) {
   const isActive = store.network === id;
   const isConnected = isActive && store.connected;
-  const dotColor = isConnected ? "var(--green)" : isActive ? "var(--copper)" : "var(--border)";
+  const dotColor = isConnected ? "var(--c-up)" : isActive ? "var(--c-proving)" : "var(--c-hairline-2)";
   return `
-    <div class="settings-row" id="btn-network-${escapeHtml(id)}" style="padding:12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);cursor:pointer">
-      <div style="width:6px;height:6px;border-radius:50%;background:${dotColor}"></div>
+    <div class="settings-row cel-row" id="btn-network-${escapeHtml(id)}" style="padding:0 14px;border-bottom:1px solid var(--c-hairline);cursor:pointer">
+      <div style="width:7px;height:7px;border-radius:50%;background:${dotColor};flex-shrink:0"></div>
       <div style="flex:1">
-        <div style="font-weight:400;font-size:11px;color:var(--text-warm)">${escapeHtml(name)}${isCustom ? ' <span style="color:var(--text-faint);font-size:7px;font-family:IBM Plex Mono,monospace">CUSTOM</span>' : ''}</div>
-        <div style="font-size:9px;color:var(--text-dim);font-family:IBM Plex Mono,monospace">${escapeHtml(url)}</div>
+        <div style="font-size:13px;color:var(--c-ink)">${escapeHtml(name)}${isCustom ? ` <span class="cel-mono" style="color:var(--c-subtle);font-size:8px;letter-spacing:0.1em">CUSTOM</span>` : ''}</div>
+        <div class="cel-mono" style="font-size:9px;color:var(--c-subtle)">${escapeHtml(url)}</div>
       </div>
-      ${isCustom && !isActive ? `<button class="btn-delete-network" data-network-id="${escapeHtml(id)}" style="background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:14px;padding:2px 4px;transition:color 0.2s" title="Remove">&times;</button>` : ''}
-      ${isActive ? `<span style="color:var(--copper)">${icons.check}</span>` : ""}
+      ${isCustom && !isActive ? `<button class="btn-delete-network" data-network-id="${escapeHtml(id)}" style="background:none;border:none;color:var(--c-subtle);cursor:pointer;font-size:14px;padding:2px 6px;transition:color 0.2s;line-height:1" title="Remove">&times;</button>` : ''}
+      ${isActive ? `<span style="color:var(--c-proving)">${icons.check}</span>` : ""}
     </div>`;
 }
 
