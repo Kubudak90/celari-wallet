@@ -1076,6 +1076,10 @@ function _renderImpl() {
       root.innerHTML = renderWcApprove();
       bindWcApprove();
       break;
+    case "logs":
+      root.innerHTML = renderLogs();
+      bindLogs();
+      break;
     default:
       root.innerHTML = renderDashboard();
   }
@@ -2361,6 +2365,45 @@ function bindActivity() {
   document.getElementById("btn-back")?.addEventListener("click", () => setState({ screen: "dashboard" }));
 }
 
+// ─── Screen: Logs ─────────────────────────────────────
+function renderLogs() {
+  const entries = logBuffer.getAll();
+  const levelColor = {
+    error: "var(--c-down)",
+    warn: "var(--c-proving)",
+    info: "var(--c-subtle)",
+  };
+  const rows = entries.length
+    ? entries
+        .slice()
+        .reverse()
+        .map((e) => {
+          const ts = new Date(e.t).toLocaleTimeString([], { hour12: false });
+          return `<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--c-hairline)">
+            <span class="cel-mono" style="font-size:9px;color:var(--c-subtle);flex-shrink:0">${escapeHtml(ts)}</span>
+            <span class="cel-mono" style="font-size:10px;color:${levelColor[e.level] || "var(--c-ink)"};word-break:break-word">${escapeHtml(e.message)}</span>
+          </div>`;
+        })
+        .join("")
+    : `<div style="text-align:center;padding:40px 16px;color:var(--c-subtle)" class="cel-mono">No logs this session</div>`;
+
+  return `
+    ${renderSubHeader("Logs", "settings")}
+    <div style="padding:8px 16px 4px;display:flex;justify-content:space-between;align-items:center">
+      <span class="cel-eyebrow">Session log · ${entries.length}</span>
+      <button id="btn-logs-clear" class="cel-btn cel-btn--ghost" style="height:30px;padding:0 12px;font-size:10px">Clear</button>
+    </div>
+    <div style="padding:0 16px 16px">${rows}</div>`;
+}
+
+function bindLogs() {
+  document.getElementById("btn-back")?.addEventListener("click", () => setState({ screen: "settings" }));
+  document.getElementById("btn-logs-clear")?.addEventListener("click", () => {
+    logBuffer.clear();
+    render();
+  });
+}
+
 // ─── Screen: Add Token ───────────────────────────────
 
 function renderAddToken() {
@@ -2626,6 +2669,14 @@ function renderSettings() {
 
       <div style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);text-transform:uppercase;letter-spacing:4px;margin-bottom:8px">Actions</div>
       <div style="background:var(--bg-card);border:1px solid var(--border);margin-bottom:16px;overflow:hidden">
+        <div id="btn-open-logs" class="settings-row" style="padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer;border-bottom:1px solid var(--border)">
+          <span style="color:var(--c-ink)">${icons.settings}</span>
+          <div style="flex:1">
+            <div style="font-weight:400;font-size:12px;color:var(--text-warm)">Logs</div>
+            <div style="font-size:10px;color:var(--text-dim)">PXE sync &amp; diagnostics (this session)</div>
+          </div>
+          <span style="color:var(--c-subtle)">${svgIcon("chevron-right", 13)}</span>
+        </div>
         ${store.accounts.length > 1 ? `
         <div id="btn-delete-account" class="settings-row" style="padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer;border-bottom:1px solid var(--border)">
           <span style="color:var(--red)">&times;</span>
@@ -2668,6 +2719,7 @@ function renderNetworkRow(id, name, url, isCustom = false) {
 
 function bindSettings() {
   document.getElementById("btn-back")?.addEventListener("click", () => setState({ screen: "dashboard" }));
+  document.getElementById("btn-open-logs")?.addEventListener("click", () => setState({ screen: "logs" }));
 
   const switchNetwork = (network) => {
     chrome.runtime.sendMessage({ type: "SET_NETWORK", network }, (resp) => {
