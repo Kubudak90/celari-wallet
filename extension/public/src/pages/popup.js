@@ -1577,10 +1577,11 @@ function parseClaimPayload(raw) {
 
 function renderSyncBar() {
   return `
-    <div id="sync-bar" style="margin:0 16px 8px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border);display:flex;align-items:center;gap:8px;font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--text-faint);letter-spacing:1px">
-      <div id="sync-dot" style="width:5px;height:5px;border-radius:50%;background:var(--green)"></div>
-      <span id="sync-text">Checking sync...</span>
-    </div>`;
+    <button id="btn-sync-pill" class="cel-card" style="margin:0 16px 8px;padding:9px 12px;display:flex;align-items:center;gap:8px;width:calc(100% - 32px);cursor:pointer;background:var(--c-card);text-align:left">
+      <span id="sync-dot" class="cel-dot cel-dot--proving" style="animation:celPulse 1.6s ease-in-out infinite"></span>
+      <span id="sync-text" class="cel-mono" style="flex:1;font-size:10px;color:var(--c-muted);letter-spacing:0.04em">Checking sync…</span>
+      <span style="color:var(--c-subtle)">${svgIcon("terminal", 13)}</span>
+    </button>`;
 }
 
 function startSyncPolling() {
@@ -1769,6 +1770,7 @@ function bindDashboard() {
   document.getElementById("btn-add-token")?.addEventListener("click", () => setState({ screen: "add-token" }));
   document.getElementById("btn-bridge")?.addEventListener("click", () => showToast("Bridge — coming soon", "success"));
   document.getElementById("btn-faucet")?.addEventListener("click", handleFaucet);
+  document.getElementById("btn-sync-pill")?.addEventListener("click", () => setState({ screen: "logs" }));
   document.getElementById("btn-card")?.addEventListener("click", () => {
     store.sendForm.transferType = "shield";
     setState({ screen: "send" });
