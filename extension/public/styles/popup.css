@@ -30,92 +30,85 @@
 @font-face { font-family:'Martel'; src:url('../fonts/martel-600.woff2') format('woff2'); font-weight:600; font-display:swap; }
 
 :root {
-  /* Surfaces — gold-on-dark default */
-  --bg: #0A0A0B;
-  --bg-card: #141416;
-  --bg-elevated: #1C1C1F;
-  --bg-section: #0A0A0B;
-  --bg-input: #1C1C1F;
+  /* ---- Aztec type families (new code uses these) ---- */
+  --font-display: "Martel", "EB Garamond", Georgia, serif;
+  --font-serif:   "EB Garamond", Georgia, serif;
+  --font-body:    "Geist", "Inter", system-ui, sans-serif;
+  --font-mono:    "Geist Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 
-  /* Brand accent — Celari gold. Legacy aztec/burgundy/copper aliases retained
-     so existing CSS rules keep compiling without mass rename. */
-  --aztec-dark: #D4A853;
-  --aztec-darker: #B8924A;
-  --aztec-green: #E8C878;
-  --teal: #8A6F38;
+  /* ---- Aztec wallet tokens (malachite / dark = default) ---- */
+  --c-ground:#001F18; --c-ground-2:#00150F; --c-card:#06281F; --c-card-2:#0A2D24;
+  --c-ink:#F2EEE1; --c-muted:#9FB5AC; --c-subtle:#6E867D;
+  --c-hairline:rgba(242,238,225,0.13); --c-hairline-2:rgba(242,238,225,0.24);
+  --c-field:#0A2D24;
+  --c-cta:#F2EEE1; --c-cta-fg:#001F18; --c-cta-hover:#FFFFFF;
+  --c-priv:#FF5A5A; --c-priv-dot:#FF1A1A; --c-pub:#2BFAE9; --c-pub-ring:#2BFAE9;
+  --c-proving:#E0B24A; --c-up:#3FD37E; --c-down:#FF6B6B;
 
-  --burgundy: #D4A853;
-  --burgundy-deep: #B8924A;
-  --burgundy-light: #E8C878;
+  /* ---- Legacy aliases (existing inline styles resolve through these) ---- */
+  --bg: var(--c-ground);
+  --bg-card: var(--c-card);
+  --bg-elevated: var(--c-card-2);
+  --bg-section: var(--c-ground-2);
+  --bg-input: var(--c-field);
 
-  --copper: #B8924A;
-  --copper-light: #E8C878;
-  --copper-muted: #8A6F38;
-  --bronze: #B8924A;
+  /* warm accent family → amber "proving" tone (closest to old gold, on-brand) */
+  --gold-primary: var(--c-proving); --gold-soft:#C99A38; --gold-glow:rgba(224,178,74,0.12); --gold-deep:#8A6A22;
+  --copper: var(--c-proving); --copper-light:#EEC56A; --copper-muted:#8A6A22; --bronze: var(--c-proving);
+  --burgundy: var(--c-proving); --burgundy-deep:#C99A38; --burgundy-light:#EEC56A;
+  --aztec-dark: var(--c-proving); --aztec-darker:#C99A38; --aztec-green: var(--c-proving); --teal:#8A6A22;
 
-  /* Direct gold tokens (preferred for new code). */
-  --gold-primary: #D4A853;
-  --gold-soft: #B8924A;
-  --gold-glow: #E8C878;
-  --gold-deep: #8A6F38;
+  --green: var(--c-up); --green-glow: rgba(63,211,126,0.10); --red: var(--c-down);
 
-  /* Semantic */
-  --green: #34D399;
-  --green-glow: rgba(52, 211, 153, 0.10);
-  --red: #F87171;
+  --text-warm: var(--c-ink);
+  --text-body: var(--c-muted);
+  --text-muted: var(--c-subtle);
+  --text-dim: var(--c-subtle);
+  --text-faint: #4F635B;
 
-  /* Text — light on dark */
-  --text-warm: #FFFFFF;
-  --text-body: #A8A8B0;
-  --text-muted: #6B6B73;
-  --text-dim: #6B6B73;
-  --text-faint: #26262A;
-
-  /* Borders */
-  --border: #26262A;
-  --border-warm: #26262A;
+  --border: var(--c-hairline);
+  --border-warm: var(--c-hairline-2);
 
   --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --shadow: 0 0 40px rgba(212, 168, 83, 0.12);
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 16px 48px rgba(0,0,0,0.45);
 }
 
 /* Light theme — toggled via <html data-theme="light"> */
 [data-theme="light"] {
-  --bg: #F7F6F1;
-  --bg-card: #FFFFFF;
-  --bg-elevated: #ECEBE5;
-  --bg-section: #F7F6F1;
-  --bg-input: #FFFFFF;
+  --c-ground:#F2EEE1; --c-ground-2:#EAE5D5; --c-card:#F8F5EA; --c-card-2:#FFFFFF;
+  --c-ink:#1A1400; --c-muted:#5C5640; --c-subtle:#8A8470;
+  --c-hairline:rgba(26,20,0,0.12); --c-hairline-2:rgba(26,20,0,0.22);
+  --c-field:#FFFFFF;
+  --c-cta:#1A1400; --c-cta-fg:#F2EEE1; --c-cta-hover:#2A2206;
+  --c-priv:#C8181B; --c-priv-dot:#FF1A1A; --c-pub:#0C8C84; --c-pub-ring:#2BFAE9;
+  --c-proving:#A8762A; --c-up:#2C7A3F; --c-down:#C8181B;
 
-  --aztec-dark: #8A6F38;
-  --aztec-darker: #6B5526;
-  --aztec-green: #B8924A;
-  --teal: #6B5526;
+  --bg: var(--c-ground);
+  --bg-card: var(--c-card);
+  --bg-elevated: var(--c-card-2);
+  --bg-section: var(--c-ground-2);
+  --bg-input: var(--c-field);
 
-  --burgundy: #8A6F38;
-  --burgundy-deep: #6B5526;
-  --burgundy-light: #B8924A;
+  --gold-primary: var(--c-proving); --gold-soft:#946722; --gold-glow:rgba(168,118,42,0.14); --gold-deep:#6B4D18;
+  --copper: var(--c-proving); --copper-light:#946722; --copper-muted:#6B4D18; --bronze: var(--c-proving);
+  --burgundy: var(--c-proving); --burgundy-deep:#946722; --burgundy-light:#C99A38;
+  --aztec-dark: var(--c-proving); --aztec-darker:#946722; --aztec-green: var(--c-proving); --teal:#6B4D18;
 
-  --copper: #8A6F38;
-  --copper-light: #B8924A;
-  --copper-muted: #6B5526;
-  --bronze: #8A6F38;
+  --green: var(--c-up); --green-glow: rgba(44,122,63,0.10); --red: var(--c-down);
 
-  --green: #059669;
-  --red: #DC2626;
+  --text-warm: var(--c-ink);
+  --text-body: var(--c-muted);
+  --text-muted: var(--c-subtle);
+  --text-dim: var(--c-subtle);
+  --text-faint: #A39E8A;
 
-  --text-warm: #0A0A0B;
-  --text-body: #525258;
-  --text-muted: #8A8A92;
-  --text-dim: #8A8A92;
-  --text-faint: #E0DFD9;
+  --border: var(--c-hairline);
+  --border-warm: var(--c-hairline-2);
 
-  --border: #E0DFD9;
-  --border-warm: #E0DFD9;
-
-  --shadow: 0 0 24px rgba(212, 168, 83, 0.18);
+  --shadow: 0 1px 2px rgba(26,20,0,0.06), 0 8px 24px rgba(26,20,0,0.10);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
