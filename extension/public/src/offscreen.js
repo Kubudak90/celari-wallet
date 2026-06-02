@@ -445,7 +445,11 @@ class BrowserCelariPasskeyAccountContract extends DefaultAccountContract {
   async getInitializationFunctionAndArgs() {
     return {
       constructorName: "constructor",
-      constructorArgs: [this._pubKeyX, this._pubKeyY],
+      // Aztec 4.3.0's ABI encoder requires real JS arrays for `[u8; 32]` params;
+      // _pubKeyX/_pubKeyY arrive as Uint8Array (object) → "Expected array for
+      // pub_key_x but received object". Array.from yields the [u8; 32] the
+      // contract constructor expects. Same 32 bytes → address stays deterministic.
+      constructorArgs: [Array.from(this._pubKeyX), Array.from(this._pubKeyY)],
     };
   }
 
