@@ -37,7 +37,8 @@ const entryPoints = [
   { in: resolve(__dirname, "public/src/background.js"), out: "src/background" },
   { in: resolve(__dirname, "public/src/content.js"), out: "src/content" },
   { in: resolve(__dirname, "public/src/inpage.js"), out: "src/inpage" },
-  { in: resolve(__dirname, "public/src/pages/popup.js"), out: "src/pages/popup" },
+  // NOTE: popup.js is intentionally NOT here — it is built separately below
+  // without drop:["console"] (see the dedicated popup build after Pass 1).
 ];
 
 try {
@@ -51,6 +52,24 @@ try {
     target: ["chrome120"],
     logLevel: "info",
     ...(isDev ? {} : { drop: ["console"], define: { "process.env.NODE_ENV": '"production"' } }),
+  });
+
+  // --- Popup: built separately WITHOUT drop:["console"] ---
+  // The Logs viewer tees console.* into a ring buffer (see the console tap in
+  // popup.js). drop:["console"] would (a) strip the very calls the viewer exists
+  // to capture and (b) remove the `console[level]` read used to preserve the
+  // original method, leaving `orig` === undefined so every console call becomes
+  // `(void 0)(...)` → TypeError on init → the popup never renders. So no drop here.
+  await build({
+    entryPoints: [{ in: resolve(__dirname, "public/src/pages/popup.js"), out: "src/pages/popup" }],
+    bundle: false,
+    minify: !isDev,
+    sourcemap: isDev,
+    outdir,
+    format: "esm",
+    target: ["chrome120"],
+    logLevel: "info",
+    ...(isDev ? {} : { define: { "process.env.NODE_ENV": '"production"' } }),
   });
 
   console.log("  Pass 1: Standard entry points OK");
