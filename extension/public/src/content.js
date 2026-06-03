@@ -211,6 +211,13 @@ try {
           providerPorts.get(sessionId)?.postMessage({ type, content });
           break;
         }
+        case "provider-event": {
+          window.postMessage(
+            { target: "celari-provider-page", event: message.event, payload: message.payload },
+            window.location.origin
+          );
+          break;
+        }
       }
     } catch (e) {
       if (_celariIsCtxInvalidError(e)) _celariCtxInvalid = true;
