@@ -12,7 +12,7 @@
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { Fr } from "@aztec/aztec.js/fields";
-import { AztecAddress } from "@aztec/aztec.js/addresses";
+import { AztecAddress, EthAddress } from "@aztec/aztec.js/addresses";
 import { DefaultAccountContract } from "@aztec/accounts/defaults";
 import { AuthWitness } from "@aztec/stdlib/auth-witness";
 // AztecAddress already imported from @aztec/aztec.js/addresses above
@@ -43,6 +43,15 @@ function getRecoveryArtifact() {
     return null;
   }
 }
+
+// Bridge contracts (compiled Noir → JSON) for L2 withdraw (exit) execution.
+import CelariTokenBridgeArtifactJson from "../../../bridge/contracts/l2/celari_token_bridge/target/celari_token_bridge-CelariTokenBridge.json" with { type: "json" };
+import BridgedTokenArtifactJson from "../../../bridge/contracts/l2/bridged_token/target/bridged_token-BridgedToken.json" with { type: "json" };
+const CelariTokenBridgeArtifact = loadContractArtifact(CelariTokenBridgeArtifactJson);
+const BridgedTokenArtifact = loadContractArtifact(BridgedTokenArtifactJson);
+
+import { BRIDGE } from "./lib/bridge-config.js";
+import { selectExitMode } from "./lib/bridge-exit-select.js";
 
 // --- In-Memory KV Store for iOS ---
 // WKWebView's IndexedDB crashes on PXE block sync transactions.
@@ -846,6 +855,84 @@ async function executeTransfer(data) {
   };
 }
 
+// --- Bridge Exit (L2 → L1 withdraw) ---
+
+async function _ensureContractRegistered(addr, artifact) {
+  const { contractInstance: existing } = await wallet.getContractMetadata(addr);
+  if (!existing && nodeClient) {
+    const onChain = await nodeClient.getContract(addr);
+    if (onChain) await wallet.registerContract(onChain, artifact);
+  }
+}
+
+async function executeBridgeExit(data) {
+  const acctWallet = getActiveWallet();
+  if (!acctWallet) throw new Error("No account registered in PXE");
+
+  const recipient = String(data.recipient);   // L1 0x address
+  const amount = BigInt(data.amount);          // wei
+  const sender = acctWallet.getAddress();
+
+  const bridgeAddr = AztecAddress.fromString(BRIDGE.TOKEN_BRIDGE_ADDRESS);
+  const tokenAddr  = AztecAddress.fromString(BRIDGE.BRIDGED_TOKEN_ADDRESS);
+
+  reportProgress("Köprü kontratları hazırlanıyor...");
+  await _ensureContractRegistered(bridgeAddr, CelariTokenBridgeArtifact);
+  await _ensureContractRegistered(tokenAddr, BridgedTokenArtifact);
+
+  reportProgress("Bakiye kontrol ediliyor...");
+  const token = await Contract.at(tokenAddr, BridgedTokenArtifact, acctWallet);
+  let priv = 0n, pub = 0n;
+  // NOTE: BridgedToken (MVP) implements only public balances — it has no
+  // balance_of_private method, so private stays 0 and selectExitMode picks "public".
+  if (token.methods.balance_of_private) {
+    try { priv = BigInt((await token.methods.balance_of_private(sender).simulate({ from: sender })).toString()); } catch (e) { console.warn("[Bridge] private balance read failed:", e?.message); }
+  }
+  try { pub  = BigInt((await token.methods.balance_of_public(sender).simulate({ from: sender })).toString()); } catch (e) { console.warn("[Bridge] public balance read failed:", e?.message); }
+  const mode = selectExitMode(priv, pub, amount);
+  if (!mode) throw new Error(`Insufficient bridged balance: private ${priv}, public ${pub}, need ${amount}`);
+
+  reportProgress("Fee ödeme ayarlanıyor...");
+  let paymentMethod;
+  try {
+    const fpc = await Promise.race([
+      setupSponsoredFPC(acctWallet),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("SponsoredFPC timeout")), 30000)),
+    ]);
+    paymentMethod = fpc.paymentMethod;
+  } catch (e) {
+    console.warn(`[Bridge] SponsoredFPC unavailable (${e.message}), using account Fee Juice`);
+    paymentMethod = undefined;
+  }
+  const feeOpts = { estimateGas: true, estimatedGasPadding: 0.1 };
+  if (paymentMethod) feeOpts.paymentMethod = paymentMethod;
+  const sendOpts = { from: sender, fee: feeOpts, wait: { timeout: 600_000 } };
+
+  // Params match the website's L1 claim (withdraw(..., withCaller=true)):
+  // l1Token=ETH(0x0), callerOnL1=recipient, nonce=0. Content-hash is enforced on-chain.
+  const bridge = await Contract.at(bridgeAddr, CelariTokenBridgeArtifact, acctWallet);
+  const l1Token    = EthAddress.fromString(BRIDGE.L1_ETH_TOKEN);
+  const recipEth   = EthAddress.fromString(recipient);
+  const callerOnL1 = EthAddress.fromString(recipient);
+  const nonce      = new Fr(0n);
+
+  reportProgress(`L1'e çekim gönderiliyor (${mode})...`);
+  let sendResult;
+  if (mode === "private") {
+    sendResult = await bridge.methods
+      .exit_to_l1_private(tokenAddr, l1Token, recipEth, amount, callerOnL1, nonce)
+      .send(sendOpts);
+  } else {
+    sendResult = await bridge.methods
+      .exit_to_l1_public(l1Token, recipEth, amount, callerOnL1, nonce)
+      .send(sendOpts);
+  }
+
+  const receipt = sendResult.receipt;
+  reportProgress(null);
+  return { success: true, txHash: receipt.txHash.toString(), blockNumber: receipt.blockNumber?.toString() || "", mode };
+}
+
 // --- Balance Query ---
 
 let balanceFromAddress = null;
@@ -1628,6 +1715,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
         case "PXE_TRANSFER":
           return await executeTransfer(msg.data);
+
+        case "PXE_BRIDGE_EXIT":
+          return await executeBridgeExit(msg.data);
 
         case "PXE_BALANCES":
           return await getBalances(msg.data);
