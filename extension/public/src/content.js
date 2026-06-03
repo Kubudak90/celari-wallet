@@ -78,12 +78,6 @@ window.addEventListener("message", (event) => {
   try {
     if (event.source !== window) return;
 
-    // Legacy protocol uses object data, not JSON strings — hand off early.
-    if (typeof event.data !== "string") {
-      handleLegacyMessage(event);
-      return;
-    }
-
     let data;
     try { data = JSON.parse(event.data); } catch { return; }
 
@@ -100,15 +94,32 @@ window.addEventListener("message", (event) => {
   }
 });
 
+// ─── Encrypted Provider Channel relay (window.celari) ─────────────────
+// Pure relay between the page (MessagePort) and background. All crypto is in
+// the page (app) and background (wallet); the content script sees only
+// ciphertext. Mirrors the wallet-sdk relay.
+const PROVIDER_TARGET_CONTENT = "celari-provider-content";
+const providerPorts = new Map(); // sessionId -> MessagePort (port1)
+
+window.addEventListener("message", (event) => {
+  try {
+    if (event.source !== window) return;
+    if (event.origin !== window.location.origin) return;
+    const d = event.data;
+    if (d?.target !== PROVIDER_TARGET_CONTENT) return;
+    if (d.type === "provider-discovery") {
+      safeRuntimeSend({ origin: WS_ORIGIN_CS, type: "provider-discovery", content: { requestId: d.requestId } });
+    }
+  } catch (e) {
+    if (_celariIsCtxInvalidError(e)) _celariCtxInvalid = true;
+  }
+});
+
 // Listen for messages from background (session management responses)
 try {
   chrome.runtime.onMessage.addListener((message) => {
     try {
       if (message?.origin !== WS_ORIGIN_BG) {
-        // Pass non-wallet-sdk messages to the legacy handler below
-        if (message?.target === "content") {
-          window.postMessage({ target: "celari-inpage", ...message }, window.location.origin);
-        }
         return;
       }
 
@@ -172,6 +183,34 @@ try {
           }
           break;
         }
+
+        case "provider-discovery-approved": {
+          const channel = new MessageChannel();
+          providerPorts.set(sessionId, channel.port1);
+          channel.port1.onmessage = (e) => {
+            try {
+              const data = e.data;
+              let t = "provider-secure-message";
+              if (data?.type === "provider-key-exchange") t = "provider-key-exchange";
+              else if (data?.type === "provider-disconnect") t = "provider-disconnect";
+              safeRuntimeSend({ origin: WS_ORIGIN_CS, type: t, sessionId, content: data.content ?? data });
+            } catch (err) {
+              if (_celariIsCtxInvalidError(err)) _celariCtxInvalid = true;
+            }
+          };
+          channel.port1.start();
+          window.postMessage(
+            { target: "celari-provider-page", type: "provider-discovery-approved", requestId: sessionId, walletInfo: content },
+            window.location.origin,
+            [channel.port2]
+          );
+          break;
+        }
+        case "provider-key-exchange-response":
+        case "provider-secure-response": {
+          providerPorts.get(sessionId)?.postMessage({ type, content });
+          break;
+        }
       }
     } catch (e) {
       if (_celariIsCtxInvalidError(e)) _celariCtxInvalid = true;
@@ -194,63 +233,14 @@ window.addEventListener("pagehide", () => {
     }
     wsPorts.clear();
   } catch {}
-});
-
-// ─── Legacy Protocol: celari-content/celari-inpage ─────
-// Keeps backward compatibility with existing window.celari API.
-
-function handleLegacyMessage(event) {
-  if (event.data?.target !== "celari-content") return;
-  // Only accept messages from the page's own origin — rejects cross-origin
-  // iframes attempting to spoof a connection.
-  if (event.origin !== window.location.origin) return;
-
-  const ALLOWED_DAPP_TYPES = [
-    "DAPP_CONNECT",
-    "DAPP_SIGN",
-    "GET_ADDRESS",
-    "GET_COMPLETE_ADDRESS",
-    "GET_STATE",
-    "CREATE_AUTHWIT",
-  ];
-  if (!ALLOWED_DAPP_TYPES.includes(event.data.type)) return;
-
-  const { type, payload, requestId } = event.data;
-
-  if (_celariCtxInvalid) {
-    window.postMessage({
-      target: "celari-inpage",
-      requestId,
-      response: { success: false, error: "Extension reloaded — please refresh this page" },
-    }, window.location.origin);
-    return;
-  }
-
   try {
-    const p = chrome.runtime.sendMessage({ type, payload });
-    p.then(response => {
-      window.postMessage({
-        target: "celari-inpage",
-        requestId,
-        response,
-      }, window.location.origin);
-    }).catch(error => {
-      if (_celariIsCtxInvalidError(error)) _celariCtxInvalid = true;
-      window.postMessage({
-        target: "celari-inpage",
-        requestId,
-        response: { success: false, error: error.message },
-      }, window.location.origin);
-    });
-  } catch (error) {
-    if (_celariIsCtxInvalidError(error)) _celariCtxInvalid = true;
-    window.postMessage({
-      target: "celari-inpage",
-      requestId,
-      response: { success: false, error: error.message },
-    }, window.location.origin);
-  }
-}
+    for (const [sessionId, port] of providerPorts) {
+      try { port.close(); } catch {}
+      safeRuntimeSend({ origin: WS_ORIGIN_CS, type: "provider-disconnect", sessionId });
+    }
+    providerPorts.clear();
+  } catch {}
+});
 
 // ─── Nethermind Fee Juice Faucet — Address auto-fill ─────
 // The popup calls the Nethermind API directly to drip + poll for claim
