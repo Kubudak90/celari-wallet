@@ -13,6 +13,7 @@ import { sanitizeRpcError } from "./lib/sanitize.js";
 import { WS_WRITE_METHODS, classifySecureMessage } from "./lib/ws-lock-gate.js";
 import { selectActiveAddress } from "./lib/provider-accounts.js";
 import { PROVIDER_METHODS } from "./lib/provider-protocol.js";
+import { isAllowedRpc, parseProviderRpc } from "./lib/provider-rpc.js";
 import {
   wsGenerateKeyPair as _wsGenerateKeyPair,
   wsExportPublicKey as _wsExportPublicKey,
@@ -363,6 +364,32 @@ async function _providerActiveAddress() {
 // Route one decrypted provider request. `decrypted` = { method, payload, requestId }.
 async function handleProviderMethod(decrypted, session, sessionId) {
   const { method, payload, requestId } = decrypted || {};
+  if (method === "RPC") {
+    const rpcMethod = payload?.rpcMethod;
+    const params = payload?.params ?? [];
+    if (!isAllowedRpc(rpcMethod)) {
+      return _providerRespond(session, sessionId, requestId, { success: false, error: `Unsupported method: ${rpcMethod}` });
+    }
+    const { bare, isWrite } = parseProviderRpc(rpcMethod);
+    // Wallet-sdk-style message; messageId = provider requestId so the
+    // kind-aware reply (_wsForwardToPxe → _wsReplyDecrypted) echoes it back.
+    const walletMsg = { type: bare, args: params, messageId: requestId };
+    if (isWrite) {
+      const signId = `prpc_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      pendingSignRequests.set(signId, {
+        kind: "rpc-write",
+        walletMsg, session, sessionId, requestId,
+        origin: session.origin,
+        tabId: session.tabId,
+        verificationHash: session.verificationHash,
+        payload: { transaction: { type: "rpc", functionName: rpcMethod, contractAddress: "—" } },
+      });
+      setTimeout(() => pendingSignRequests.delete(signId), 5 * 60_000);
+      chrome.windows.create({ url: `popup.html?confirm=${signId}`, type: "popup", width: 380, height: 560, focused: true }).catch(() => {});
+      return; // response sent later on SIGN_APPROVE / SIGN_REJECT
+    }
+    return _wsForwardToPxe(walletMsg, session, sessionId); // read → kind-aware reply
+  }
   if (!PROVIDER_METHODS.includes(method)) {
     return _providerRespond(session, sessionId, requestId, { success: false, error: `Unknown method: ${method}` });
   }
@@ -1263,6 +1290,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
         }
 
+        if (pending.kind === "rpc-write") {
+          sendResponse({ success: true }); // ack popup
+          _wsForwardToPxe(pending.walletMsg, pending.session, pending.sessionId)
+            .catch((e) => _providerRespond(pending.session, pending.sessionId, pending.requestId, { success: false, error: sanitizeRpcError(e) }));
+          return;
+        }
+
         pending.sendResponse({ success: true, approved: true });
         sendResponse({ success: true });
       })();
@@ -1273,6 +1307,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const pending = pendingSignRequests.get(message.requestId);
       if (pending) {
         pendingSignRequests.delete(message.requestId);
+        if (pending.kind === "rpc-write") {
+          _providerRespond(pending.session, pending.sessionId, pending.requestId, { success: false, error: "User rejected the request" });
+          sendResponse({ success: true });
+          return;
+        }
         pending.sendResponse({ success: false, error: "User rejected the transaction" });
       } else {
         sendResponse({ success: false, error: "Request not found or expired" });

@@ -7,6 +7,7 @@ export const PROVIDER_MSG = {
   KEY_EXCHANGE_RESPONSE: "provider-key-exchange-response",
   SECURE_MESSAGE: "provider-secure-message",
   SECURE_RESPONSE: "provider-secure-response",
+  EVENT: "provider-event",
   DISCONNECT: "provider-disconnect",
 };
 
@@ -23,6 +24,7 @@ export const PROVIDER_METHODS = [
   "GET_STATE",
   "CREATE_AUTHWIT",
   "GET_WITHDRAW_PROOF",
+  "RPC",
 ];
 
 export function newRequestId() {
