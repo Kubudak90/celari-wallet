@@ -285,6 +285,29 @@ async function _wsHandleProtocolMessage(message, sender) {
   }
 }
 
+// Reply to a decrypted wallet-method call. Wallet-sdk sessions get the raw
+// wallet-sdk secure-response; provider sessions (kind:"provider") get a
+// provider-secure-response carrying {success, result}/{success, error}, keyed
+// by the provider requestId (stashed as decrypted.messageId by the RPC router).
+async function _wsReplyDecrypted(session, sessionId, decrypted, responsePayload) {
+  if (session.kind === "provider") {
+    let parsed;
+    try { parsed = JSON.parse(responsePayload); } catch { parsed = { error: "Malformed PXE response" }; }
+    const resp = parsed.error
+      ? { success: false, error: parsed.error, code: parsed.code }
+      : { success: true, result: parsed.result };
+    return _providerRespond(session, sessionId, decrypted.messageId, resp);
+  }
+  try {
+    const encrypted = await _wsEncrypt(session.encryptionKey, responsePayload);
+    chrome.tabs.sendMessage(session.tabId, {
+      origin: _WS_BG, type: "secure-response", sessionId, content: encrypted,
+    }).catch(() => {});
+  } catch (e) {
+    console.warn("[WalletSDK] Encrypt response failed:", e.message);
+  }
+}
+
 // Shared helper: forward a decrypted wallet-sdk message to the offscreen PXE,
 // encrypt the response with the session key, and send it back to the dApp tab.
 async function _wsForwardToPxe(decrypted, session, sessionId) {
@@ -295,17 +318,7 @@ async function _wsForwardToPxe(decrypted, session, sessionId) {
       code: "WALLET_LOCKED",
       walletId: CELARI_WALLET_ID_WS,
     });
-    try {
-      const encrypted = await _wsEncrypt(session.encryptionKey, responsePayload);
-      chrome.tabs.sendMessage(session.tabId, {
-        origin: _WS_BG,
-        type: "secure-response",
-        sessionId,
-        content: encrypted,
-      }).catch(() => {});
-    } catch (e) {
-      console.warn("[WalletSDK] locked-response send failed:", e?.message || e);
-    }
+    await _wsReplyDecrypted(session, sessionId, decrypted, responsePayload);
     return;
   }
   let responsePayload;
@@ -326,17 +339,7 @@ async function _wsForwardToPxe(decrypted, session, sessionId) {
       walletId: CELARI_WALLET_ID_WS,
     });
   }
-  try {
-    const encrypted = await _wsEncrypt(session.encryptionKey, responsePayload);
-    chrome.tabs.sendMessage(session.tabId, {
-      origin: _WS_BG,
-      type: "secure-response",
-      sessionId,
-      content: encrypted,
-    }).catch(() => {});
-  } catch (e) {
-    console.warn("[WalletSDK] Encrypt response failed:", e.message);
-  }
+  await _wsReplyDecrypted(session, sessionId, decrypted, responsePayload);
 }
 
 // Encrypt + send a provider-channel response back to the page tab.
