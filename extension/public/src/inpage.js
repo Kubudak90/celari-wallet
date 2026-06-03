@@ -92,6 +92,19 @@ import { installHardenedProvider, createHandshakeGuard } from "./lib/provider-ha
     createAuthWit(messageHash) { return sendRequest("CREATE_AUTHWIT", { messageHash }); },
     async isConnected() { const r = await sendRequest("GET_STATE", {}); return r.state?.connected || false; },
     getWithdrawProof(l2TxHash) { return sendRequest("GET_WITHDRAW_PROOF", { l2TxHash }); },
+    /** Generic Aztec RPC: request("aztec_getAccounts", params) → result. */
+    async request(method, params = []) {
+      const r = await sendRequest("RPC", { rpcMethod: method, params });
+      return r.result; // sendRequest already rejected on { success:false }
+    },
+    /** Azguard-parity client: window.celari.createClient().request(...). */
+    createClient() {
+      return {
+        request: (method, params = []) => api.request(method, params),
+        on: (event, cb) => api.on(event, cb),
+        off: (event, unsub) => api.off(event, unsub),
+      };
+    },
     on(event, callback) {
       const handler = (e) => { if (e.data?.target === "celari-provider-page" && e.data?.event === event) callback(e.data.payload); };
       _addEventListener("message", handler);
