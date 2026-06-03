@@ -25,7 +25,6 @@ export const PROVIDER_METHODS = [
   "GET_WITHDRAW_PROOF",
 ];
 
-let _counter = 0;
 export function newRequestId() {
-  return `celari_${++_counter}_${Date.now()}`;
+  return `celari_${crypto.randomUUID()}`;
 }

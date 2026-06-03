@@ -150,7 +150,7 @@ async function _wsHandleProtocolMessage(message, sender) {
 
     case "secure-message": {
       const session = _wsActiveSessions.get(sessionId);
-      if (!session || session.tabId !== tabId) return;
+      if (!session || session.tabId !== tabId || session.kind === "provider") return;
 
       let decrypted;
       try {
@@ -706,7 +706,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Wallet-SDK v4.2.0 internal protocol (content script → background)
   if (message?.origin === _WS_CS) {
     // Any dApp interaction counts as activity — push the idle lock back.
-    if (message.type === "secure-message") _scheduleIdleLock();
+    if (message.type === "secure-message" || message.type === "provider-secure-message") _scheduleIdleLock();
     _wsHandleProtocolMessage(message, sender).catch(e => console.warn("[WalletSDK]", e.message));
     return false; // fire-and-forget, no sendResponse needed
   }
@@ -1659,5 +1659,8 @@ chrome.tabs.onRemoved.addListener((tabId) => {
       _wsPendingSignRequests.delete(signId);
       // No need to send error — the tab is gone
     }
+  }
+  for (const [id, req] of pendingSignRequests) {
+    if (req?.tabId === tabId) pendingSignRequests.delete(id);
   }
 });
