@@ -27,7 +27,7 @@ Phase 1 secured the `window.celari` channel and fixed `getWithdrawProof` routing
 2. **Auto-select** exit mode by balance: private balance ≥ amount → `exit_to_l1_private`; else public balance ≥ amount → `exit_to_l1_public`; else a clear "insufficient balance" error.
 3. The exit requires explicit **user confirmation** (value-moving) via the existing sign popup, showing the withdraw details.
 4. Content-hash / `callerOnL1` / `nonce` match the website's L1 claim (`getWithdrawCalldata`, `withCaller=true`) so the L1 claim succeeds.
-5. Reuse the tested bridge SDK (`L2Client`) in offscreen — do not reimplement the exit/content-hash.
+5. Reuse the bridge **contract's** exit methods (`exit_to_l1_public`/`exit_to_l1_private`) with parameters matching the L1 claim. **Refinement (found during plan prep):** call the contract directly via `Contract.at(...).methods.exit_to_l1_*().send(...)` using the offscreen 4.3.0 send pattern — do **not** import `bridge/sdk` `L2Client`, because its `.send()` return handling (`receipt.txHash`) predates 4.3.0's `{ receipt, ... }` shape (offscreen uses `sendResult.receipt.txHash`, see `offscreen.js:837-846`). Content-hash parity is guaranteed **on-chain** by the contract computing it from the params we pass — so correctness depends on matching params, not on the JS wrapper.
 
 ### Non-Goals
 - Arbitrary `sendTransaction` types other than `bridge_exit` (the wallet-sdk channel owns generic `sendTx`). YAGNI.
@@ -50,7 +50,8 @@ Phase 1 secured the `window.celari` channel and fixed `getWithdrawProof` routing
 - Set up SponsoredFPC payment method (reuse `setupSponsoredFPC`, as `executeTransfer` does).
 - Register the bridge + bridged-token contracts in the PXE (`Contract.at` / `registerContract`) with the bundled artifacts.
 - **Select exit mode:** read the active account's **private** then **public** balance of the bridged token (reuse offscreen balance helpers / `L2Client.getBalance`), then call `selectExitMode(privateBal, publicBal, amount)`.
-- Call `L2Client.exitToL1Private(wallet, bridgeArtifact, params, bridgedTokenAddr, fpc)` or `exitToL1Public(wallet, bridgeArtifact, params, fpc)` with `ExitParams` built from `amount`, `recipient`, the configured `l1Token` (ETH), and the `callerOnL1`/`nonce` that match the L1 claim (see §3.5).
+- Call `Contract.at(tokenBridgeAddr, CelariTokenBridgeArtifact, acctWallet).methods.exit_to_l1_public(l1Token, recipient, amount, callerOnL1, nonce)` (public) or `.exit_to_l1_private(bridgedTokenAddr, l1Token, recipient, amount, callerOnL1, nonce)` (private), `.send({ from, fee:{ paymentMethod, estimateGas:true, estimatedGasPadding:0.1 }, wait:{ timeout: 600_000 } })`, then read `sendResult.receipt.txHash` (4.3.0 shape).
+- Params: `l1Token = 0x0000…0000` (ETH), `recipient` (from data), `amount = BigInt(data.amount)` (wei), `callerOnL1 = recipient`, `nonce = 0` (see §3.5).
 - Return `{ success:true, txHash, blockNumber }` or `{ success:false, error }`.
 
 ### 3.3 New small units (testable / single-responsibility)
@@ -72,7 +73,7 @@ offscreen imports `CelariTokenBridge` (and `BridgedToken` if needed for balance/
 - User rejects → `{success:false, error:"User rejected..."}`.
 - Insufficient balance (selectExitMode → null) → `{success:false, error:"Insufficient balance to withdraw <amount>"}`.
 - Execution requires the confirm popup — no auto-execution of a value-moving tx.
-- Long proving: the exit `.send({wait})` uses a 300s timeout; the popup stays open until the result returns.
+- Long proving: client-side WASM proving can take minutes. The exit `.send({wait})` uses a 600s timeout, and the inpage provider request timeout is raised from 300s to **900s** so the dApp promise does not time out before the response arrives (harmless for fast reads). The popup closes on approve; the tx proves/mines in the background and the response arrives over the encrypted channel.
 
 ---
 
@@ -94,6 +95,7 @@ offscreen imports `CelariTokenBridge` (and `BridgedToken` if needed for balance/
 - `extension/public/src/lib/bridge-config.js` — new (addresses).
 - `extension/public/src/lib/bridge-exit-select.js` — new (pure selector) + `extension/test/bridge-exit-select.test.ts`.
 - `extension/public/src/pages/popup.js` — `confirm-tx` shows bridge-withdraw details.
+- `extension/public/src/inpage.js` — raise the provider request timeout 300s → 900s (proving headroom).
 - Build: artifact bundling verified (no script change expected; offscreen is already `bundle:true`).
 
 ## 6. Out of Scope
