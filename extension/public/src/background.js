@@ -11,6 +11,8 @@
 
 import { sanitizeRpcError } from "./lib/sanitize.js";
 import { WS_WRITE_METHODS, classifySecureMessage } from "./lib/ws-lock-gate.js";
+import { selectActiveAddress } from "./lib/provider-accounts.js";
+import { PROVIDER_METHODS } from "./lib/provider-protocol.js";
 import {
   wsGenerateKeyPair as _wsGenerateKeyPair,
   wsExportPublicKey as _wsExportPublicKey,
@@ -217,6 +219,69 @@ async function _wsHandleProtocolMessage(message, sender) {
       if (pending && pending.tabId === tabId) _wsPendingDiscoveries.delete(sessionId);
       break;
     }
+
+    case "provider-discovery": {
+      const { requestId } = content || {};
+      if (!requestId) return;
+      const origin = sender.tab?.url ? new URL(sender.tab.url).origin : "unknown";
+      _wsPendingDiscoveries.set(requestId, { tabId, origin, appId: "celari-provider", kind: "provider", createdAt: Date.now() });
+      setTimeout(() => _wsPendingDiscoveries.delete(requestId), 30_000);
+      chrome.tabs.sendMessage(tabId, {
+        origin: _WS_BG,
+        type: "provider-discovery-approved",
+        sessionId: requestId,
+        content: { id: CELARI_WALLET_ID_WS, name: "Celari Wallet", version: "0.5.0" },
+      }).catch(() => {});
+      break;
+    }
+
+    case "provider-key-exchange": {
+      const discovery = _wsPendingDiscoveries.get(sessionId);
+      if (!discovery || discovery.tabId !== tabId || discovery.kind !== "provider") return;
+      try {
+        const keyPair = await _wsGenerateKeyPair();
+        const peerPubKey = await _wsImportPublicKey(content.publicKey);
+        const { encryptionKey, verificationHash } = await _wsDeriveSessionKeys(keyPair, peerPubKey, false);
+        const walletPubKey = await _wsExportPublicKey(keyPair.publicKey);
+        _wsActiveSessions.set(sessionId, {
+          tabId: discovery.tabId, origin: discovery.origin, appId: "celari-provider",
+          kind: "provider", encryptionKey, verificationHash,
+        });
+        _wsPendingDiscoveries.delete(sessionId);
+        chrome.tabs.sendMessage(discovery.tabId, {
+          origin: _WS_BG,
+          type: "provider-key-exchange-response",
+          sessionId,
+          content: { publicKey: walletPubKey },
+        }).catch(() => {});
+      } catch (e) {
+        console.warn("[Provider] Key exchange failed:", e.message);
+        _wsPendingDiscoveries.delete(sessionId);
+      }
+      break;
+    }
+
+    case "provider-secure-message": {
+      const session = _wsActiveSessions.get(sessionId);
+      if (!session || session.tabId !== tabId || session.kind !== "provider") return;
+      let decrypted;
+      try {
+        decrypted = await _wsDecrypt(session.encryptionKey, content);
+      } catch (e) {
+        console.warn("[Provider] Decrypt failed:", e.message);
+        return;
+      }
+      await handleProviderMethod(decrypted, session, sessionId);
+      break;
+    }
+
+    case "provider-disconnect": {
+      const session = _wsActiveSessions.get(sessionId);
+      if (session && session.tabId === tabId) _wsActiveSessions.delete(sessionId);
+      const pending = _wsPendingDiscoveries.get(sessionId);
+      if (pending && pending.tabId === tabId) _wsPendingDiscoveries.delete(sessionId);
+      break;
+    }
   }
 }
 
@@ -271,6 +336,79 @@ async function _wsForwardToPxe(decrypted, session, sessionId) {
     }).catch(() => {});
   } catch (e) {
     console.warn("[WalletSDK] Encrypt response failed:", e.message);
+  }
+}
+
+// Encrypt + send a provider-channel response back to the page tab.
+async function _providerRespond(session, sessionId, requestId, response) {
+  try {
+    const encrypted = await _wsEncrypt(session.encryptionKey, JSON.stringify({ requestId, response }));
+    chrome.tabs.sendMessage(session.tabId, {
+      origin: _WS_BG, type: "provider-secure-response", sessionId, content: encrypted,
+    }).catch(() => {});
+  } catch (e) {
+    console.warn("[Provider] response send failed:", e?.message || e);
+  }
+}
+
+// Read the address the wallet should expose to a dApp (active deployed account).
+async function _providerActiveAddress() {
+  const { celari_accounts } = await chrome.storage.local.get("celari_accounts");
+  return selectActiveAddress(celari_accounts || [], state.activeAccountIndex ?? 0);
+}
+
+// Route one decrypted provider request. `decrypted` = { method, payload, requestId }.
+async function handleProviderMethod(decrypted, session, sessionId) {
+  const { method, payload, requestId } = decrypted || {};
+  if (!PROVIDER_METHODS.includes(method)) {
+    return _providerRespond(session, sessionId, requestId, { success: false, error: `Unknown method: ${method}` });
+  }
+
+  // Writes require an unlocked wallet + explicit user approval via the sign popup.
+  if (method === "DAPP_SIGN" || method === "CREATE_AUTHWIT") {
+    if (await _bgIsLocked()) {
+      return _providerRespond(session, sessionId, requestId, { success: false, error: "Wallet is locked", code: "WALLET_LOCKED" });
+    }
+    const signId = `psign_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    pendingSignRequests.set(signId, {
+      payload, origin: session.origin, tabId: session.tabId,
+      sendResponse: (resp) => _providerRespond(session, sessionId, requestId, resp),
+    });
+    setTimeout(() => pendingSignRequests.delete(signId), 5 * 60_000);
+    chrome.windows.create({ url: `popup.html?confirm=${signId}`, type: "popup", width: 380, height: 560, focused: true }).catch(() => {});
+    return; // response sent later on SIGN_APPROVE / SIGN_REJECT
+  }
+
+  // Reads.
+  if (method === "GET_STATE") {
+    const address = await _providerActiveAddress();
+    return _providerRespond(session, sessionId, requestId, { success: true, state: { connected: !!address, address } });
+  }
+  if (method === "GET_ADDRESS" || method === "DAPP_CONNECT") {
+    if (await _bgIsLocked()) {
+      try { chrome.action.openPopup(); } catch {}
+      return _providerRespond(session, sessionId, requestId, { success: false, error: "Wallet is locked — unlock Celari and retry", code: "WALLET_LOCKED" });
+    }
+    const address = await _providerActiveAddress();
+    if (!address) return _providerRespond(session, sessionId, requestId, { success: false, error: "No deployed account — open Celari to create one" });
+    return _providerRespond(session, sessionId, requestId, { success: true, address });
+  }
+  if (method === "GET_COMPLETE_ADDRESS") {
+    const { celari_accounts } = await chrome.storage.local.get("celari_accounts");
+    const address = await _providerActiveAddress();
+    const acc = (celari_accounts || []).find((a) => a.address === address);
+    if (!acc) return _providerRespond(session, sessionId, requestId, { success: false, error: "No deployed account" });
+    return _providerRespond(session, sessionId, requestId, {
+      success: true, address: acc.address, publicKeyX: acc.publicKeyX, publicKeyY: acc.publicKeyY,
+    });
+  }
+  if (method === "GET_WITHDRAW_PROOF") {
+    try {
+      const result = await handleGetWithdrawProof(payload?.l2TxHash);
+      return _providerRespond(session, sessionId, requestId, result);
+    } catch (err) {
+      return _providerRespond(session, sessionId, requestId, { success: false, error: sanitizeRpcError(err) });
+    }
   }
 }
 
@@ -1103,14 +1241,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const pending = pendingSignRequests.get(message.requestId);
         if (pending) {
           pendingSignRequests.delete(message.requestId);
-          // Forward the approved sign request back to the content script
-          if (pending.tabId) {
-            chrome.tabs.sendMessage(pending.tabId, {
-              target: "content",
-              type: "SIGN_APPROVED",
-              payload: pending.payload,
-            });
-          }
+          // The legacy SIGN_APPROVED tab-message to the content script was
+          // removed (the inpage provider consumes the encrypted response via
+          // pending.sendResponse → _providerRespond instead).
           pending.sendResponse({ success: true, approved: true });
           // Also respond to the popup that sent SIGN_APPROVE
           sendResponse({ success: true });
