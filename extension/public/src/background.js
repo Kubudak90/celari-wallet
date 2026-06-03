@@ -372,6 +372,7 @@ async function handleProviderMethod(decrypted, session, sessionId) {
     const signId = `psign_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     pendingSignRequests.set(signId, {
       payload, origin: session.origin, tabId: session.tabId,
+      kind: payload?.transaction?.type === "bridge_exit" ? "bridge_exit" : "sign",
       sendResponse: (resp) => _providerRespond(session, sessionId, requestId, resp),
     });
     setTimeout(() => pendingSignRequests.delete(signId), 5 * 60_000);
@@ -1239,17 +1240,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
         }
         const pending = pendingSignRequests.get(message.requestId);
-        if (pending) {
-          pendingSignRequests.delete(message.requestId);
-          // The legacy SIGN_APPROVED tab-message to the content script was
-          // removed (the inpage provider consumes the encrypted response via
-          // pending.sendResponse → _providerRespond instead).
-          pending.sendResponse({ success: true, approved: true });
-          // Also respond to the popup that sent SIGN_APPROVE
+        if (!pending) { sendResponse({ success: false, error: "Request not found or expired" }); return; }
+        pendingSignRequests.delete(message.requestId);
+
+        if (pending.kind === "bridge_exit") {
+          // Ack the popup right away; proving/mining can take minutes.
           sendResponse({ success: true });
-        } else {
-          sendResponse({ success: false, error: "Request not found or expired" });
+          const tx = pending.payload?.transaction || {};
+          try {
+            const r = await sendToPXE({ type: "PXE_BRIDGE_EXIT", data: { amount: tx.amount, recipient: tx.recipient } });
+            pending.sendResponse(
+              r?.success
+                ? { success: true, txHash: r.txHash, blockNumber: r.blockNumber }
+                : { success: false, error: r?.error || "Bridge exit failed" }
+            );
+          } catch (e) {
+            pending.sendResponse({ success: false, error: sanitizeRpcError(e) });
+          }
+          return;
         }
+
+        pending.sendResponse({ success: true, approved: true });
+        sendResponse({ success: true });
       })();
       return true;
     }

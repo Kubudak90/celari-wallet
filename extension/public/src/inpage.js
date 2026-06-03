@@ -77,7 +77,7 @@ import { installHardenedProvider, createHandshakeGuard } from "./lib/provider-ha
       wsEncrypt(encryptionKey, JSON.stringify({ method, payload, requestId }))
         .then((enc) => port.postMessage({ type: "provider-secure-message", content: enc }))
         .catch(reject);
-      setTimeout(() => { if (pending.has(requestId)) { pending.delete(requestId); reject(new Error("Request timed out")); } }, 300000);
+      setTimeout(() => { if (pending.has(requestId)) { pending.delete(requestId); reject(new Error("Request timed out")); } }, 900000);
     });
   }
 
