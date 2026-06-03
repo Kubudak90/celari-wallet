@@ -361,6 +361,17 @@ async function _providerActiveAddress() {
   return selectActiveAddress(celari_accounts || [], state.activeAccountIndex ?? 0);
 }
 
+// Push an event to every connected provider tab (window.celari.on consumers).
+function _providerBroadcastEvent(event, payload) {
+  const tabs = new Set();
+  for (const s of _wsActiveSessions.values()) {
+    if (s.kind === "provider" && s.tabId) tabs.add(s.tabId);
+  }
+  for (const tabId of tabs) {
+    chrome.tabs.sendMessage(tabId, { origin: _WS_BG, type: "provider-event", event, payload }).catch(() => {});
+  }
+}
+
 // Route one decrypted provider request. `decrypted` = { method, payload, requestId }.
 async function handleProviderMethod(decrypted, session, sessionId) {
   const { method, payload, requestId } = decrypted || {};
@@ -947,6 +958,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       state.connected = false;
       state.nodeInfo = null;
+      _providerBroadcastEvent("networkChanged", { network: state.network, nodeUrl: state.nodeUrl });
 
       // Save config
       chrome.storage.local.set({
@@ -1034,6 +1046,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case "SET_ACTIVE_ACCOUNT":
       state.activeAccountIndex = message.index;
+      _providerActiveAddress().then((addr) => _providerBroadcastEvent("accountsChanged", addr ? [addr] : []));
       sendResponse({ success: true });
       break;
 
