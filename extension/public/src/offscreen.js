@@ -52,6 +52,7 @@ const BridgedTokenArtifact = loadContractArtifact(BridgedTokenArtifactJson);
 
 import { BRIDGE } from "./lib/bridge-config.js";
 import { selectExitMode } from "./lib/bridge-exit-select.js";
+import { chooseThreadCount } from "./lib/thread-count.js";
 
 // --- In-Memory KV Store for iOS ---
 // WKWebView's IndexedDB crashes on PXE block sync transactions.
@@ -515,16 +516,27 @@ async function initPXE(nodeUrl) {
   }
   console.log("[PXE] Step B: In-memory store OK (" + (Date.now() - t_store) + "ms)");
 
-  // iOS: Pre-initialize Barretenberg in direct WASM mode (no Workers).
-  // WKWebView doesn't support Web Workers. Barretenberg.initSingleton() is cached —
-  // by initializing first with BackendType.Wasm, the prover's later call to
-  // initSingleton() reuses this no-Worker instance instead of trying to create Workers.
-  // Pre-initialize Barretenberg in direct WASM mode (single-threaded).
-  // Chrome offscreen documents have Worker restrictions similar to iOS WKWebView.
-  console.log("[PXE] Step C0: Pre-initializing Barretenberg (direct WASM, no Workers)...");
+  // Pre-initialize Barretenberg in WASM mode.
+  // Thread count is > 1 only when the context is crossOriginIsolated (COOP/COEP headers
+  // enable SharedArrayBuffer, which bb.js requires for multi-threading). On iOS WKWebView
+  // (no Workers, never isolated) or any non-isolated context, threads=1. If the multi-
+  // thread init throws for any reason, we fall back to single-thread so proving never breaks.
+  console.log("[PXE] Step C0: Pre-initializing Barretenberg (WASM, thread-count gated on crossOriginIsolated)...");
   const t_bb = Date.now();
   const { Barretenberg, BackendType } = await import("@aztec/bb.js");
-  await Barretenberg.initSingleton({ backend: BackendType.Wasm, threads: 1 });
+  const _bbThreads = chooseThreadCount({
+    isolated: typeof self !== "undefined" && self.crossOriginIsolated === true,
+    isIOS,
+    hardwareConcurrency: (typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 0,
+    cap: 8,
+  });
+  try {
+    await Barretenberg.initSingleton({ backend: BackendType.Wasm, threads: _bbThreads });
+  } catch (e) {
+    console.warn(`[PXE] Threaded BB init (threads=${_bbThreads}) failed, falling back to single-thread:`, e?.message || e);
+    await Barretenberg.initSingleton({ backend: BackendType.Wasm, threads: 1 });
+  }
+  console.log(`[PXE] Barretenberg init: threads=${_bbThreads}, crossOriginIsolated=${typeof self !== "undefined" && self.crossOriginIsolated}`);
   console.log("[PXE] Step C0: Barretenberg singleton ready (" + (Date.now() - t_bb) + "ms)");
 
   // ── Native Prover Intercept (iOS only) ──
