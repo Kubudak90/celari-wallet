@@ -1166,3 +1166,24 @@ body {
 /* ─── Dashboard tab active/inactive (Aztec restyle) ─── */
 .tabs .tab { color: var(--c-subtle); border-bottom: 2px solid transparent; }
 .tabs .tab.active { color: var(--c-ink); border-bottom: 2px solid var(--c-ink); }
+
+/* Side-panel: "open in panel" button (popup only) + full-width body in panel */
+#celari-open-panel {
+  position: fixed;
+  top: 6px;
+  right: 6px;
+  z-index: 9999;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: var(--c-surface, #1c1c22);
+  color: var(--c-text, #fff);
+  font-size: 13px;
+  line-height: 24px;
+  cursor: pointer;
+  opacity: 0.65;
+}
+#celari-open-panel:hover { opacity: 1; }
+body.panel { width: 100%; min-width: 0; }

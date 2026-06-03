@@ -22,12 +22,35 @@ import { remainingCooldownMs, cooldownMinutes } from "../lib/faucet-cooldown.js"
 import { isFaucetNetwork } from "../lib/faucet-networks.js";
 import { createLogBuffer } from "../lib/log-buffer.js";
 import { verificationFingerprint } from "../lib/fingerprint.js";
+import { isPanelContext } from "../lib/panel-context.js";
 
 // ─── Security: HTML Escaping ──────────────────────────
 
 function escapeHtml(str) {
   if (typeof str !== "string") return String(str ?? "");
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Floating "open in side panel" button — mounted on <body> (survives #root
+// re-renders), shown only in the popup (not when already the panel).
+function _mountOpenInPanelButton() {
+  if (document.getElementById("celari-open-panel")) return;
+  const btn = document.createElement("button");
+  btn.id = "celari-open-panel";
+  btn.type = "button";
+  btn.title = "Yan panelde aç";
+  btn.setAttribute("aria-label", "Yan panelde aç");
+  btn.textContent = "⇲";
+  btn.addEventListener("click", async () => {
+    try {
+      const w = await chrome.windows.getCurrent();
+      await chrome.sidePanel.open({ windowId: w.id });
+      window.close();
+    } catch (e) {
+      console.warn("[Celari] side panel open failed:", e?.message || e);
+    }
+  });
+  document.body.appendChild(btn);
 }
 
 // ─── Security: Error Sanitization ─────────────────────
@@ -423,6 +446,10 @@ function getEmptyActivities() {
 // ─── Initialize ───────────────────────────────────────
 
 async function init() {
+  const _inPanel = isPanelContext(window.location.search);
+  document.body.classList.toggle("panel", _inPanel);
+  if (!_inPanel) _mountOpenInPanelButton();
+
   // Apply theme preference before rendering to avoid a flash.
   try {
     const themeData = await chrome.storage.local.get("celari_theme");
