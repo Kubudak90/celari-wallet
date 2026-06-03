@@ -414,6 +414,7 @@ async function handleProviderMethod(decrypted, session, sessionId) {
     pendingSignRequests.set(signId, {
       payload, origin: session.origin, tabId: session.tabId,
       kind: payload?.transaction?.type === "bridge_exit" ? "bridge_exit" : "sign",
+      verificationHash: session.verificationHash,
       sendResponse: (resp) => _providerRespond(session, sessionId, requestId, resp),
     });
     setTimeout(() => pendingSignRequests.delete(signId), 5 * 60_000);
@@ -1268,6 +1269,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             id: reqId,
             origin: pending.origin,
             payload: pending.payload,
+            verificationHash: pending.verificationHash,
           },
         });
       } else {

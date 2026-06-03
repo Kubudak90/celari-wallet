@@ -21,6 +21,7 @@ import { detectLegacyPlaintext, validateAccountsArray, purgePending } from "../l
 import { remainingCooldownMs, cooldownMinutes } from "../lib/faucet-cooldown.js";
 import { isFaucetNetwork } from "../lib/faucet-networks.js";
 import { createLogBuffer } from "../lib/log-buffer.js";
+import { verificationFingerprint } from "../lib/fingerprint.js";
 
 // ─── Security: HTML Escaping ──────────────────────────
 
@@ -3060,6 +3061,7 @@ function renderConfirmTx() {
   if (!req) return renderLoading();
 
   const txData = req.payload?.transaction;
+  const _fp = req?.verificationHash ? verificationFingerprint(req.verificationHash) : "";
 
   // ── Bridge exit (L1 withdrawal) branch ──────────────────────────────────
   if (txData?.type === "bridge_exit") {
@@ -3083,6 +3085,7 @@ function renderConfirmTx() {
           <span class="cel-mono" style="font-size:10px;color:var(--c-subtle);letter-spacing:0.08em">KAYNAK</span>
           <span class="cel-mono" style="font-size:11px;color:var(--c-ink)">${origin}</span>
         </div>
+        ${_fp ? `<div class="row"><span>Güvenlik</span><strong title="Bu emoji dizisi cüzdandakiyle aynı olmalı">${_fp}</strong></div>` : ""}
         <div style="display:flex;justify-content:space-between;margin-bottom:10px">
           <span class="cel-mono" style="font-size:10px;color:var(--c-subtle);letter-spacing:0.08em">MİKTAR</span>
           <span class="cel-mono" style="font-size:11px;color:var(--c-proving)">${escapeHtml(amountEth)} ETH</span>
@@ -3128,6 +3131,7 @@ function renderConfirmTx() {
           <span class="cel-mono" style="font-size:10px;color:var(--c-subtle);letter-spacing:0.08em">ORIGIN</span>
           <span class="cel-mono" style="font-size:11px;color:var(--c-ink)">${origin}</span>
         </div>
+        ${_fp ? `<div class="row"><span>Güvenlik</span><strong title="Bu emoji dizisi cüzdandakiyle aynı olmalı">${_fp}</strong></div>` : ""}
         <div style="display:flex;justify-content:space-between;margin-bottom:10px">
           <span class="cel-mono" style="font-size:10px;color:var(--c-subtle);letter-spacing:0.08em">FUNCTION</span>
           <span class="cel-mono" style="font-size:11px;color:var(--c-proving)">${fnName}</span>
