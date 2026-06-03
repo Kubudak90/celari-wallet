@@ -188,6 +188,57 @@ try {
     }
   }
 
+  // --- Pass 2b: bb.js threaded-WASM workers ---
+  // The bundled offscreen calls `new Worker(new URL("./thread.worker.js" |
+  // "./main.worker.js", import.meta.url))`. esbuild does NOT auto-bundle these
+  // (Vite does), so emit them as their own entries to dist/src/ with the same
+  // browser/wasm config — minus the offscreen-only banner.
+  console.log("  Pass 2b: Bundling bb.js threaded workers...");
+  await build({
+    entryPoints: [
+      { in: resolve(rootDir, "node_modules/@aztec/bb.js/dest/browser/barretenberg_wasm/barretenberg_wasm_thread/factory/browser/thread.worker.js"), out: "src/thread.worker" },
+      { in: resolve(rootDir, "node_modules/@aztec/bb.js/dest/browser/barretenberg_wasm/barretenberg_wasm_main/factory/browser/main.worker.js"), out: "src/main.worker" },
+    ],
+    bundle: true,
+    minify: !isDev,
+    sourcemap: isDev,
+    outdir,
+    format: "esm",
+    target: ["chrome120"],
+    platform: "browser",
+    conditions: ["browser", "module"],
+    logLevel: "info",
+    ...(isDev ? {} : { drop: ["console"] }),
+    define: {
+      "process.env.NODE_ENV": JSON.stringify(isDev ? "development" : "production"),
+      "process.env.PXE_PROVER_ENABLED": '"true"',
+      "process.env.PXE_L2_BLOCK_BATCH_SIZE": '"50"',
+      "process.env.NETWORK": '""',
+      "process.env.BB_SKIP_CLEANUP": '""',
+      "process.env.DATA_DIRECTORY": '""',
+      "process.env.DATA_URL": '""',
+      "global": "globalThis",
+    },
+    alias: {
+      "crypto": resolve(__dirname, "shims/crypto-shim.js"),
+      "assert": resolve(__dirname, "shims/assert-shim.js"),
+      "tty": resolve(__dirname, "shims/empty-shim.js"),
+      "net": resolve(__dirname, "shims/empty-shim.js"),
+      "fs": resolve(__dirname, "shims/empty-shim.js"),
+      "os": resolve(__dirname, "shims/empty-shim.js"),
+      "child_process": resolve(__dirname, "shims/empty-shim.js"),
+      "path": resolve(rootDir, "node_modules/path-browserify"),
+      "stream": resolve(rootDir, "node_modules/stream-browserify"),
+      "util": resolve(rootDir, "node_modules/util"),
+      "buffer": resolve(rootDir, "node_modules/buffer"),
+      "events": resolve(rootDir, "node_modules/events"),
+    },
+    inject: [resolve(__dirname, "shims/globals-shim.js")],
+    loader: { ".wasm": "file" },
+    resolveExtensions: [".js", ".ts", ".json"],
+  });
+  console.log("  Pass 2b: Workers OK");
+
   // --- Pass 3: iOS offscreen bundle (ESM — WKWebView Safari 17+ supports modules) ---
   // IMPORTANT: Previous IIFE format caused `import.meta` to be replaced with `{}`,
   // breaking WASM loading (acvm_js, noirc_abi) and Worker URLs (Barretenberg).
