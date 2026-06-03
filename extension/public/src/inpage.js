@@ -1,124 +1,106 @@
 /**
- * Celari Wallet — Inpage Provider
+ * Celari Wallet — Inpage Provider (encrypted, hardened)
  *
- * Injected into the page as `window.celari`.
- * dApps use this to interact with the wallet:
- *
- *   await window.celari.connect()
- *   await window.celari.sendTransaction(...)
- *   await window.celari.getAddress()
+ * Injected as `window.celari`. Talks to the background over an ECDH-P-256 /
+ * AES-GCM encrypted channel (the inpage script is the "app" side). The content
+ * script is a pure relay; page scripts see only ciphertext.
  */
+import { wsGenerateKeyPair, wsExportPublicKey, wsImportPublicKey, wsDeriveSessionKeys, wsEncrypt, wsDecrypt } from "./lib/ws-crypto.js";
+import { PROVIDER_TARGET_CONTENT, newRequestId } from "./lib/provider-protocol.js";
+import { installHardenedProvider, createHandshakeGuard } from "./lib/provider-harden.js";
 
 (() => {
-  let requestCounter = 0;
-  const pendingRequests = new Map();
+  // Capture native refs before any page script can monkeypatch them.
+  const _postMessage = window.postMessage.bind(window);
+  const _addEventListener = window.addEventListener.bind(window);
+  const _origin = window.location.origin;
 
-  // Listen for responses from content script
-  window.addEventListener("message", (event) => {
-    if (event.source !== window) return;
-    if (event.data?.target !== "celari-inpage") return;
+  const guard = createHandshakeGuard();
+  const pending = new Map(); // requestId -> { resolve, reject }
 
-    const { requestId, response } = event.data;
-    const pending = pendingRequests.get(requestId);
-    if (pending) {
-      pendingRequests.delete(requestId);
-      if (response?.success) {
-        pending.resolve(response);
-      } else {
-        pending.reject(new Error(response?.error || "Request failed"));
-      }
-    }
-  });
+  let port = null;            // MessagePort to content
+  let encryptionKey = null;   // derived AES key
+  let appKeyPair = null;
+  let channelReady = null;    // Promise resolved once encryptionKey is set
+  let blocked = false;
 
-  function sendRequest(type, payload) {
+  // ── Establish the encrypted channel (lazy, once) ──
+  function ensureChannel() {
+    if (channelReady) return channelReady;
+    channelReady = new Promise((resolve, reject) => {
+      const sessionId = newRequestId();
+
+      const onApproved = async (event) => {
+        if (event.source !== window || event.origin !== _origin) return;
+        const d = event.data;
+        if (d?.target !== "celari-provider-page" || d?.type !== "provider-discovery-approved" || d?.requestId !== sessionId) return;
+        if (guard.isSecondHandshake()) { console.warn("[Celari] Suspicious handshake — channel blocked"); blocked = true; return; }
+        guard.markEstablished();
+        window.removeEventListener("message", onApproved);
+
+        port = event.ports[0];
+        appKeyPair = await wsGenerateKeyPair();
+        const appPub = await wsExportPublicKey(appKeyPair.publicKey);
+
+        port.onmessage = async (e) => {
+          const msg = e.data;
+          if (msg?.type === "provider-key-exchange-response") {
+            const walletPub = await wsImportPublicKey(msg.content.publicKey);
+            ({ encryptionKey } = await wsDeriveSessionKeys(appKeyPair, walletPub, true));
+            resolve();
+          } else if (msg?.type === "provider-secure-response") {
+            try {
+              const { requestId, response } = await wsDecrypt(encryptionKey, msg.content);
+              const p = pending.get(requestId);
+              if (p) { pending.delete(requestId); response?.success === false ? p.reject(new Error(response.error || "Request failed")) : p.resolve(response); }
+            } catch { /* not for us / undecryptable */ }
+          }
+        };
+        port.start();
+        port.postMessage({ type: "provider-key-exchange", content: { publicKey: appPub } });
+      };
+      _addEventListener("message", onApproved);
+
+      _postMessage({ target: PROVIDER_TARGET_CONTENT, type: "provider-discovery", requestId: sessionId }, _origin);
+
+      setTimeout(() => { if (!encryptionKey) reject(new Error("Celari channel handshake timed out")); }, 15000);
+    });
+    return channelReady;
+  }
+
+  async function sendRequest(method, payload) {
+    if (blocked) throw new Error("Celari channel blocked");
+    await ensureChannel();
+    const requestId = newRequestId();
     return new Promise((resolve, reject) => {
-      const requestId = `celari_${++requestCounter}_${Date.now()}`;
-      pendingRequests.set(requestId, { resolve, reject });
-
-      window.postMessage({
-        target: "celari-content",
-        type,
-        payload,
-        requestId,
-      }, window.location.origin);
-
-      // Timeout after 5 minutes
-      setTimeout(() => {
-        if (pendingRequests.has(requestId)) {
-          pendingRequests.delete(requestId);
-          reject(new Error("Request timed out"));
-        }
-      }, 300000);
+      pending.set(requestId, { resolve, reject });
+      wsEncrypt(encryptionKey, JSON.stringify({ method, payload, requestId }))
+        .then((enc) => port.postMessage({ type: "provider-secure-message", content: enc }))
+        .catch(reject);
+      setTimeout(() => { if (pending.has(requestId)) { pending.delete(requestId); reject(new Error("Request timed out")); } }, 300000);
     });
   }
 
-  // ─── Public API ──────────────────────────────────────
-
-  window.celari = {
+  const api = {
     isCelari: true,
-    version: "0.5.0",
-    walletSdkId: "celari-wallet", // Aztec wallet-sdk discovery identifier
-
-    /** Request wallet connection */
-    async connect() {
-      return sendRequest("DAPP_CONNECT", {
-        origin: window.location.origin,
-        title: document.title,
-      });
-    },
-
-    /** Get connected account address */
-    async getAddress() {
-      return sendRequest("GET_ADDRESS", {});
-    },
-
-    /** Get account's complete address (for note encryption) */
-    async getCompleteAddress() {
-      return sendRequest("GET_COMPLETE_ADDRESS", {});
-    },
-
-    /** Request a private transaction signing */
-    async sendTransaction(tx) {
-      return sendRequest("DAPP_SIGN", { transaction: tx });
-    },
-
-    /** Request authorization witness creation */
-    async createAuthWit(messageHash) {
-      return sendRequest("CREATE_AUTHWIT", { messageHash });
-    },
-
-    /** Check if wallet is connected */
-    async isConnected() {
-      const result = await sendRequest("GET_STATE", {});
-      return result.state?.connected || false;
-    },
-
-    /**
-     * Get withdraw proof for L1 claim.
-     * Returns { success, proof: { blockNumber, leafIndex, path } }
-     */
-    async getWithdrawProof(l2TxHash) {
-      return sendRequest("GET_WITHDRAW_PROOF", { l2TxHash });
-    },
-
-    /** Listen for account/network changes. Returns unsubscribe function. */
+    version: "0.6.0",
+    walletSdkId: "celari-wallet",
+    connect() { return sendRequest("DAPP_CONNECT", { origin: _origin, title: document.title }); },
+    getAddress() { return sendRequest("GET_ADDRESS", {}); },
+    getCompleteAddress() { return sendRequest("GET_COMPLETE_ADDRESS", {}); },
+    sendTransaction(tx) { return sendRequest("DAPP_SIGN", { transaction: tx }); },
+    createAuthWit(messageHash) { return sendRequest("CREATE_AUTHWIT", { messageHash }); },
+    async isConnected() { const r = await sendRequest("GET_STATE", {}); return r.state?.connected || false; },
+    getWithdrawProof(l2TxHash) { return sendRequest("GET_WITHDRAW_PROOF", { l2TxHash }); },
     on(event, callback) {
-      const handler = (e) => {
-        if (e.data?.target === "celari-inpage" && e.data?.event === event) {
-          callback(e.data.payload);
-        }
-      };
-      window.addEventListener("message", handler);
+      const handler = (e) => { if (e.data?.target === "celari-provider-page" && e.data?.event === event) callback(e.data.payload); };
+      _addEventListener("message", handler);
       return () => window.removeEventListener("message", handler);
     },
-
-    /** Remove a listener. Pass the unsubscribe function returned by on(). */
-    off(event, unsub) {
-      if (typeof unsub === "function") unsub();
-    },
+    off(event, unsub) { if (typeof unsub === "function") unsub(); },
   };
 
-  // Announce provider availability
+  installHardenedProvider(window, "celari", api);
   window.dispatchEvent(new Event("celari#initialized"));
-  console.log("[Celari] Provider injected: window.celari");
+  console.log("[Celari] Provider injected (encrypted): window.celari");
 })();
