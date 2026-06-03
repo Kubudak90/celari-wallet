@@ -36,15 +36,33 @@ mkdirSync(resolve(outdir, "wasm"), { recursive: true });
 const entryPoints = [
   { in: resolve(__dirname, "public/src/background.js"), out: "src/background" },
   { in: resolve(__dirname, "public/src/content.js"), out: "src/content" },
-  { in: resolve(__dirname, "public/src/inpage.js"), out: "src/inpage" },
   // NOTE: popup.js is intentionally NOT here — it is built separately below
   // without drop:["console"] (see the dedicated popup build after Pass 1).
+  // NOTE: inpage.js is intentionally NOT here — it is bundled separately below
+  // (bundle:true) so lib/* crypto imports are inlined and the output is
+  // self-contained when injected into the page world.
 ];
 
 try {
   await build({
     entryPoints: entryPoints.map(e => ({ in: e.in, out: e.out })),
     bundle: false,        // No bundling needed (no imports between files)
+    minify: !isDev,
+    sourcemap: isDev,
+    outdir,
+    format: "esm",
+    target: ["chrome120"],
+    logLevel: "info",
+    ...(isDev ? {} : { drop: ["console"], define: { "process.env.NODE_ENV": '"production"' } }),
+  });
+
+  // --- inpage.js: bundled so lib/* crypto imports inline into a single file ---
+  // inpage.js is injected into the page as a module and imports lib/* crypto;
+  // bundle it so the output is self-contained (no page-world module resolution
+  // or web_accessible_resources juggling).
+  await build({
+    entryPoints: [{ in: resolve(__dirname, "public/src/inpage.js"), out: "src/inpage" }],
+    bundle: true,
     minify: !isDev,
     sourcemap: isDev,
     outdir,
