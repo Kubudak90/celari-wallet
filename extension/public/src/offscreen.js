@@ -52,6 +52,7 @@ const BridgedTokenArtifact = loadContractArtifact(BridgedTokenArtifactJson);
 
 import { BRIDGE } from "./lib/bridge-config.js";
 import { selectExitMode } from "./lib/bridge-exit-select.js";
+import { chooseThreadCount } from "./lib/thread-count.js";
 
 // --- In-Memory KV Store for iOS ---
 // WKWebView's IndexedDB crashes on PXE block sync transactions.
@@ -515,16 +516,37 @@ async function initPXE(nodeUrl) {
   }
   console.log("[PXE] Step B: In-memory store OK (" + (Date.now() - t_store) + "ms)");
 
-  // iOS: Pre-initialize Barretenberg in direct WASM mode (no Workers).
-  // WKWebView doesn't support Web Workers. Barretenberg.initSingleton() is cached —
-  // by initializing first with BackendType.Wasm, the prover's later call to
-  // initSingleton() reuses this no-Worker instance instead of trying to create Workers.
-  // Pre-initialize Barretenberg in direct WASM mode (single-threaded).
-  // Chrome offscreen documents have Worker restrictions similar to iOS WKWebView.
-  console.log("[PXE] Step C0: Pre-initializing Barretenberg (direct WASM, no Workers)...");
+  // Pre-initialize Barretenberg WASM prover. Threads are enabled only when the
+  // context is crossOriginIsolated (COOP/COEP → SharedArrayBuffer available); iOS
+  // WKWebView has no Workers and is never isolated → always single-thread. A 20s
+  // timeout-race guards against a missing/broken worker causing initSingleton to hang.
+  console.log("[PXE] Step C0: Pre-initializing Barretenberg...");
   const t_bb = Date.now();
   const { Barretenberg, BackendType } = await import("@aztec/bb.js");
-  await Barretenberg.initSingleton({ backend: BackendType.Wasm, threads: 1 });
+  const _bbThreads = chooseThreadCount({
+    isolated: typeof self !== "undefined" && self.crossOriginIsolated === true,
+    isIOS,
+    hardwareConcurrency: (typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 0,
+    cap: 8,
+  });
+  if (_bbThreads > 1) {
+    // Race threaded init against a timeout: a missing/broken worker makes
+    // initSingleton HANG (not throw), so a timeout is the only safe guard.
+    try {
+      await Promise.race([
+        Barretenberg.initSingleton({ backend: BackendType.Wasm, threads: _bbThreads }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("threaded BB init timed out")), 20000)),
+      ]);
+      console.log(`[PXE] Barretenberg init: threads=${_bbThreads}, crossOriginIsolated=true`);
+    } catch (e) {
+      console.warn(`[PXE] Threaded BB init (threads=${_bbThreads}) failed/timed out, falling back to single-thread:`, e?.message || e);
+      await Barretenberg.initSingleton({ backend: BackendType.Wasm, threads: 1 });
+      console.log("[PXE] Barretenberg init: threads=1 (fallback)");
+    }
+  } else {
+    await Barretenberg.initSingleton({ backend: BackendType.Wasm, threads: 1 });
+    console.log(`[PXE] Barretenberg init: threads=1 (isolated=${typeof self !== "undefined" && self.crossOriginIsolated}, iOS=${isIOS})`);
+  }
   console.log("[PXE] Step C0: Barretenberg singleton ready (" + (Date.now() - t_bb) + "ms)");
 
   // ── Native Prover Intercept (iOS only) ──
