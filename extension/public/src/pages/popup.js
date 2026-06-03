@@ -3059,8 +3059,56 @@ function renderConfirmTx() {
   const req = store.pendingSignRequest;
   if (!req) return renderLoading();
 
-  const origin = escapeHtml(req.origin);
   const txData = req.payload?.transaction;
+
+  // ── Bridge exit (L1 withdrawal) branch ──────────────────────────────────
+  if (txData?.type === "bridge_exit") {
+    const origin = escapeHtml(req.origin);
+    const amountEth = (Number(BigInt(txData.amount || "0")) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 6 });
+    const recipient = escapeHtml(txData.recipient || "Unknown");
+    const shortRecipient = recipient.length > 20
+      ? recipient.slice(0, 10) + "..." + recipient.slice(-8)
+      : recipient;
+
+    return `
+    <div style="padding:24px 16px;display:flex;flex-direction:column;align-items:center;gap:16px">
+      <div class="cel-ic" style="width:48px;height:48px">${svgIcon("bolt", 20)}</div>
+      <div style="text-align:center">
+        <h2 class="cel-mono" style="font-size:14px;font-weight:600;letter-spacing:0.16em;color:var(--c-ink);margin:0 0 4px">L1'E ÇEKİM (BRIDGE WITHDRAW)</h2>
+        <p class="cel-mono" style="font-size:10px;color:var(--c-muted);margin:0">Aztec L2'den Ethereum L1'e para çekimi</p>
+      </div>
+
+      <div class="cel-card" style="width:100%;padding:16px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:10px">
+          <span class="cel-mono" style="font-size:10px;color:var(--c-subtle);letter-spacing:0.08em">KAYNAK</span>
+          <span class="cel-mono" style="font-size:11px;color:var(--c-ink)">${origin}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:10px">
+          <span class="cel-mono" style="font-size:10px;color:var(--c-subtle);letter-spacing:0.08em">MİKTAR</span>
+          <span class="cel-mono" style="font-size:11px;color:var(--c-proving)">${escapeHtml(amountEth)} ETH</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span class="cel-mono" style="font-size:10px;color:var(--c-subtle);letter-spacing:0.08em">ALICI (L1)</span>
+          <span class="cel-mono" style="font-size:11px;color:var(--c-ink)" title="${recipient}">${shortRecipient}</span>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:color-mix(in srgb,var(--c-down) 6%,transparent);border:1px solid color-mix(in srgb,var(--c-down) 20%,transparent);border-radius:6px;width:100%;box-sizing:border-box">
+        <span class="cel-dot" style="background:var(--c-down);margin-top:3px;flex-shrink:0"></span>
+        <p class="cel-mono" style="font-size:10px;color:var(--c-down);margin:0;line-height:1.5">
+          Bu işlem L1 Ethereum'a para çeker. Onaylamadan önce alıcı adresini dikkatlice kontrol edin.
+        </p>
+      </div>
+
+      <div style="display:flex;gap:10px;width:100%">
+        <button id="btnRejectTx" class="cel-btn cel-btn--ghost cel-btn--block" style="flex:1">Reject</button>
+        <button id="btnApproveTx" class="cel-btn cel-btn--primary cel-btn--block" style="flex:1">Approve</button>
+      </div>
+    </div>`;
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
+  const origin = escapeHtml(req.origin);
   const fnName = escapeHtml(txData?.functionName || txData?.method || "Unknown");
   const contract = escapeHtml(txData?.contractAddress || txData?.to || "Unknown");
   const shortContract = contract.length > 20
