@@ -36,8 +36,12 @@
     "activeTab",
     "notifications",
     "alarms",
-    "offscreen"
+    "offscreen",
+    "sidePanel"
   ],
+  "side_panel": {
+    "default_path": "popup.html?panel=1"
+  },
   "host_permissions": [
     "https://*.aztec-labs.com/*",
     "https://*.aztec.network/*",
