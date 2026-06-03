@@ -115,9 +115,8 @@ New internal message types (parallel to the wallet-sdk set, distinct names to av
 A new branch in `_wsHandleProtocolMessage` (or a sibling handler) for provider sessions:
 
 - `provider-key-exchange` → derive key with `_wsDeriveSessionKeys(kp, peerPub, /*isApp*/ false)`, store session in `_wsActiveSessions` with a new field `kind: "provider"`.
-- `provider-secure-message` → `_wsDecrypt`, then route by `method` to the **existing legacy handlers** rather than the PXE forward:
-  `DAPP_CONNECT`, `DAPP_SIGN`, `GET_ADDRESS`, `GET_COMPLETE_ADDRESS`, `GET_STATE`, `CREATE_AUTHWIT`, `GET_WITHDRAW_PROOF`.
-- The handler result is `_wsEncrypt`'d and returned as `provider-secure-response`.
+- `provider-secure-message` → `_wsDecrypt`, then route by `method` through a new `handleProviderMethod(method, payload, session)` that returns a response object (then `_wsEncrypt`'d as `provider-secure-response`).
+- **Correction (verified against code):** only `GET_STATE` (`bg:844`), `DAPP_CONNECT` (`bg:1140`, returns `pending` with no address), `DAPP_SIGN` (`bg:1145`), and `GET_WITHDRAW_PROOF` (`bg:1241`) have handlers today. `GET_ADDRESS`, `GET_COMPLETE_ADDRESS`, `CREATE_AUTHWIT`, `isConnected` have **no background case** → they currently fall through and reject. So `handleProviderMethod` must **implement** these, not merely re-route. Address source = active deployed account: `state.accounts[state.activeAccountIndex]?.address` (accounts persisted at `chrome.storage.local.celari_accounts`, see `bg:691,708,1268`).
 - **`DAPP_SIGN` keeps the existing sign-popup confirmation** (`background.js:1145-1165`) — explicit user approval remains the real authorization backstop. Write methods are gated identically to today.
 
 ### 4.5 `content.js`
@@ -134,7 +133,7 @@ A new branch in `_wsHandleProtocolMessage` (or a sibling handler) for provider s
 None expected. Public method names and shapes are preserved (`connect`, `getAddress`, `getCompleteAddress`, `sendTransaction`, `createAuthWit`, `isConnected`, `getWithdrawProof`, `on`, `off`). Provider readiness is handled by lazy handshake inside the first call. We will still smoke-test `useCelariExtension` + `useWithdrawFlow` end-to-end.
 
 ### 4.8 Manifest
-- Set the content script `run_at: "document_start"` (`extension/public/manifest.json`) so the inpage provider injects early enough for hardening to be effective.
+- **Already satisfied (verify only):** `content_scripts[0].run_at` is already `"document_start"` and `src/inpage.js` is already in `web_accessible_resources`. No manifest edit needed for hardening. (Confirmed in `extension/public/manifest.json`.)
 - COOP/COEP and `sidePanel` are **out of scope** (Phase 3).
 
 ### 4.9 Error handling
