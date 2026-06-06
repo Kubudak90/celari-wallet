@@ -52,7 +52,7 @@ const BridgedTokenArtifact = loadContractArtifact(BridgedTokenArtifactJson);
 
 import { BRIDGE } from "./lib/bridge-config.js";
 import { selectExitMode } from "./lib/bridge-exit-select.js";
-import { chooseThreadCount } from "./lib/thread-count.js";
+import { chooseThreadCount, shouldUseWorkerBackend } from "./lib/thread-count.js";
 
 // --- In-Memory KV Store for iOS ---
 // WKWebView's IndexedDB crashes on PXE block sync transactions.
@@ -516,10 +516,18 @@ async function initPXE(nodeUrl) {
   }
   console.log("[PXE] Step B: In-memory store OK (" + (Date.now() - t_store) + "ms)");
 
-  // Pre-initialize Barretenberg WASM prover. Threads are enabled only when the
-  // context is crossOriginIsolated (COOP/COEP → SharedArrayBuffer available); iOS
-  // WKWebView has no Workers and is never isolated → always single-thread. A 20s
-  // timeout-race guards against a missing/broken worker causing initSingleton to hang.
+  // Pre-initialize Barretenberg WASM prover.
+  //
+  // THREADING: bb coordinates its worker pool with Atomics.wait, which is FORBIDDEN on a
+  // Document main thread (this offscreen document) and only legal inside a Web Worker. So
+  // multi-threaded proving MUST use BackendType.WasmWorker — bb then runs its main module
+  // in main.worker.js (which spawns the thread.worker.js pool), where Atomics.wait is
+  // allowed. BackendType.Wasm runs the threaded module IN-THREAD and throws "Atomics.wait
+  // cannot be called in this context" at prove time, corrupting bb state ("No circuits
+  // accumulated" / "subtable not merged"). The wasm is compiled on THIS thread and passed
+  // to the worker via comlink, so the worker needs no wasm path. Threads are gated on
+  // crossOriginIsolated (COOP/COEP → SharedArrayBuffer); iOS WKWebView has no Workers and
+  // is never isolated → chooseThreadCount returns 1 → single-thread in-thread.
   console.log("[PXE] Step C0: Pre-initializing Barretenberg...");
   const t_bb = Date.now();
   const { Barretenberg, BackendType } = await import("@aztec/bb.js");
@@ -529,23 +537,50 @@ async function initPXE(nodeUrl) {
     hardwareConcurrency: (typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 0,
     cap: 8,
   });
-  if (_bbThreads > 1) {
-    // Race threaded init against a timeout: a missing/broken worker makes
-    // initSingleton HANG (not throw), so a timeout is the only safe guard.
+
+  // Probe that bb's main worker actually loads BEFORE committing the singleton to the
+  // worker backend. createMainWorker()'s readiness wait has no error path, so a worker
+  // that fails to load would hang bb init forever — and Barretenberg.initSingleton stores
+  // that hung promise with no public way to reset it. The probe is cheap: main.worker.js
+  // posts its ready message on load (`{ ready: true }`), before any wasm instantiation.
+  const _bbMainWorkerLoads = async () => {
     try {
-      await Promise.race([
-        Barretenberg.initSingleton({ backend: BackendType.Wasm, threads: _bbThreads }),
-        new Promise((_, rej) => setTimeout(() => rej(new Error("threaded BB init timed out")), 20000)),
-      ]);
-      console.log(`[PXE] Barretenberg init: threads=${_bbThreads}, crossOriginIsolated=true`);
+      const w = new Worker(new URL("./main.worker.js", import.meta.url), { type: "module" });
+      const ok = await new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(false), 8000);
+        w.addEventListener("message", (ev) => {
+          if (ev?.data?.ready === true) { clearTimeout(timer); resolve(true); }
+        });
+        w.addEventListener("error", () => { clearTimeout(timer); resolve(false); });
+      });
+      w.terminate();
+      return ok;
     } catch (e) {
-      console.warn(`[PXE] Threaded BB init (threads=${_bbThreads}) failed/timed out, falling back to single-thread:`, e?.message || e);
-      await Barretenberg.initSingleton({ backend: BackendType.Wasm, threads: 1 });
-      console.log("[PXE] Barretenberg init: threads=1 (fallback)");
+      console.warn("[PXE] bb main-worker probe threw:", e?.message || e);
+      return false;
     }
-  } else {
+  };
+
+  let _bbThreaded = false;
+  if (_bbThreads > 1) {
+    const workerAvailable = await _bbMainWorkerLoads();
+    if (shouldUseWorkerBackend({ threads: _bbThreads, workerAvailable })) {
+      try {
+        await Barretenberg.initSingleton({ backend: BackendType.WasmWorker, threads: _bbThreads });
+        _bbThreaded = true;
+        console.log(`[PXE] Barretenberg init: WasmWorker, threads=${_bbThreads}, crossOriginIsolated=true`);
+      } catch (e) {
+        // initSingleton clears its singleton on rejection, so the single-thread init below
+        // starts clean. (Reached only if the worker loaded but bb's own init then failed.)
+        console.warn(`[PXE] Threaded (WasmWorker) init (threads=${_bbThreads}) failed, falling back to single-thread:`, e?.message || e);
+      }
+    } else {
+      console.warn(`[PXE] bb main worker did not load — using single-thread (threadsWanted=${_bbThreads})`);
+    }
+  }
+  if (!_bbThreaded) {
     await Barretenberg.initSingleton({ backend: BackendType.Wasm, threads: 1 });
-    console.log(`[PXE] Barretenberg init: threads=1 (isolated=${typeof self !== "undefined" && self.crossOriginIsolated}, iOS=${isIOS})`);
+    console.log(`[PXE] Barretenberg init: Wasm, threads=1 (threadsWanted=${_bbThreads}, isolated=${typeof self !== "undefined" && self.crossOriginIsolated}, iOS=${isIOS})`);
   }
   console.log("[PXE] Step C0: Barretenberg singleton ready (" + (Date.now() - t_bb) + "ms)");
 
@@ -1478,9 +1513,12 @@ function hexToBuffer(hex) {
 // map). Pulls the account metadata + plaintext signing material from
 // background (offscreen can't reach chrome.storage directly), then runs
 // the same registerAccount() path the popup uses on unlock.
+// Returns a reason code so the caller can produce an accurate error:
+// "OK" (registered/already present), "WALLET_LOCKED", "NO_DEPLOYED_ACCOUNT",
+// "BRIDGE_FAIL", "REGISTER_FAIL", or "BUNDLE_FAIL".
 async function ensureAccountFromBundle(fromAddress) {
   // Already registered for this address? nothing to do.
-  if (fromAddress && accountWallets.has(fromAddress)) return;
+  if (fromAddress && accountWallets.has(fromAddress)) return "OK";
   let bundle;
   try {
     bundle = await new Promise((resolve) => {
@@ -1494,18 +1532,20 @@ async function ensureAccountFromBundle(fromAddress) {
     });
   } catch (e) {
     console.warn(`[PXE] ensureAccountFromBundle: bridge to background failed: ${e?.message || e}`);
-    return;
+    return "BRIDGE_FAIL";
   }
   if (!bundle?.success) {
     console.warn(`[PXE] ensureAccountFromBundle: ${bundle?.error || "unknown"} (code=${bundle?.code || "none"})`);
-    return;
+    return bundle?.code || "BUNDLE_FAIL";
   }
   console.log(`[PXE] ensureAccountFromBundle: registering ${bundle.bundle.address.slice(0, 22)}... into PXE`);
   try {
     await registerAccount(bundle.bundle);
     console.log(`[PXE] ensureAccountFromBundle: registered OK`);
+    return "OK";
   } catch (e) {
     console.warn(`[PXE] ensureAccountFromBundle: registerAccount failed: ${e?.message || e}`);
+    return "REGISTER_FAIL";
   }
 }
 
@@ -1523,8 +1563,10 @@ async function listKnownAccounts() {
         resolve(Array.isArray(r?.accounts) ? r.accounts : []);
       });
     });
-    const filtered = stored.filter(a => a?.deployed && a?.address);
-    console.log(`[PXE] listKnownAccounts: storage=${stored.length}, deployed=${filtered.length}`);
+    // Expose accounts by address regardless of `deployed` — a dApp needs the
+    // address pre-deploy to fund/claim Fee Juice (the deploy depends on it).
+    const filtered = stored.filter(a => a?.address);
+    console.log(`[PXE] listKnownAccounts: storage=${stored.length}, withAddress=${filtered.length}`);
     return filtered.map(a => {
       try {
         return { alias: a.label || "", item: AztecAddress.fromString(a.address) };
@@ -1664,9 +1706,19 @@ async function handleWalletMethod(method, args) {
         // account when multiple are stored. Falls back to first deployed.
         const opts = args?.[1] || args?.[0];
         const fromAddr = opts?.from?.toString?.() || (typeof opts?.from === "string" ? opts.from : undefined);
-        await ensureAccountFromBundle(fromAddr);
+        const reason = await ensureAccountFromBundle(fromAddr);
         acctWallet = getActiveWallet();
-        if (!acctWallet) throw new Error("Wallet locked — open the Celari popup and unlock to use this dApp");
+        if (!acctWallet) {
+          // Honest, actionable errors — "Wallet locked" was previously thrown
+          // for ALL of these, sending users to unlock when that wasn't the cause.
+          if (reason === "NO_DEPLOYED_ACCOUNT") {
+            throw new Error("Account not deployed yet — in the Celari popup, claim Fee Juice and Deploy first. An undeployed account can't send transactions (it has no Fee Juice to pay for one). Use the faucet's claim fields + Deploy instead of 'claim in wallet'.");
+          }
+          if (reason === "WALLET_LOCKED") {
+            throw new Error("Wallet locked — open the Celari popup and unlock to use this dApp");
+          }
+          throw new Error("No usable account — create and deploy an account in the Celari popup first");
+        }
       }
       if (typeof acctWallet[method] !== "function") {
         throw new Error(`Method ${method} not available on account wallet`);

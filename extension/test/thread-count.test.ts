@@ -1,6 +1,6 @@
 // extension/test/thread-count.test.ts
 import { describe, it, expect } from "@jest/globals";
-import { chooseThreadCount } from "../public/src/lib/thread-count.js";
+import { chooseThreadCount, shouldUseWorkerBackend } from "../public/src/lib/thread-count.js";
 
 describe("chooseThreadCount", () => {
   it("uses capped hardwareConcurrency when isolated and not iOS", () => {
@@ -20,5 +20,21 @@ describe("chooseThreadCount", () => {
   it("never returns less than 1 and defaults cap to 8", () => {
     expect(chooseThreadCount({ isolated: true, isIOS: false, hardwareConcurrency: 32 })).toBe(8);
     expect(chooseThreadCount({})).toBe(1);
+  });
+});
+
+describe("shouldUseWorkerBackend", () => {
+  it("true only when threads>1 and a bb worker is available", () => {
+    expect(shouldUseWorkerBackend({ threads: 8, workerAvailable: true })).toBe(true);
+  });
+  it("false when single-thread (no Atomics.wait needed, run in-thread)", () => {
+    expect(shouldUseWorkerBackend({ threads: 1, workerAvailable: true })).toBe(false);
+  });
+  it("false when no worker loaded (in-thread Atomics.wait would be illegal → single-thread)", () => {
+    expect(shouldUseWorkerBackend({ threads: 8, workerAvailable: false })).toBe(false);
+  });
+  it("false by default / on missing args", () => {
+    expect(shouldUseWorkerBackend({})).toBe(false);
+    expect(shouldUseWorkerBackend()).toBe(false);
   });
 });

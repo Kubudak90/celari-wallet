@@ -355,7 +355,8 @@ async function _providerRespond(session, sessionId, requestId, response) {
   }
 }
 
-// Read the address the wallet should expose to a dApp (active deployed account).
+// Read the address the wallet should expose to a dApp (active account; the
+// address exists pre-deploy and dApps need it to fund/claim Fee Juice).
 async function _providerActiveAddress() {
   const { celari_accounts } = await chrome.storage.local.get("celari_accounts");
   return selectActiveAddress(celari_accounts || [], state.activeAccountIndex ?? 0);
@@ -433,14 +434,14 @@ async function handleProviderMethod(decrypted, session, sessionId) {
       return _providerRespond(session, sessionId, requestId, { success: false, error: "Wallet is locked — unlock Celari and retry", code: "WALLET_LOCKED" });
     }
     const address = await _providerActiveAddress();
-    if (!address) return _providerRespond(session, sessionId, requestId, { success: false, error: "No deployed account — open Celari to create one" });
+    if (!address) return _providerRespond(session, sessionId, requestId, { success: false, error: "No account — open Celari to create one" });
     return _providerRespond(session, sessionId, requestId, { success: true, address });
   }
   if (method === "GET_COMPLETE_ADDRESS") {
     const { celari_accounts } = await chrome.storage.local.get("celari_accounts");
     const address = await _providerActiveAddress();
     const acc = (celari_accounts || []).find((a) => a.address === address);
-    if (!acc) return _providerRespond(session, sessionId, requestId, { success: false, error: "No deployed account" });
+    if (!acc) return _providerRespond(session, sessionId, requestId, { success: false, error: "No account" });
     return _providerRespond(session, sessionId, requestId, {
       success: true, address: acc.address, publicKeyX: acc.publicKeyX, publicKeyY: acc.publicKeyY,
     });
@@ -799,7 +800,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           ]);
           const accounts = (localR?.celari_accounts || []).filter(a => a?.deployed && a?.address);
           if (accounts.length === 0) {
-            sendResponse({ success: false, error: "No deployed accounts" });
+            // Intentionally deployed-only: an undeployed account can't sign/send
+            // a tx. The caller turns this code into a "deploy first" message.
+            sendResponse({ success: false, error: "No deployed accounts", code: "NO_DEPLOYED_ACCOUNT" });
             return;
           }
           const target = message.address

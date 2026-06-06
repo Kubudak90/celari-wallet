@@ -34,8 +34,11 @@ mkdirSync(resolve(outdir, "wasm"), { recursive: true });
 // --- Pass 1: Standard entry points (no bundling) ---
 
 const entryPoints = [
-  { in: resolve(__dirname, "public/src/background.js"), out: "src/background" },
   { in: resolve(__dirname, "public/src/content.js"), out: "src/content" },
+  // NOTE: background.js is intentionally NOT here — it is bundled separately
+  // below (bundle:true). It is a module service worker that imports lib/*; with
+  // `cross_origin_embedder_policy: require-corp` enabled, Chrome fails to load a
+  // module SW's static sub-imports, so the SW must be a single self-contained file.
   // NOTE: popup.js is intentionally NOT here — it is built separately below
   // without drop:["console"] (see the dedicated popup build after Pass 1).
   // NOTE: inpage.js is intentionally NOT here — it is bundled separately below
@@ -47,6 +50,26 @@ try {
   await build({
     entryPoints: entryPoints.map(e => ({ in: e.in, out: e.out })),
     bundle: false,        // No bundling needed (no imports between files)
+    minify: !isDev,
+    sourcemap: isDev,
+    outdir,
+    format: "esm",
+    target: ["chrome120"],
+    logLevel: "info",
+    ...(isDev ? {} : { drop: ["console"], define: { "process.env.NODE_ENV": '"production"' } }),
+  });
+
+  // --- background.js: bundled into a single self-contained service worker ---
+  // The SW is declared `"type": "module"` and statically imports ./lib/*.js.
+  // With `cross_origin_embedder_policy: require-corp` enabled (needed so the
+  // offscreen document is cross-origin isolated → SharedArrayBuffer → threaded
+  // proving), Chrome fails to load a module service worker's static sub-imports
+  // ("Failed to load the script unexpectedly" at background.js:0) — cross-origin
+  // isolation is not fully implemented for service workers. Bundling inlines the
+  // lib/* helpers so the SW has zero sub-imports for COEP to block.
+  await build({
+    entryPoints: [{ in: resolve(__dirname, "public/src/background.js"), out: "src/background" }],
+    bundle: true,
     minify: !isDev,
     sourcemap: isDev,
     outdir,

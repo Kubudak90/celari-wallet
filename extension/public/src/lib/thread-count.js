@@ -7,3 +7,13 @@ export function chooseThreadCount({ isolated, isIOS, hardwareConcurrency, cap = 
   const hc = Number(hardwareConcurrency) || 4;
   return Math.max(1, Math.min(hc, cap));
 }
+
+// Decide whether bb.js should run in its Web Worker backend (BackendType.WasmWorker)
+// vs in-thread (BackendType.Wasm). Threaded proving MUST use the worker backend:
+// bb coordinates its thread pool with Atomics.wait, which is forbidden on a Document
+// main thread and only legal inside a Worker. Use the worker backend only when we
+// actually want >1 thread AND a bb worker is known to load; otherwise stay in-thread
+// single-thread (which never calls Atomics.wait).
+export function shouldUseWorkerBackend({ threads, workerAvailable } = {}) {
+  return Number(threads) > 1 && workerAvailable === true;
+}
