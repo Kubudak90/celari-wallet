@@ -2673,6 +2673,11 @@ function renderSettings() {
         <div style="display:flex;justify-content:space-between"><span>Chain ID</span><span style="color:var(--c-muted)">${escapeHtml(String(store.nodeInfo?.l1ChainId || '-'))}</span></div>
       </div>` : ''}
 
+      <div class="cel-eyebrow" style="margin-bottom:8px">Connected Sites</div>
+      <div class="cel-card" id="connected-sites-list" style="margin-bottom:16px;overflow:hidden">
+        <div class="cel-mono" style="padding:12px 14px;font-size:10px;color:var(--c-subtle)">Loading…</div>
+      </div>
+
       <div class="cel-eyebrow" style="margin-bottom:8px">Security</div>
       <div class="cel-card" style="margin-bottom:16px;overflow:hidden">
         <div class="cel-row" style="padding:0 14px;border-bottom:1px solid var(--c-hairline)">
@@ -2763,7 +2768,7 @@ function renderSettings() {
       </div>
 
       <div style="text-align:center;padding:12px 0">
-        <div class="cel-mono" style="font-size:9px;color:var(--c-subtle);letter-spacing:0.12em">CELARI v0.4.0 · AZTEC SDK v4.3.0</div>
+        <div class="cel-mono" style="font-size:9px;color:var(--c-subtle);letter-spacing:0.12em">CELARI v${escapeHtml(chrome.runtime.getManifest().version)} · AZTEC SDK v4.3.0</div>
         <div class="cel-serif" style="font-size:12px;font-style:italic;color:var(--c-muted);margin-top:5px">celāre — to hide, to conceal</div>
       </div>
     </div>`;
@@ -2787,6 +2792,45 @@ function renderNetworkRow(id, name, url, isCustom = false) {
 
 function bindSettings() {
   document.getElementById("btn-back")?.addEventListener("click", () => setState({ screen: "dashboard" }));
+
+  // ─── Connected Sites (dApp approval allowlist) ───
+  function loadConnectedSites() {
+    chrome.runtime.sendMessage({ type: "WS_LIST_CONNECTED_SITES" }, (res) => {
+      void chrome.runtime.lastError;
+      renderConnectedSites(res?.sites || []);
+    });
+  }
+  function renderConnectedSites(sites) {
+    const el = document.getElementById("connected-sites-list");
+    if (!el) return;
+    if (!sites.length) {
+      el.innerHTML = `<div class="cel-mono" style="padding:12px 14px;font-size:10px;color:var(--c-subtle)">No connected sites yet. Approve a dApp to add it here.</div>`;
+      return;
+    }
+    el.innerHTML = sites.map((s, i) => {
+      let host = s.origin; try { host = new URL(s.origin).hostname; } catch {}
+      const border = i < sites.length - 1 ? "border-bottom:1px solid var(--c-hairline)" : "";
+      return `<div class="cel-row" style="padding:0 14px;${border}">
+        <div class="cel-ic">${svgIcon("globe", 18)}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;color:var(--c-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(host)}</div>
+          <div class="cel-mono" style="font-size:9px;color:var(--c-subtle);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(s.origin)}</div>
+        </div>
+        <button class="btn-remove-site cel-btn cel-btn--ghost" data-origin="${escapeHtml(s.origin)}" style="padding:6px 8px;min-width:0" title="Disconnect">${svgIcon("x", 14)}</button>
+      </div>`;
+    }).join("");
+    el.querySelectorAll(".btn-remove-site").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        chrome.runtime.sendMessage({ type: "WS_REMOVE_CONNECTED_SITE", origin: btn.dataset.origin }, () => {
+          void chrome.runtime.lastError;
+          loadConnectedSites();
+          showToast("Site disconnected", "success");
+        });
+      });
+    });
+  }
+  loadConnectedSites();
   document.getElementById("btn-open-logs")?.addEventListener("click", () => {
     store.logsReturnScreen = "settings";
     setState({ screen: "logs" });
@@ -3262,14 +3306,22 @@ function renderWsApprove() {
 
 function bindWsApprove() {
   document.getElementById("btn-ws-approve")?.addEventListener("click", async () => {
+    // Clear wsApproveId FIRST so the beforeunload "reject on dismiss" safety
+    // does not fire after this explicit approve (window.close() below triggers
+    // beforeunload, which would otherwise send a spurious WS_REJECT_DISCOVERY
+    // and drop the discovery we just approved → dApp "Key exchange timeout").
+    const id = store.wsApproveId;
+    store.wsApproveId = null;
     try {
-      await chrome.runtime.sendMessage({ type: "WS_APPROVE_DISCOVERY", requestId: store.wsApproveId });
+      await chrome.runtime.sendMessage({ type: "WS_APPROVE_DISCOVERY", requestId: id });
     } catch (e) {}
     window.close();
   });
   document.getElementById("btn-ws-reject")?.addEventListener("click", async () => {
+    const id = store.wsApproveId;
+    store.wsApproveId = null;
     try {
-      await chrome.runtime.sendMessage({ type: "WS_REJECT_DISCOVERY", requestId: store.wsApproveId });
+      await chrome.runtime.sendMessage({ type: "WS_REJECT_DISCOVERY", requestId: id });
     } catch (e) {}
     window.close();
   });

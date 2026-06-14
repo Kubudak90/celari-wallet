@@ -22,6 +22,7 @@ import {
   wsEncrypt as _wsEncrypt,
   wsDecrypt as _wsDecrypt,
 } from "./lib/ws-crypto.js";
+import { isSiteApproved, addSite, removeSite, normalizeOrigin } from "./lib/connected-sites.js";
 
 // --- Network Presets -------------------------------------------------
 
@@ -66,11 +67,96 @@ const _wsPendingLockedReads = new Map(); // id → { decrypted, session, session
 let _wsUnlockWindowId = null;             // single shared unlock popup window
 const _WS_UNLOCK_TIMEOUT_MS = 5 * 60_000; // give up (and error) if never unlocked
 
-// Reap the shared unlock-popup handle when the user closes it so a later
-// dApp request can spawn a fresh one instead of focusing a dead window id.
+// ─── Connection approval ("Connected Sites") ───────────────────────────
+// First connection from an origin opens an approval popup (popup.html?wsapprove
+// =<requestId>). On approve the origin is remembered in celari_connected_sites
+// so future discovery requests from it are auto-approved (no popup). The dApp
+// wallet-sdk discovery window is ~60s, so the approval popup fits comfortably;
+// the subsequent ECDH key-exchange (2s timeout) is pure crypto with no UI.
+let _connectedSites = null; // in-memory cache of celari_connected_sites
+const _wsApprovalWindows = new Map(); // origin → approval popup windowId (dedupe)
+
+async function _wsGetConnectedSites() {
+  if (_connectedSites) return _connectedSites;
+  try {
+    const r = await chrome.storage.local.get("celari_connected_sites");
+    _connectedSites = Array.isArray(r.celari_connected_sites) ? r.celari_connected_sites : [];
+  } catch { _connectedSites = []; }
+  return _connectedSites;
+}
+async function _wsSaveConnectedSites(sites) {
+  _connectedSites = sites;
+  try { await chrome.storage.local.set({ celari_connected_sites: sites }); } catch {}
+}
+
+// Wallet identity advertised to dApps (wallet-sdk + window.celari provider).
+function _wsWalletInfo() {
+  return {
+    id: CELARI_WALLET_ID_WS,
+    name: "Celari Wallet",
+    version: chrome.runtime.getManifest().version,
+    icon: chrome.runtime.getURL("icons/icon-48.png"),
+  };
+}
+function _wsProviderInfo() {
+  return { id: CELARI_WALLET_ID_WS, name: "Celari Wallet", version: chrome.runtime.getManifest().version };
+}
+
+// Open (or focus) the connection-approval popup for a pending discovery.
+async function _wsOpenApprovalPopup(requestId, origin) {
+  const existing = _wsApprovalWindows.get(origin);
+  if (existing != null) {
+    try { await chrome.windows.update(existing, { focused: true }); return; } catch { _wsApprovalWindows.delete(origin); }
+  }
+  try {
+    const w = await chrome.windows.create({
+      url: `popup.html?wsapprove=${encodeURIComponent(requestId)}`,
+      type: "popup", width: 380, height: 600, focused: true,
+    });
+    if (w?.id != null) _wsApprovalWindows.set(origin, w.id);
+  } catch (e) {
+    console.warn("[WalletSDK] approval popup create failed:", e?.message || e);
+  }
+}
+
+// Reap popup-window handles when the user closes them so a later dApp request
+// can spawn a fresh one instead of focusing a dead window id.
 chrome.windows.onRemoved.addListener((windowId) => {
   if (windowId === _wsUnlockWindowId) _wsUnlockWindowId = null;
+  for (const [origin, id] of _wsApprovalWindows) {
+    if (id === windowId) _wsApprovalWindows.delete(origin);
+  }
 });
+
+// ─── Pending-discovery durability across SW restarts ───────────────────
+// The connection-approval popup introduces a gap (discovery → user approves)
+// during which the MV3 service worker can be evicted and re-spawned, wiping the
+// in-memory _wsPendingDiscoveries Map. That made the post-approval ECDH
+// key-exchange fail ("Key exchange timeout") because the handler found no
+// parked discovery. We mirror each pending discovery into chrome.storage.session
+// (survives SW restarts, cleared when the browser closes) and read through it on
+// miss. Only JSON-serializable metadata is stored (tabId/origin/appId/kind) —
+// the session encryption key is generated fresh at key-exchange time.
+const _PD_PREFIX = "celari_pd_";
+const _PD_TTL_MS = 60_000;
+
+function _wsParkPending(id, data) {
+  _wsPendingDiscoveries.set(id, data);
+  try { chrome.storage.session.set({ [_PD_PREFIX + id]: data }); } catch {}
+}
+async function _wsReadPending(id) {
+  let d = _wsPendingDiscoveries.get(id);
+  if (!d) {
+    try { const r = await chrome.storage.session.get(_PD_PREFIX + id); d = r?.[_PD_PREFIX + id] || null; } catch { d = null; }
+  }
+  if (d && d.createdAt && Date.now() - d.createdAt > _PD_TTL_MS) { await _wsDropPending(id); return null; }
+  if (d) _wsPendingDiscoveries.set(id, d); // rehydrate in-memory cache after a SW restart
+  return d;
+}
+async function _wsDropPending(id) {
+  _wsPendingDiscoveries.delete(id);
+  try { await chrome.storage.session.remove(_PD_PREFIX + id); } catch {}
+}
 
 async function _wsHandleProtocolMessage(message, sender) {
   const tabId = sender.tab?.id;
@@ -83,30 +169,31 @@ async function _wsHandleProtocolMessage(message, sender) {
       const { requestId, appId, chainInfo } = content || {};
       if (!requestId) return;
       const origin = sender.tab?.url ? new URL(sender.tab.url).origin : "unknown";
-      _wsPendingDiscoveries.set(requestId, { tabId, origin, appId, chainInfo, createdAt: Date.now() });
-      // Auto-expire discovery if key exchange never arrives (prevents unbounded growth)
-      setTimeout(() => _wsPendingDiscoveries.delete(requestId), 30_000);
+      _wsParkPending(requestId, { tabId, origin, appId, chainInfo, createdAt: Date.now() });
 
-      // Auto-approve discovery. A user confirmation popup here would exceed the
-      // dApp's discovery timeout (~3-5s in wallet-sdk). Real authorization is
-      // enforced at the sign-request step below via the wssign popup, where
-      // every sendTx / createAuthWit requires explicit user approval.
-      chrome.tabs.sendMessage(tabId, {
-        origin: _WS_BG,
-        type: "discovery-approved",
-        sessionId: requestId,
-        content: {
-          id: CELARI_WALLET_ID_WS,
-          name: "Celari Wallet",
-          version: "0.5.0",
-          icon: chrome.runtime.getURL("icons/icon-48.png"),
-        },
-      }).catch(() => {});
+      const approvedSites = await _wsGetConnectedSites();
+      if (isSiteApproved(approvedSites, origin)) {
+        // Previously approved → reveal the wallet immediately (no popup).
+        setTimeout(() => _wsDropPending(requestId), 30_000);
+        chrome.tabs.sendMessage(tabId, {
+          origin: _WS_BG,
+          type: "discovery-approved",
+          sessionId: requestId,
+          content: _wsWalletInfo(),
+        }).catch(() => {});
+      } else {
+        // First connection from this origin → ask the user. Keep the request
+        // parked long enough to approve (dApp discovery window ~60s). The
+        // approval popup resumes it via WS_APPROVE_DISCOVERY (or drops it on
+        // reject / expiry → the dApp simply never sees the wallet).
+        setTimeout(() => _wsDropPending(requestId), 55_000);
+        _wsOpenApprovalPopup(requestId, origin);
+      }
       break;
     }
 
     case "key-exchange-request": {
-      const discovery = _wsPendingDiscoveries.get(sessionId);
+      const discovery = await _wsReadPending(sessionId);
       if (!discovery || discovery.tabId !== tabId) return;
       try {
         const keyPair      = await _wsGenerateKeyPair();
@@ -121,7 +208,7 @@ async function _wsHandleProtocolMessage(message, sender) {
           encryptionKey,
           verificationHash,
         });
-        _wsPendingDiscoveries.delete(sessionId);
+        _wsDropPending(sessionId);
 
         chrome.tabs.sendMessage(discovery.tabId, {
           origin: _WS_BG,
@@ -144,7 +231,7 @@ async function _wsHandleProtocolMessage(message, sender) {
 
       } catch (e) {
         console.warn("[WalletSDK] Key exchange failed:", e.message);
-        _wsPendingDiscoveries.delete(sessionId);
+        _wsDropPending(sessionId);
       }
       break;
     }
@@ -215,9 +302,13 @@ async function _wsHandleProtocolMessage(message, sender) {
 
     case "disconnect-request": {
       const session = _wsActiveSessions.get(sessionId);
-      const pending = _wsPendingDiscoveries.get(sessionId);
       if (session && session.tabId === tabId) _wsActiveSessions.delete(sessionId);
-      if (pending && pending.tabId === tabId) _wsPendingDiscoveries.delete(sessionId);
+      // NOTE: do NOT delete a pending (mid-handshake) discovery here. A stray
+      // pagehide/bfcache transition on the dApp tab fires disconnect-request for
+      // every wsPort right as the ECDH key-exchange is in flight, which used to
+      // nuke the parked discovery → key-exchange handler found nothing → the SDK
+      // hit its 2s "Key exchange timeout". Pending discoveries clean themselves
+      // up via their own expiry, so leaving them is safe.
       break;
     }
 
@@ -225,19 +316,26 @@ async function _wsHandleProtocolMessage(message, sender) {
       const { requestId } = content || {};
       if (!requestId) return;
       const origin = sender.tab?.url ? new URL(sender.tab.url).origin : "unknown";
-      _wsPendingDiscoveries.set(requestId, { tabId, origin, appId: "celari-provider", kind: "provider", createdAt: Date.now() });
-      setTimeout(() => _wsPendingDiscoveries.delete(requestId), 30_000);
-      chrome.tabs.sendMessage(tabId, {
-        origin: _WS_BG,
-        type: "provider-discovery-approved",
-        sessionId: requestId,
-        content: { id: CELARI_WALLET_ID_WS, name: "Celari Wallet", version: "0.5.0" },
-      }).catch(() => {});
+      _wsParkPending(requestId, { tabId, origin, appId: "celari-provider", kind: "provider", createdAt: Date.now() });
+
+      const approvedForProvider = await _wsGetConnectedSites();
+      if (isSiteApproved(approvedForProvider, origin)) {
+        setTimeout(() => _wsDropPending(requestId), 30_000);
+        chrome.tabs.sendMessage(tabId, {
+          origin: _WS_BG,
+          type: "provider-discovery-approved",
+          sessionId: requestId,
+          content: _wsProviderInfo(),
+        }).catch(() => {});
+      } else {
+        setTimeout(() => _wsDropPending(requestId), 55_000);
+        _wsOpenApprovalPopup(requestId, origin);
+      }
       break;
     }
 
     case "provider-key-exchange": {
-      const discovery = _wsPendingDiscoveries.get(sessionId);
+      const discovery = await _wsReadPending(sessionId);
       if (!discovery || discovery.tabId !== tabId || discovery.kind !== "provider") return;
       try {
         const keyPair = await _wsGenerateKeyPair();
@@ -248,7 +346,7 @@ async function _wsHandleProtocolMessage(message, sender) {
           tabId: discovery.tabId, origin: discovery.origin, appId: "celari-provider",
           kind: "provider", encryptionKey, verificationHash,
         });
-        _wsPendingDiscoveries.delete(sessionId);
+        _wsDropPending(sessionId);
         chrome.tabs.sendMessage(discovery.tabId, {
           origin: _WS_BG,
           type: "provider-key-exchange-response",
@@ -257,7 +355,7 @@ async function _wsHandleProtocolMessage(message, sender) {
         }).catch(() => {});
       } catch (e) {
         console.warn("[Provider] Key exchange failed:", e.message);
-        _wsPendingDiscoveries.delete(sessionId);
+        _wsDropPending(sessionId);
       }
       break;
     }
@@ -279,8 +377,8 @@ async function _wsHandleProtocolMessage(message, sender) {
     case "provider-disconnect": {
       const session = _wsActiveSessions.get(sessionId);
       if (session && session.tabId === tabId) _wsActiveSessions.delete(sessionId);
-      const pending = _wsPendingDiscoveries.get(sessionId);
-      if (pending && pending.tabId === tabId) _wsPendingDiscoveries.delete(sessionId);
+      // Pending (mid-handshake) discoveries are left to expire on their own —
+      // see the note in "disconnect-request".
       break;
     }
   }
@@ -837,46 +935,82 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     // Wallet-SDK v4.2.0: popup approval flow for dApp discovery
     case "WS_GET_PENDING_DISCOVERY": {
-      const d = _wsPendingDiscoveries.get(message.requestId);
-      if (d) {
-        sendResponse({
-          success: true,
-          discovery: {
-            requestId: message.requestId,
-            origin: d.origin,
-            appId: d.appId,
-            chainInfo: d.chainInfo,
-            createdAt: d.createdAt,
-          },
-        });
-      } else {
-        sendResponse({ success: false, error: "No pending discovery" });
-      }
-      break;
+      _wsReadPending(message.requestId).then((d) => {
+        if (d) {
+          sendResponse({
+            success: true,
+            discovery: {
+              requestId: message.requestId,
+              origin: d.origin,
+              appId: d.appId,
+              chainInfo: d.chainInfo,
+              createdAt: d.createdAt,
+            },
+          });
+        } else {
+          sendResponse({ success: false, error: "No pending discovery" });
+        }
+      }).catch(() => sendResponse({ success: false, error: "No pending discovery" }));
+      return true;
     }
 
     case "WS_APPROVE_DISCOVERY": {
-      const d = _wsPendingDiscoveries.get(message.requestId);
-      if (!d) { sendResponse({ success: false, error: "Not found" }); break; }
-      chrome.tabs.sendMessage(d.tabId, {
-        origin: _WS_BG,
-        type: "discovery-approved",
-        sessionId: message.requestId,
-        content: {
-          id: CELARI_WALLET_ID_WS,
-          name: "Celari Wallet",
-          version: "0.5.0",
-          icon: chrome.runtime.getURL("icons/icon-48.png"),
-        },
-      }).catch(() => {});
+      _wsReadPending(message.requestId).then(async (d) => {
+        if (!d) { sendResponse({ success: false, error: "Not found" }); return; }
+        // Resume the parked discovery — kind-aware (wallet-sdk vs window.celari).
+        if (d.kind === "provider") {
+          chrome.tabs.sendMessage(d.tabId, {
+            origin: _WS_BG, type: "provider-discovery-approved",
+            sessionId: message.requestId, content: _wsProviderInfo(),
+          }).catch(() => {});
+        } else {
+          chrome.tabs.sendMessage(d.tabId, {
+            origin: _WS_BG, type: "discovery-approved",
+            sessionId: message.requestId, content: _wsWalletInfo(),
+          }).catch(() => {});
+        }
+        // Remember this origin so future connections are auto-approved (no popup).
+        const sites = await _wsGetConnectedSites();
+        await _wsSaveConnectedSites(addSite(sites, { origin: d.origin, appId: d.appId }));
+        sendResponse({ success: true });
+      }).catch(() => sendResponse({ success: false, error: "Approve failed" }));
+      return true;
+    }
+
+    case "WS_REJECT_DISCOVERY": {
+      _wsDropPending(message.requestId);
       sendResponse({ success: true });
       break;
     }
 
-    case "WS_REJECT_DISCOVERY": {
-      _wsPendingDiscoveries.delete(message.requestId);
-      sendResponse({ success: true });
-      break;
+    case "WS_LIST_CONNECTED_SITES": {
+      _wsGetConnectedSites()
+        .then((sites) => sendResponse({ success: true, sites }))
+        .catch(() => sendResponse({ success: true, sites: [] }));
+      return true;
+    }
+
+    case "WS_REMOVE_CONNECTED_SITE": {
+      (async () => {
+        const sites = await _wsGetConnectedSites();
+        await _wsSaveConnectedSites(removeSite(sites, message.origin));
+        // Tear down any live sessions for that origin so the dApp loses access.
+        const target = normalizeOrigin(message.origin);
+        for (const [sid, s] of _wsActiveSessions) {
+          if (normalizeOrigin(s.origin) === target) {
+            try {
+              chrome.tabs.sendMessage(s.tabId, {
+                origin: _WS_BG,
+                type: s.kind === "provider" ? "provider-disconnect" : "session-disconnected",
+                sessionId: sid,
+              }).catch(() => {});
+            } catch {}
+            _wsActiveSessions.delete(sid);
+          }
+        }
+        sendResponse({ success: true });
+      })();
+      return true;
     }
 
     // Wallet-SDK v4.2.0: popup approval flow for sendTx / createAuthWit

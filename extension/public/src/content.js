@@ -227,8 +227,12 @@ try {
   if (_celariIsCtxInvalidError(e)) _celariCtxInvalid = true;
 }
 
-// Clean up ports on page unload so background can reap the sessions
-window.addEventListener("pagehide", () => {
+// Clean up ports on page unload so background can reap the sessions.
+// Skip bfcache (persisted) transitions: those fire on a transient hide (e.g.
+// the wallet's approval popup stealing focus), not a real navigation/close, and
+// must NOT tear down an in-flight handshake or a live session.
+window.addEventListener("pagehide", (event) => {
+  if (event.persisted) return;
   try {
     for (const [sessionId, port] of wsPorts) {
       try { port.close(); } catch {}
