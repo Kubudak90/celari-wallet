@@ -23,6 +23,7 @@ import { isFaucetNetwork } from "../lib/faucet-networks.js";
 import { createLogBuffer } from "../lib/log-buffer.js";
 import { verificationFingerprint } from "../lib/fingerprint.js";
 import { isPanelContext } from "../lib/panel-context.js";
+import { hashToEmojiArray, hashToEmoji } from "../lib/emoji-verification.js";
 
 // ─── Security: HTML Escaping ──────────────────────────
 
@@ -116,6 +117,12 @@ const store = {
   wsDiscovery: null,
   wsSignId: null,
   wsSignRequest: null,
+  // Emoji-verification: after the user approves, the popup stays open on the
+  // "ws-verify" screen and shows the 3x3 grid once the encrypted channel is
+  // established (WS_SESSION_ESTABLISHED carries the verificationHash).
+  wsVerifyId: null,
+  wsVerifyOrigin: null,
+  wsVerifyHash: null,
   // True when this window was opened by the background as a dedicated unlock
   // popup (popup.html?unlock=1) because a dApp hit the locked wallet while
   // connecting. On unlock we notify the background to replay the parked
@@ -1077,6 +1084,11 @@ function _renderImpl() {
       root.replaceChildren();
       root.insertAdjacentHTML("beforeend", renderWsApprove());
       bindWsApprove();
+      break;
+    case "ws-verify":
+      root.replaceChildren();
+      root.insertAdjacentHTML("beforeend", renderWsVerify());
+      bindWsVerify();
       break;
     case "ws-sign":
       root.replaceChildren();
@@ -3307,15 +3319,20 @@ function renderWsApprove() {
 function bindWsApprove() {
   document.getElementById("btn-ws-approve")?.addEventListener("click", async () => {
     // Clear wsApproveId FIRST so the beforeunload "reject on dismiss" safety
-    // does not fire after this explicit approve (window.close() below triggers
-    // beforeunload, which would otherwise send a spurious WS_REJECT_DISCOVERY
-    // and drop the discovery we just approved → dApp "Key exchange timeout").
+    // does not fire after this explicit approve (it would otherwise send a
+    // spurious WS_REJECT_DISCOVERY and drop the discovery we just approved →
+    // dApp "Key exchange timeout").
     const id = store.wsApproveId;
     store.wsApproveId = null;
+    // Stay open on the verify screen; WS_SESSION_ESTABLISHED (same sessionId)
+    // delivers the verificationHash, which we render as the 3x3 emoji grid.
+    store.wsVerifyId = id;
+    store.wsVerifyOrigin = store.wsDiscovery?.origin || "";
+    store.wsVerifyHash = null;
     try {
       await chrome.runtime.sendMessage({ type: "WS_APPROVE_DISCOVERY", requestId: id });
     } catch (e) {}
-    window.close();
+    setState({ screen: "ws-verify" });
   });
   document.getElementById("btn-ws-reject")?.addEventListener("click", async () => {
     const id = store.wsApproveId;
@@ -3325,6 +3342,54 @@ function bindWsApprove() {
     } catch (e) {}
     window.close();
   });
+}
+
+// Emoji-verification screen: shown after approve while the encrypted channel is
+// established, then the 3x3 grid (derived from the shared verificationHash, the
+// same algorithm the dApp uses) so the user can confirm no MITM.
+function renderWsVerify() {
+  let hostname = store.wsVerifyOrigin || "dApp";
+  try { hostname = new URL(store.wsVerifyOrigin).hostname; } catch {}
+  const hash = store.wsVerifyHash;
+
+  if (!hash) {
+    return `
+    <div style="padding:16px;display:flex;flex-direction:column;height:100%;box-sizing:border-box;gap:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        ${celariLockup(18)}
+        <span class="cel-eyebrow">Connecting</span>
+      </div>
+      <div class="cel-card" style="padding:28px 18px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:auto;margin-bottom:auto">
+        <span class="cel-dot cel-dot--proving"></span>
+        <div style="font-size:14px;color:var(--c-ink)">Connecting to ${escapeHtml(hostname)}…</div>
+        <div class="cel-mono" style="font-size:10px;color:var(--c-subtle)">Establishing encrypted channel</div>
+      </div>
+    </div>`;
+  }
+
+  const cells = hashToEmojiArray(hash, 9).map(e => `
+    <div style="display:flex;align-items:center;justify-content:center;font-size:30px;line-height:1;aspect-ratio:1;background:var(--c-ground-2);border:1px solid var(--c-hairline);border-radius:10px">${e}</div>`).join("");
+  return `
+    <div style="padding:16px;display:flex;flex-direction:column;height:100%;box-sizing:border-box;gap:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        ${celariLockup(18)}
+        <span class="cel-eyebrow">Verify connection</span>
+      </div>
+      <div class="cel-card" style="padding:16px;text-align:center">
+        <div style="font-size:15px;font-weight:500;color:var(--c-ink);margin-bottom:3px">Connected to ${escapeHtml(hostname)}</div>
+        <div class="cel-mono" style="font-size:10px;color:var(--c-subtle)">Confirm these emojis match the ones the dApp shows</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${cells}</div>
+      <div style="display:flex;align-items:flex-start;gap:7px;padding:0 2px">
+        <span style="color:var(--c-subtle);margin-top:1px">${svgIcon("shield-half", 14)}</span>
+        <span class="cel-mono" style="font-size:10px;color:var(--c-subtle)">If they differ, someone may be intercepting the connection — disconnect from Settings.</span>
+      </div>
+      <button id="btn-ws-verify-done" class="cel-btn cel-btn--primary cel-btn--block" style="margin-top:auto">Done</button>
+    </div>`;
+}
+
+function bindWsVerify() {
+  document.getElementById("btn-ws-verify-done")?.addEventListener("click", () => window.close());
 }
 
 function renderWsSign() {
@@ -4212,7 +4277,16 @@ chrome.runtime.onMessage.addListener((message) => {
     try {
       hostname = new URL(message.origin).hostname;
     } catch {}
-    showToast(`Connected: ${hostname}`, "success");
+    if (store.wsVerifyId && message.sessionId === store.wsVerifyId) {
+      // This popup approved the connection — render the emoji-verification grid.
+      store.wsVerifyHash = message.verificationHash || null;
+      if (store.screen === "ws-verify") setState({});
+    } else if (message.verificationHash) {
+      // Silent (allowlisted) reconnect with a popup open — surface the emoji row.
+      showToast(`Connected: ${hostname}  ${hashToEmoji(message.verificationHash, 9)}`, "success");
+    } else {
+      showToast(`Connected: ${hostname}`, "success");
+    }
   }
   if (message.type === "CLAIM_READY_REFRESH" && message.claim) {
     store.pendingClaim = message.claim;
