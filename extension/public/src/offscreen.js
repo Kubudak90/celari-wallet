@@ -23,6 +23,7 @@ import { loadContractArtifact } from "@aztec/aztec.js/abi";
 import { Contract } from "@aztec/aztec.js/contracts";
 import { jsonStringify } from "@aztec/foundation/json-rpc";
 import { WalletSchema, AccountManager } from "@aztec/aztec.js/wallet";
+import { installPasskeyWalletDbShim } from "./lib/passkey-walletdb-shim.js";
 import { deriveKeys } from "@aztec/stdlib/keys";
 
 // Contract artifacts (compiled Noir → JSON)
@@ -713,6 +714,16 @@ async function initPXE(nodeUrl) {
     return _origGetAccount(addr);
   };
 
+  // CelariPasskey accounts are never written to walletDB (registerAccount uses
+  // AccountManager.create + registerContract, not storeAccount). The base
+  // EmbeddedWallet.simulateViaEntrypoint reads the RAW walletDB.retrieveAccount(from)
+  // to pick a kernelless-simulation stub by `type`, throwing "Account 0x... does
+  // not exist on this wallet" for any authenticated tx (dApp orders + transfers).
+  // Shim it to return a synthetic ecdsasecp256r1 record for our accounts (the
+  // ECDSA stub is wire-compatible with CelariPasskey); real sends still use the
+  // getAccountFromAddress override above for real P256 signing.
+  installPasskeyWalletDbShim(wallet, accountWallets);
+
   const info = await Promise.race([
     wallet.getChainInfo(),
     new Promise((_, rej) => setTimeout(() => rej(new Error("getChainInfo timed out after 15s")), 15000)),
@@ -805,7 +816,7 @@ async function registerAccount(data) {
     }
   });
 
-  accountWallets.set(address, { manager, wallet: acctWallet });
+  accountWallets.set(address, { manager, wallet: acctWallet, secretKey: secretKeyFr, salt: Fr.fromHexString(salt) });
   if (!activeAddress) activeAddress = address;
 
   console.log(`[PXE] Account registered: ${address.slice(0, 22)}... (total: ${accountWallets.size})`);
