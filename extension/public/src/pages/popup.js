@@ -20,6 +20,7 @@ import * as passkeyCrypto from "../lib/passkey-crypto.js";
 import { detectLegacyPlaintext, validateAccountsArray, purgePending } from "../lib/account-schema.js";
 import { remainingCooldownMs, cooldownMinutes } from "../lib/faucet-cooldown.js";
 import { isFaucetNetwork } from "../lib/faucet-networks.js";
+import { requestQuetzalDrip } from "../lib/quetzal-faucet.js";
 import { createLogBuffer } from "../lib/log-buffer.js";
 import { verificationFingerprint } from "../lib/fingerprint.js";
 import { isPanelContext } from "../lib/panel-context.js";
@@ -1524,9 +1525,9 @@ function renderDeployBanner() {
         ${store.network === "mainnet" || store.network === "testnet" ? '<br/><span style="color:var(--c-proving)">Paste your Fee Juice claim JSON below (from bridge.human.tech or any L1→L2 bridge).</span>' : ''}
       </p>
 
-      ${(store.network === "testnet" || store.network === "mainnet") && !hasClaim ? `
+      ${isFaucetNetwork(store.network) && !hasClaim ? `
       <button id="btn-claim-nethermind" class="cel-btn cel-btn--primary cel-btn--block" style="margin-bottom:8px;font-size:9px;letter-spacing:0.12em">
-        ${svgIcon("bolt", 13)} Claim Fee Juice from Nethermind
+        ${svgIcon("bolt", 13)} Claim test funds from Quetzal
       </button>` : ''}
 
       <details id="claim-details" style="margin-bottom:10px" ${hasClaim ? 'open' : ''}>
@@ -1824,8 +1825,7 @@ function bindDashboard() {
   document.getElementById("btn-settings")?.addEventListener("click", () => setState({ screen: "settings" }));
   document.getElementById("btn-network-toggle")?.addEventListener("click", () => setState({ screen: "settings" }));
 
-  // Claim Fee Juice from Nethermind — direct API call to the dev faucet
-  // (same endpoint the iOS wallet uses, no captcha required).
+  // Claim test funds from Quetzal — single synchronous drip (fee juice + tUSDC + tETH)
   document.getElementById("btn-claim-nethermind")?.addEventListener("click", async () => {
     const account = getActiveAccount();
     if (!account?.address) {
@@ -1849,71 +1849,22 @@ function bindDashboard() {
     };
 
     try {
-      setStatus("Requesting from Nethermind...", "var(--copper)");
-      const res = await fetch("https://aztec-faucet.dev-nethermind.xyz/api/drip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          address: account.address,
-          asset: "fee-juice",
-          network: store.network,
-        }),
-      });
-      if (!res.ok) {
-        let errMsg = `HTTP ${res.status}`;
-        try { const j = await res.json(); if (j?.error) errMsg = j.error; } catch {}
-        throw new Error(errMsg);
-      }
-      const json = await res.json();
-      if (!json?.success) throw new Error(json?.error || "Faucet rejected the request");
-
-      // claimData may be populated immediately (if the bridge already has
-      // a ready message) or we may need to poll /api/claim/[id].
-      let claimData = json.claimData;
-      const claimId = json.claimId;
-
-      if (!claimData && claimId) {
-        setStatus("Bridging L1 → L2...", "var(--copper)");
-        // Poll /api/claim/[id] until status="ready" or timeout (3 min).
-        const deadline = Date.now() + 3 * 60 * 1000;
-        while (Date.now() < deadline) {
-          await new Promise(r => setTimeout(r, 5000));
-          try {
-            const pr = await fetch(`https://aztec-faucet.dev-nethermind.xyz/api/claim/${encodeURIComponent(claimId)}`);
-            if (pr.ok) {
-              const pj = await pr.json();
-              if (pj?.status === "ready" && pj?.claimData) { claimData = pj.claimData; break; }
-              if (pj?.elapsedSeconds != null) setStatus(`Bridging... ${pj.elapsedSeconds}s`, "var(--copper)");
-            }
-          } catch (e) { /* retry */ }
-        }
-      }
-
-      if (!claimData) throw new Error("Claim didn't become ready in 3 min — try again.");
-
-      // Normalize: API uses claimSecretHex, offscreen expects claimSecret.
-      const normalized = {
-        claimSecret: claimData.claimSecretHex || claimData.claimSecret,
-        messageLeafIndex: String(claimData.messageLeafIndex),
-        claimAmount: String(claimData.claimAmount),
-      };
-      store.pendingClaim = normalized;
-      await chrome.storage.local.set({ celari_pending_claim: normalized });
+      setStatus("Requesting from Quetzal…", "var(--copper)");
+      const { claim, tUSDC, tETH } = await requestQuetzalDrip(account.address);
+      store.pendingClaim = claim;
+      await chrome.storage.local.set({ celari_pending_claim: claim });
+      const extras = [];
+      if (tUSDC) extras.push(`${(Number(tUSDC) / 1e6).toFixed(2)} tUSDC`);
+      if (tETH) extras.push(`${(Number(tETH) / 1e18).toFixed(3)} tETH`);
       setStatus("✓ Claim ready — click Deploy", "var(--green)");
-      showToast("Fee Juice claim ready", "success");
-      // Re-render so the deploy banner shows the new claim state
+      showToast(extras.length ? `Got Fee Juice + ${extras.join(" + ")}` : "Fee Juice claim ready", "success");
       setState({});
     } catch (e) {
-      btn.disabled = false;
-      btn.style.opacity = "1";
-      btn.style.cursor = "pointer";
-      btn.textContent = origText;
-      const msg = sanitizeError(e);
-      if (resultEl) {
-        resultEl.style.color = "var(--red)";
-        resultEl.textContent = `✗ ${msg}`;
-      }
-      showToast(`Faucet: ${msg}`, "error");
+      setStatus(e?.message || "Faucet request failed", "var(--c-down)");
+      showToast(e?.message || "Faucet request failed", "error");
+    } finally {
+      const b = document.getElementById("btn-claim-nethermind");
+      if (b) { b.disabled = false; b.style.opacity = "1"; b.style.cursor = "pointer"; }
     }
   });
 

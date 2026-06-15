@@ -253,43 +253,4 @@ window.addEventListener("pagehide", (event) => {
   } catch {}
 });
 
-// ─── Nethermind Fee Juice Faucet — Address auto-fill ─────
-// The popup calls the Nethermind API directly to drip + poll for claim
-// readiness, so this content script only needs to auto-fill the address
-// input when the user opens the faucet page manually. No inline script
-// injection (faucet's CSP blocks it).
-if (location.hostname === "aztec-faucet.nethermind.io") {
-  try {
-    chrome.storage.local.get("celari_faucet_pending", (result) => {
-      try {
-        const req = result?.celari_faucet_pending;
-        if (!req?.address) return;
-        const fill = () => {
-          const inputs = document.querySelectorAll("input");
-          for (const el of inputs) {
-            const ph = (el.placeholder || "").toLowerCase();
-            const nm = (el.name || "").toLowerCase();
-            if ((ph.includes("aztec") || ph.includes("address") || nm.includes("address")) && !el.value) {
-              const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value")?.set;
-              setter?.call(el, req.address);
-              el.dispatchEvent(new Event("input", { bubbles: true }));
-              el.dispatchEvent(new Event("change", { bubbles: true }));
-              return true;
-            }
-          }
-          return false;
-        };
-        let tries = 0;
-        const tick = () => {
-          if (fill() || ++tries > 20) return;
-          setTimeout(tick, 300);
-        };
-        setTimeout(tick, 200);
-      } catch {}
-    });
-  } catch (e) {
-    if (_celariIsCtxInvalidError(e)) _celariCtxInvalid = true;
-  }
-}
-
 console.log("[Celari] Content script loaded");
