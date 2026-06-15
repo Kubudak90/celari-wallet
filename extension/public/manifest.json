@@ -46,8 +46,7 @@
   "host_permissions": [
     "https://*.aztec-labs.com/*",
     "https://*.aztec.network/*",
-    "https://aztec-faucet.nethermind.io/*",
-    "https://aztec-faucet.dev-nethermind.xyz/*",
+    "https://faucet.quetzaldex.xyz/*",
     "wss://relay.walletconnect.com/*",
     "wss://relay.walletconnect.org/*"
   ],
