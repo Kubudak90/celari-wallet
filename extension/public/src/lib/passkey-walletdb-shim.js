@@ -58,5 +58,34 @@ export function installPasskeyWalletDbShim(wallet, accountWallets) {
     }
     return orig(address);
   };
+
+  // Option C — auth-witness fix. The base EmbeddedWallet's gas-estimation
+  // (simulateViaEntrypoint) builds a STUB account via
+  // accountContracts.createStubAccount(completeAddress, type) (embedded_wallet.ts:263).
+  // For our synthetic "ecdsasecp256r1" type that yields the ECDSA stub, whose
+  // auth-witness provider returns an EMPTY witness — but the CelariPasskey
+  // entrypoint circuit reads a 64-byte witness via get_auth_witness_oracle, so
+  // ANY authenticated tx (dApp orders, transfers) fails with
+  // "Foreign call return value does not match expected size. Expected 64 but got 0".
+  // Fix: for our own (passkey) addresses, return the REAL account (resolved via the
+  // already-installed getAccountFromAddress override) which supplies the real P256
+  // auth witness. Non-Celari addresses fall through to the original stub.
+  const ac = wallet.accountContracts;
+  if (ac && typeof ac.createStubAccount === "function") {
+    const origCreateStub = ac.createStubAccount.bind(ac);
+    ac.createStubAccount = async function (completeAddress, type) {
+      const addr =
+        completeAddress && completeAddress.address && typeof completeAddress.address.toString === "function"
+          ? completeAddress.address.toString()
+          : completeAddress && typeof completeAddress.toString === "function"
+            ? completeAddress.toString()
+            : null;
+      if (addr && accountWallets.has(addr)) {
+        return await wallet.getAccountFromAddress(completeAddress.address);
+      }
+      return origCreateStub(completeAddress, type);
+    };
+  }
+
   return wallet;
 }
