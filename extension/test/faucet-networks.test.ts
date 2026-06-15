@@ -1,9 +1,9 @@
 import { isFaucetNetwork, FAUCET_NETWORKS } from "../public/src/lib/faucet-networks.js";
 
 describe("faucet-networks", () => {
-  it("enables faucet on testnet and devnet (current behaviour)", () => {
+  it("enables faucet on testnet only", () => {
     expect(isFaucetNetwork("testnet")).toBe(true);
-    expect(isFaucetNetwork("devnet")).toBe(true);
+    expect(isFaucetNetwork("devnet")).toBe(false);
   });
   it("disables faucet on mainnet and local", () => {
     expect(isFaucetNetwork("mainnet")).toBe(false);
@@ -15,6 +15,6 @@ describe("faucet-networks", () => {
     expect(isFaucetNetwork(null)).toBe(false);
   });
   it("exposes the canonical set", () => {
-    expect(FAUCET_NETWORKS).toEqual(["testnet", "devnet"]);
+    expect(FAUCET_NETWORKS).toEqual(["testnet"]);
   });
 });
