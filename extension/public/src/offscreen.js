@@ -52,6 +52,7 @@ const CelariTokenBridgeArtifact = loadContractArtifact(CelariTokenBridgeArtifact
 const BridgedTokenArtifact = loadContractArtifact(BridgedTokenArtifactJson);
 
 import { BRIDGE } from "./lib/bridge-config.js";
+import { FEE_JUICE_ADDRESS } from "./lib/default-tokens.js";
 import { selectExitMode } from "./lib/bridge-exit-select.js";
 import { chooseThreadCount, shouldUseWorkerBackend } from "./lib/thread-count.js";
 
@@ -819,6 +820,28 @@ async function registerAccount(data) {
   accountWallets.set(address, { manager, wallet: acctWallet, secretKey: secretKeyFr, salt: Fr.fromHexString(salt) });
   if (!activeAddress) activeAddress = address;
 
+  // Auto-register senders for private-note discovery. Aztec accounts are NOT
+  // implicit senders, and note discovery is FORWARD-ONLY (the PXE has no
+  // historical re-scan API), so we register as early as possible — here, which
+  // runs at account creation AND on every launch (idempotent). Without this,
+  // the account's own private notes (e.g. public→private conversions, self
+  // transfers) and incoming private transfers from known counterparties are
+  // never discovered, so private balances silently read as zero. All non-fatal.
+  try {
+    await wallet.registerSender(AztecAddress.fromString(address));
+    console.log(`[PXE] Self-registered account as sender for note discovery`);
+  } catch (err) {
+    console.warn(`[PXE] Self-register sender warning (non-fatal): ${err?.message || err}`);
+  }
+  // Known counterparty that may send us private notes: the L2 token bridge.
+  // Cheap + idempotent. (Public faucet mints need no sender — they create no
+  // notes — so the faucet operator is intentionally not registered here.)
+  try {
+    await wallet.registerSender(AztecAddress.fromString(BRIDGE.TOKEN_BRIDGE_ADDRESS));
+  } catch (err) {
+    console.warn(`[PXE] Bridge sender register warning (non-fatal): ${err?.message || err}`);
+  }
+
   console.log(`[PXE] Account registered: ${address.slice(0, 22)}... (total: ${accountWallets.size})`);
   return { address };
 }
@@ -1019,6 +1042,64 @@ async function ensureBalanceAccount() {
   }
 }
 
+// Fee Juice is a PROTOCOL contract — it is NOT discoverable via
+// nodeClient.getContract — so we resolve its canonical instance + artifact from
+// the SDK and register THAT. Lazy-loaded so the artifact JSON isn't parsed
+// unless a Fee Juice balance is actually queried. Returns
+// { instance, contractClass, artifact, address }.
+let _feeJuice = null;
+async function getFeeJuice() {
+  if (_feeJuice) return _feeJuice;
+  const { getCanonicalFeeJuice } = await import("@aztec/protocol-contracts/fee-juice");
+  _feeJuice = getCanonicalFeeJuice();
+  return _feeJuice;
+}
+
+// Query a token's balance using an EXPLICIT artifact, for non-standard tokens
+// (Fee Juice, the bridged token) whose ABI/class differs from the standard
+// Token contract. Registers the contract with the SAME artifact (so no class-id
+// mismatch), reads the public balance, and the private balance only if the ABI
+// exposes balance_of_private (Fee Juice and BridgedToken are public-only).
+// Fully isolated from the standard-Token path in getBalances. Never throws.
+async function queryBalanceViaArtifact(tk, tokenAddr, holderAddr, artifact, canonicalInstance = null) {
+  try {
+    const { contractInstance: existing } = await wallet.getContractMetadata(tokenAddr);
+    if (!existing) {
+      if (canonicalInstance) {
+        // Protocol contract (Fee Juice): register the SDK canonical instance —
+        // it is not returned by nodeClient.getContract.
+        await wallet.registerContract(canonicalInstance, artifact);
+      } else if (nodeClient) {
+        const onChainInstance = await nodeClient.getContract(tokenAddr);
+        if (onChainInstance) await wallet.registerContract(onChainInstance, artifact);
+        else console.warn(`[PXE] Balance: contract ${tk.symbol} not found on-chain`);
+      }
+    }
+    const c = await Contract.at(tokenAddr, artifact, wallet);
+    let publicBalance = 0;
+    let privateBalance = 0;
+    if (c.methods.balance_of_public) {
+      const sim = await c.methods.balance_of_public(holderAddr).simulate({ from: balanceFromAddress });
+      const bal = sim.result !== undefined ? sim.result : sim;
+      publicBalance = Number(bal) / 10 ** tk.decimals;
+    }
+    if (getActiveWallet() && c.methods.balance_of_private) {
+      try {
+        const sim = await c.methods.balance_of_private(holderAddr).simulate({ from: balanceFromAddress });
+        const bal = sim.result !== undefined ? sim.result : sim;
+        privateBalance = Number(bal) / 10 ** tk.decimals;
+      } catch (e) {
+        console.warn(`[PXE] Private balance unavailable for ${tk.symbol}: ${e.message?.slice(0, 80)}`);
+      }
+    }
+    const fmt = (v) => v.toLocaleString("en-US", { maximumFractionDigits: 2 });
+    return { name: tk.name, symbol: tk.symbol, address: tk.address, publicBalance: fmt(publicBalance), privateBalance: fmt(privateBalance), balance: fmt(publicBalance + privateBalance), usdValue: "0.00" };
+  } catch (e) {
+    console.warn(`[PXE] Balance query FAILED for ${tk.symbol} (artifact path): ${e.message?.slice(0, 200)}`);
+    return { name: tk.name, symbol: tk.symbol, address: tk.address, publicBalance: "—", privateBalance: "—", balance: "—", usdValue: "0.00" };
+  }
+}
+
 async function getBalances(data) {
   if (!wallet) throw new Error("PXE not initialized");
 
@@ -1036,6 +1117,23 @@ async function getBalances(data) {
     try {
       const tokenAddr = AztecAddress.fromString(tk.address);
       const addr = AztecAddress.fromString(address);
+
+      // Non-standard-ABI tokens (Fee Juice, bridged token) → isolated artifact
+      // path; the standard Token path below is left untouched.
+      const lcAddr = tk.address.toLowerCase();
+      let specialArtifact = null;
+      let canonicalInstance = null;
+      if (lcAddr === BRIDGE.BRIDGED_TOKEN_ADDRESS.toLowerCase()) {
+        specialArtifact = BridgedTokenArtifact;
+      } else if (lcAddr === FEE_JUICE_ADDRESS.toLowerCase()) {
+        const fj = await getFeeJuice();
+        specialArtifact = fj.artifact;
+        canonicalInstance = fj.instance;
+      }
+      if (specialArtifact) {
+        results.push(await queryBalanceViaArtifact(tk, tokenAddr, addr, specialArtifact, canonicalInstance));
+        continue;
+      }
 
       console.log(`[PXE] Balance: querying ${tk.symbol} at ${tk.address.slice(0, 20)}... for ${address.slice(0, 20)}...`);
 

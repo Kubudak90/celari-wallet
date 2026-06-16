@@ -20,7 +20,8 @@ import * as passkeyCrypto from "../lib/passkey-crypto.js";
 import { detectLegacyPlaintext, validateAccountsArray, purgePending } from "../lib/account-schema.js";
 import { remainingCooldownMs, cooldownMinutes } from "../lib/faucet-cooldown.js";
 import { isFaucetNetwork } from "../lib/faucet-networks.js";
-import { requestQuetzalDrip } from "../lib/quetzal-faucet.js";
+import { requestQuetzalDrip, QUETZAL_KNOWN_TOKENS } from "../lib/quetzal-faucet.js";
+import { DEFAULT_KNOWN_TOKENS } from "../lib/default-tokens.js";
 import { createLogBuffer } from "../lib/log-buffer.js";
 import { verificationFingerprint } from "../lib/fingerprint.js";
 import { isPanelContext } from "../lib/panel-context.js";
@@ -715,6 +716,10 @@ async function init() {
       store.tokens = getTokenList();
       store.activities = getEmptyActivities();
       fetchRealBalances();
+      // Surface the wallet's default known tokens (Quetzal tokens + Fee Juice +
+      // bridged) for users who acquired them before this build; re-fetch once if
+      // anything was newly seeded.
+      seedDefaultTokensOnce().then((seeded) => { if (seeded) fetchRealBalances(); });
     }
   }
 
@@ -834,6 +839,86 @@ async function fetchRealBalances() {
     }
   } catch (e) {
     console.log("[Celari] Balance fetch unavailable:", e.message || e);
+  }
+}
+
+// Register faucet-dripped tokens (e.g. tUSDC/tETH) into the persisted
+// custom-token list so their balances appear. We route through customTokens
+// because (a) it is the only token list persisted across popup reloads, and
+// (b) the tokens only become visible after the account is deployed (the Quetzal
+// claim is consumed at deploy), which usually happens in a later popup session.
+// Idempotent: dedupes by contract address (case-insensitive). If the faucet
+// redeploys a token, the new address replaces the stale same-symbol entry so we
+// don't leave a duplicate. Returns true if anything changed.
+async function registerFaucetTokens(tokens) {
+  if (!Array.isArray(tokens) || tokens.length === 0) return false;
+  if (!Array.isArray(store.customTokens)) store.customTokens = [];
+  let changed = false;
+  for (const t of tokens) {
+    if (!t || !t.address || !t.symbol) continue;
+    const addrLc = String(t.address).toLowerCase();
+    const already = store.customTokens.some(
+      (ct) => ct.contractAddress && ct.contractAddress.toLowerCase() === addrLc,
+    );
+    if (already) continue;
+    // Drop a stale entry with the same symbol but a different (old) address so a
+    // faucet token redeploy doesn't leave two "tUSDC" rows.
+    store.customTokens = store.customTokens.filter(
+      (ct) => !(ct.symbol === t.symbol && ct.contractAddress && ct.contractAddress.toLowerCase() !== addrLc),
+    );
+    store.customTokens.push({
+      contractAddress: String(t.address),
+      name: t.name || t.symbol,
+      symbol: t.symbol,
+      decimals: typeof t.decimals === "number" ? t.decimals : 18,
+    });
+    changed = true;
+  }
+  // Await the persist so callers can only mark a seed complete AFTER the tokens
+  // are durably stored — otherwise a failed write + a set "seeded" flag would
+  // lose the tokens permanently.
+  if (changed) {
+    await chrome.storage.local.set({ celari_custom_tokens: store.customTokens });
+  }
+  return changed;
+}
+
+// Seed the wallet's default known tokens (Quetzal faucet tokens + Fee Juice +
+// bridged token) so every account shows them without a manual add, and so users
+// who acquired them before this build see balances without re-claiming. Keyed on
+// a signature of the KNOWN token addresses (not a plain boolean): if the user
+// merely removes a token, the signature is unchanged so it is NOT re-added; but
+// if a new build bumps DEFAULT_KNOWN_TOKENS (e.g. a faucet token redeploy), the
+// signature changes and the new addresses are seeded (replacing stale same-symbol
+// rows via registerFaucetTokens). Future faucet claims still register tokens
+// directly in the Quetzal claim handler. Returns true if it seeded this time.
+async function seedDefaultTokensOnce() {
+  try {
+    const signature = DEFAULT_KNOWN_TOKENS
+      .map((t) => `${t.symbol}:${String(t.address).toLowerCase()}`)
+      .sort()
+      .join("|");
+    const { celari_default_tokens_seed_sig, celari_quetzal_tokens_seed_sig } =
+      await chrome.storage.local.get(["celari_default_tokens_seed_sig", "celari_quetzal_tokens_seed_sig"]);
+    if (celari_default_tokens_seed_sig === signature) return false;
+    // Migration: if the user was already seeded under the OLD Quetzal-only key,
+    // don't re-add a Quetzal token they may have deliberately removed — only
+    // seed the newly-introduced defaults (Fee Juice + bridged). Fresh users get
+    // the full set.
+    let toSeed = DEFAULT_KNOWN_TOKENS;
+    if (celari_quetzal_tokens_seed_sig) {
+      const oldSymbols = new Set(QUETZAL_KNOWN_TOKENS.map((t) => t.symbol));
+      toSeed = DEFAULT_KNOWN_TOKENS.filter((t) => !oldSymbols.has(t.symbol));
+    }
+    const seeded = await registerFaucetTokens(
+      toSeed.map((t) => ({ symbol: t.symbol, name: t.name, address: t.address, decimals: t.decimals })),
+    );
+    // Only record the signature after the seed persisted (registerFaucetTokens
+    // awaited its write; a throw above skips this and we retry next launch).
+    await chrome.storage.local.set({ celari_default_tokens_seed_sig: signature });
+    return seeded;
+  } catch (e) {
+    return false;
   }
 }
 
@@ -1850,14 +1935,20 @@ function bindDashboard() {
 
     try {
       setStatus("Requesting from Quetzal…", "var(--copper)");
-      const { claim, tUSDC, tETH } = await requestQuetzalDrip(account.address);
+      const { claim, tUSDC, tETH, tokens } = await requestQuetzalDrip(account.address);
       store.pendingClaim = claim;
       await chrome.storage.local.set({ celari_pending_claim: claim });
+      // Register the dripped tokens so their balances appear once deployed.
+      await registerFaucetTokens(tokens);
       const extras = [];
       if (tUSDC) extras.push(`${(Number(tUSDC) / 1e6).toFixed(2)} tUSDC`);
       if (tETH) extras.push(`${(Number(tETH) / 1e18).toFixed(3)} tETH`);
       setStatus("✓ Claim ready — click Deploy", "var(--green)");
       showToast(extras.length ? `Got Fee Juice + ${extras.join(" + ")}` : "Fee Juice claim ready", "success");
+      // Refresh now (no-op until the account is deployed; the claim is consumed
+      // at deploy). After deploy, the persisted tokens are queried on dashboard
+      // load via fetchRealBalances at init.
+      fetchRealBalances();
       setState({});
     } catch (e) {
       setStatus(e?.message || "Faucet request failed", "var(--c-down)");
