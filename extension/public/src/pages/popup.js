@@ -26,7 +26,7 @@ import { createLogBuffer } from "../lib/log-buffer.js";
 import { verificationFingerprint } from "../lib/fingerprint.js";
 import { isPanelContext } from "../lib/panel-context.js";
 import { hashToEmojiArray, hashToEmoji } from "../lib/emoji-verification.js";
-import { clearSigningKeys } from "../lib/signing-key-store.js";
+import { clearSigningKeys, importNonExtractableSigningKey, pkcs8BytesFromBase64, storeSigningKey } from "../lib/signing-key-store.js";
 
 // ─── Security: HTML Escaping ──────────────────────────
 
@@ -325,11 +325,18 @@ async function unlockExtension() {
     });
     const secretKey = await passkeyCrypto.decryptWithKek(kek, account.encryptedSecret);
     const privateKeyPkcs8 = await passkeyCrypto.decryptWithKek(kek, account.encryptedPrivateKey);
-    // Push plaintext to chrome.storage.session so background's existing read
-    // path is preserved. Lock will wipe this.
+    // Signing key → NON-EXTRACTABLE CryptoKey in the IndexedDB store (cannot be
+    // re-exported, survives SW/offscreen restart). The plaintext PKCS8 is NEVER
+    // written to chrome.storage.session (audit C1). Must complete BEFORE we mark
+    // the wallet unlocked so the offscreen provider can load it by account address.
+    {
+      const signingKey = await importNonExtractableSigningKey(pkcs8BytesFromBase64(privateKeyPkcs8));
+      await storeSigningKey(account.address, signingKey);
+    }
+    // Only the Aztec account secret stays in session (needed by the PXE; not the
+    // P256 signing key). Lock wipes this + the IDB key.
     await chrome.storage.session.set({
       celari_secret: secretKey,
-      celari_private_key: privateKeyPkcs8,
     });
     store.locked = false;
     store.unlockError = null;
@@ -1464,8 +1471,11 @@ async function handleCreatePasskey() {
     await chrome.storage.local.set({ celari_accounts: store.accounts });
     chrome.runtime.sendMessage({ type: "SAVE_ACCOUNT", account });
 
-    // 6. Persist signing keys + secret in session storage so the Deploy banner can
-    //    reuse them (same secret/salt → same address on deploy).
+    // 6. Persist secret + the deploy-window keys cache (celari_keys, used by the
+    //    Deploy banner retry to keep the same secret/salt → same address). The
+    //    P256 signing key is persisted as a NON-EXTRACTABLE CryptoKey via the
+    //    PXE_REGISTER_ACCOUNT call below (offscreen → IndexedDB); it is NOT written
+    //    to chrome.storage.session as plaintext (audit C1).
     await chrome.storage.session.set({
       celari_keys: {
         publicKeyX: keys.pubKeyX,
@@ -1474,7 +1484,6 @@ async function handleCreatePasskey() {
         credentialId: credential.id,
       },
       celari_secret: computed.secretKey,
-      celari_private_key: keys.privateKeyPkcs8,
     });
 
     // 7. Register the account with the offscreen PXE so that getAccounts
@@ -1559,12 +1568,11 @@ function applyDeployInfo(info) {
     blockNumber: info.blockNumber,
     deployedAt: info.deployedAt,
   };
-  // Store sensitive keys ONLY in session storage (cleared when browser closes)
+  // Aztec secret only in session; the P256 signing key is persisted as a
+  // NON-EXTRACTABLE CryptoKey via the PXE_REGISTER_ACCOUNT call below
+  // (offscreen → IndexedDB), NOT as session plaintext (audit C1).
   if (info.secretKey) {
     chrome.storage.session.set({ celari_secret: info.secretKey });
-  }
-  if (info.privateKeyPkcs8) {
-    chrome.storage.session.set({ celari_private_key: info.privateKeyPkcs8 });
   }
   // Register account with client-side PXE (offscreen document)
   if (info.secretKey && info.salt && info.publicKeyX && info.publicKeyY && info.privateKeyPkcs8) {
@@ -3657,12 +3665,17 @@ function bindBackup() {
 
     try {
       const account = getActiveAccount();
-      // Collect sensitive keys from session storage
-      const sessionData = await chrome.storage.session.get(["celari_secret", "celari_private_key"]);
-
-      // Plaintext keys only live in chrome.storage.session while the popup is
-      // unlocked. There is no longer an account.secretKey fallback (encrypted
-      // schema removed it). If the user is locked, the backup must fail loud.
+      // The Aztec secret stays in session while unlocked. The P256 signing key is
+      // NO LONGER kept as session plaintext (audit C1) — re-derive it for the
+      // backup by decrypting the at-rest blob with a fresh passkey-PRF unlock.
+      const sessionData = await chrome.storage.session.get(["celari_secret"]);
+      let backupPrivateKeyPkcs8;
+      try {
+        const bkek = await passkeyCrypto.deriveKek({ credentialId: account.credentialId, prfSaltBase64: account.prfSalt });
+        backupPrivateKeyPkcs8 = await passkeyCrypto.decryptWithKek(bkek, account.encryptedPrivateKey);
+      } catch (e) {
+        throw new Error("Could not access the signing key for backup — confirm the passkey prompt and try again.");
+      }
       const backupData = {
         version: 1,
         timestamp: new Date().toISOString(),
@@ -3672,7 +3685,7 @@ function bindBackup() {
         publicKeyY: account.publicKeyY,
         secretKey: sessionData.celari_secret,
         salt: account.salt,
-        privateKeyPkcs8: sessionData.celari_private_key,
+        privateKeyPkcs8: backupPrivateKeyPkcs8,
         network: store.network,
         credentialId: account.credentialId,
       };
@@ -3874,9 +3887,10 @@ async function handleRestoreDecrypt() {
     await chrome.storage.local.set({ celari_accounts: store.accounts });
     chrome.runtime.sendMessage({ type: "SAVE_ACCOUNT", account });
 
-    // Store sensitive keys in session storage
+    // Only the Aztec secret goes to session. The P256 signing key is persisted as
+    // a NON-EXTRACTABLE CryptoKey via the PXE_REGISTER_ACCOUNT call below
+    // (offscreen → IndexedDB), NOT as session plaintext (audit C1).
     if (data.secretKey) await chrome.storage.session.set({ celari_secret: data.secretKey });
-    if (data.privateKeyPkcs8) await chrome.storage.session.set({ celari_private_key: data.privateKeyPkcs8 });
 
     // Register with PXE
     if (data.secretKey && data.salt && data.privateKeyPkcs8) {

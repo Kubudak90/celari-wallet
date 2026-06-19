@@ -959,8 +959,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return;
           }
           const secret = sessionR?.celari_secret;
-          const privateKey = sessionR?.celari_private_key;
-          if (!secret || !privateKey) {
+          // Legacy field — the P256 signing key now lives in the IndexedDB
+          // signing-key-store (non-extractable), not in session. The offscreen
+          // provider loads it by address, so the bundle no longer needs to carry
+          // it. Gate "unlocked" on the Aztec secret alone.
+          const privateKey = sessionR?.celari_private_key || null;
+          if (!secret) {
             sendResponse({ success: false, error: "Wallet locked", code: "WALLET_LOCKED" });
             return;
           }
@@ -1294,13 +1298,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case "GET_BACKUP_DATA": {
-      // Collect sensitive key data from session storage for encrypted backup
-      chrome.storage.session.get(["celari_keys", "celari_secret", "celari_private_key"], (session) => {
+      // Legacy/unused (live backup is popup-driven and re-derives the key via PRF).
+      // The P256 signing key is no longer kept in session, so it is not collected
+      // here (audit C1); restore relies on account.encryptedPrivateKey + unlock.
+      chrome.storage.session.get(["celari_keys", "celari_secret"], (session) => {
         const backupData = {
           accounts: state.accounts,
           keys: session.celari_keys || null,
           secret: session.celari_secret || null,
-          privateKey: session.celari_private_key || null,
+          privateKey: null,
           network: state.network,
           nodeUrl: state.nodeUrl,
           exportedAt: new Date().toISOString(),
@@ -1329,7 +1335,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const sessionData = {};
       if (imported.keys) sessionData.celari_keys = imported.keys;
       if (imported.secret) sessionData.celari_secret = imported.secret;
-      if (imported.privateKey) sessionData.celari_private_key = imported.privateKey;
+      // The P256 signing key is NOT restored to session plaintext (audit C1);
+      // the registered account is signed for via the IndexedDB store after unlock.
       if (Object.keys(sessionData).length) chrome.storage.session.set(sessionData);
       // Register imported accounts with PXE
       for (const acc of imported.accounts) {
@@ -1589,9 +1596,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 if (result.secretKey) {
                   chrome.storage.session.set({ celari_secret: result.secretKey });
                 }
-                if (deployData.privateKeyPkcs8) {
-                  chrome.storage.session.set({ celari_private_key: deployData.privateKeyPkcs8 });
-                }
+                // The P256 signing key is persisted as a NON-EXTRACTABLE CryptoKey
+                // by the offscreen deploy (deployAccountClientSide → IndexedDB);
+                // it is NOT written to session as plaintext (audit C1).
               }
               sendResponse({ success: true, ...result });
             })
@@ -1832,20 +1839,22 @@ async function initPXEAndAccounts() {
       .then(async (res) => {
         console.log("PXE initialized:", res);
 
-        // Retrieve session-only keys (available in current browser session only)
+        // The Aztec secret is session-scoped; the P256 signing key now lives in
+        // the IndexedDB signing-key-store (offscreen loads it by address), so it
+        // is no longer read from session here (audit C1).
         let sessionSecret = null;
-        let sessionPrivateKey = null;
         try {
-          const sessionData = await chrome.storage.session.get(["celari_secret", "celari_private_key"]);
+          const sessionData = await chrome.storage.session.get(["celari_secret"]);
           sessionSecret = sessionData.celari_secret || null;
-          sessionPrivateKey = sessionData.celari_private_key || null;
         } catch {}
 
         for (const account of state.accounts) {
           // Determine where the secret key comes from: local storage (deployed)
           // or session storage (just created, not yet deployed).
           const secretKey = account.secretKey || sessionSecret;
-          const privateKey = account.privateKeyPkcs8 || sessionPrivateKey || "";
+          // Empty → offscreen registerAccount loads the non-extractable signing
+          // key from the IndexedDB store (populated at unlock/deploy/restore).
+          const privateKey = account.privateKeyPkcs8 || "";
 
           if (secretKey && account.salt && account.publicKeyX) {
             try {
