@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Celari — signing-key-store E2E (real browser IndexedDB + WebCrypto)</title>
+  <style>
+    body { font: 13px ui-monospace, monospace; background: #0a0a0a; color: #e0d5c8; padding: 24px; }
+    .pass { color: #4caf50; } .fail { color: #f44336; } h1 { color: #c4956a; font-size: 15px; }
+    li { margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <h1>signing-key-store E2E</h1>
+  <div id="summary">running…</div>
+  <ul id="out"></ul>
+  <script type="module">
+    // Verifies the C1 signing-key-store in a REAL browser: native WebCrypto +
+    // native IndexedDB (the layer the Node unit test had to mock). Exercises the
+    // exact cross-context contract: import non-extractable -> persist to IDB ->
+    // load back (as the offscreen provider does) -> sign -> verify.
+    import {
+      importNonExtractableSigningKey, pkcs8BytesFromBase64, signP256,
+      storeSigningKey, loadSigningKey, clearSigningKeys,
+    } from "/public/src/lib/signing-key-store.js";
+
+    const results = [];
+    const ok = (name) => results.push({ name, pass: true });
+    const bad = (name, err) => results.push({ name, pass: false, err: String(err) });
+    async function check(name, fn) { try { await fn(); ok(name); } catch (e) { bad(name, e?.message || e); } }
+
+    const HALF_N = [0x7F,0xFF,0xFF,0xFF,0x80,0x00,0x00,0x00,0x7F,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xDE,0x73,0x7D,0x56,0xD3,0x8B,0xCF,0x42,0x79,0xDC,0xE5,0x61,0x7E,0x31,0x92,0xA8];
+    const isLowS = (sig) => { const s = sig.slice(32,64); for (let i=0;i<32;i++){ if(s[i]>HALF_N[i])return false; if(s[i]<HALF_N[i])return true;} return true; };
+
+    async function genPkcs8() {
+      const kp = await crypto.subtle.generateKey({ name:"ECDSA", namedCurve:"P-256" }, true, ["sign","verify"]);
+      const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", kp.privateKey));
+      return { kp, pkcs8, b64: btoa(String.fromCharCode(...pkcs8)) };
+    }
+
+    await clearSigningKeys();
+    const ADDR = "0x" + "ab".repeat(16);
+
+    await check("import is non-extractable (export rejected)", async () => {
+      const { pkcs8 } = await genPkcs8();
+      const key = await importNonExtractableSigningKey(pkcs8);
+      if (key.extractable !== false) throw new Error("extractable !== false");
+      let threw = false;
+      try { await crypto.subtle.exportKey("pkcs8", key); } catch { threw = true; }
+      if (!threw) throw new Error("exportKey did NOT throw");
+    });
+
+    let pub; // for cross-step verification
+    await check("IDB round-trip: store -> load returns a usable CryptoKey", async () => {
+      const { kp, pkcs8 } = await genPkcs8();
+      pub = kp.publicKey;
+      const key = await importNonExtractableSigningKey(pkcs8);
+      await storeSigningKey(ADDR, key);
+      const loaded = await loadSigningKey(ADDR);
+      if (!loaded) throw new Error("loadSigningKey returned null");
+      if (loaded.type !== "private") throw new Error("loaded key is not a private CryptoKey");
+      if (loaded.extractable !== false) throw new Error("loaded key became extractable");
+      window.__loadedKey = loaded;
+    });
+
+    await check("sign with LOADED key verifies against the public key + is low-s", async () => {
+      const loaded = await loadSigningKey(ADDR);
+      const msg = new Uint8Array(32); for (let i=0;i<32;i++) msg[i] = (i*9+1)&0xff;
+      const sig = await signP256(loaded, msg);
+      if (sig.length !== 64) throw new Error("sig length != 64");
+      const valid = await crypto.subtle.verify({ name:"ECDSA", hash:"SHA-256" }, pub, sig, msg);
+      if (!valid) throw new Error("signature failed verification");
+      if (!isLowS(sig)) throw new Error("signature is not low-s");
+    });
+
+    await check("pkcs8BytesFromBase64 round-trips in-browser (atob path)", async () => {
+      const { pkcs8, b64 } = await genPkcs8();
+      const back = pkcs8BytesFromBase64(b64);
+      if (back.length !== pkcs8.length) throw new Error("length mismatch");
+      for (let i=0;i<pkcs8.length;i++) if (back[i]!==pkcs8[i]) throw new Error("byte mismatch at "+i);
+    });
+
+    await check("clearSigningKeys wipes the store (lock behavior)", async () => {
+      await clearSigningKeys();
+      const after = await loadSigningKey(ADDR);
+      if (after !== null) throw new Error("key still present after clear");
+    });
+
+    const failed = results.filter(r => !r.pass);
+    window.__e2eResults = { total: results.length, failed: failed.length, results };
+    document.getElementById("summary").innerHTML =
+      failed.length === 0
+        ? `<span class="pass">ALL ${results.length} PASS</span>`
+        : `<span class="fail">${failed.length}/${results.length} FAILED</span>`;
+    document.getElementById("out").innerHTML = results.map(r =>
+      `<li class="${r.pass?'pass':'fail'}">${r.pass?'✓':'✗'} ${r.name}${r.err?(' — '+r.err):''}</li>`).join("");
+  </script>
+</body>
+</html>
