@@ -17,6 +17,11 @@ export interface RecoveryData {
   }[];
   createdAt: number;
   threshold: number;
+  // Secret returned ONLY to the device that initiated the recovery. The
+  // aggregated guardian keys are released by /api/status only when this token is
+  // presented, so a single guardian (who holds only their own approval token)
+  // can never harvest the other guardians' secrets and unilaterally take over.
+  initiatorToken: string;
 }
 
 function key(id: string) {
@@ -29,4 +34,22 @@ export async function getRecovery(id: string): Promise<RecoveryData | null> {
 
 export async function setRecovery(id: string, data: RecoveryData): Promise<void> {
   await redis.set(key(id), data, { ex: TTL_SECONDS });
+}
+
+/**
+ * Fixed-window rate limiter backed by Redis INCR. Returns true if the caller is
+ * allowed (count within `limit` over `windowSeconds`), false if throttled.
+ * Used to stop unauthenticated abuse of /api/initiate (spam, email/quota burn).
+ */
+export async function rateLimit(
+  bucket: string,
+  limit: number,
+  windowSeconds: number,
+): Promise<boolean> {
+  const k = `rl:${bucket}`;
+  const count = await redis.incr(k);
+  if (count === 1) {
+    await redis.expire(k, windowSeconds);
+  }
+  return count <= limit;
 }

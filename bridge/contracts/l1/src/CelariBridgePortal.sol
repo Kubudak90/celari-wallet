@@ -85,6 +85,13 @@ contract CelariBridgePortal {
     mapping(address => bool) public supportedTokens;
     address[] public tokenList;
 
+    // Per-token locked-balance accounting. A withdrawal of token X can never
+    // release more than has been deposited for token X. This is the authoritative
+    // guard against the L1<->L2 token-decoupling drain: even if a (buggy or
+    // malicious) L2 message names an arbitrary l1_token/amount, the portal will
+    // not pay out funds that were never deposited for that specific token.
+    mapping(address => uint256) public lockedBalances;
+
     // Wrapped ETH address (Sepolia WETH)
     address public weth;
 
@@ -129,6 +136,7 @@ contract CelariBridgePortal {
     error ZeroAmount();
     error ZeroAddress();
     error ETHTransferFailed();
+    error InsufficientLockedBalance(address token, uint256 requested, uint256 available);
 
     // ─── Modifiers ───────────────────────────────────
 
@@ -234,6 +242,7 @@ contract CelariBridgePortal {
 
         // Transfer tokens from sender to this portal (lock them)
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        lockedBalances[token] += amount;
 
         // Compute content hash: sha256(token, amount, to, secretHash)
         bytes32 contentHash = _computeDepositContentHash(
@@ -280,6 +289,7 @@ contract CelariBridgePortal {
 
         // Transfer and lock tokens
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        lockedBalances[token] += amount;
 
         // For private deposits, 'to' is zero (recipient determined by secret)
         bytes32 contentHash = _computeDepositContentHash(
@@ -325,6 +335,7 @@ contract CelariBridgePortal {
 
         // Wrap ETH to WETH
         IWETH(weth).deposit{value: msg.value}();
+        lockedBalances[weth] += msg.value;
 
         // Compute content hash using WETH as the token
         bytes32 contentHash = _computeDepositContentHash(
@@ -393,6 +404,14 @@ contract CelariBridgePortal {
             leafIndex,
             path
         );
+
+        // Authoritative per-token accounting: never release more of `token` than
+        // was actually deposited for it. Stops the burn-cheap-L2 / drain-pooled-L1
+        // attack regardless of what the (rollup-proven) message claims.
+        // Decrement BEFORE the external transfer (checks-effects-interactions).
+        uint256 available = lockedBalances[token];
+        if (amount > available) revert InsufficientLockedBalance(token, amount, available);
+        lockedBalances[token] = available - amount;
 
         // Release locked tokens to recipient
         if (token == weth) {

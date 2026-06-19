@@ -27,6 +27,10 @@ import { SingleKeyAccountContract } from "@aztec/accounts/single_key";
 
 const AZTEC_NODE_URL = process.env.AZTEC_NODE_URL || "http://localhost:8080";
 const PORTAL_ADDRESS = process.env.PORTAL_ADDRESS;
+// The single canonical L1 ERC-20 (0x-prefixed) this bridge is bound to. The L2
+// contract asserts every claim/exit l1_token against this, so the burned L2
+// asset is permanently bound to one L1 token (closes the cross-token drain).
+const L1_TOKEN = process.env.L1_TOKEN;
 const DEPLOYER_SECRET_KEY = process.env.DEPLOYER_SECRET_KEY;
 
 // ─── Artifact paths ──────────────────────────────────
@@ -50,6 +54,12 @@ async function main() {
   if (!PORTAL_ADDRESS) {
     console.error("Error: PORTAL_ADDRESS environment variable required");
     console.error("  Deploy L1 contracts first: yarn bridge:deploy:l1");
+    process.exit(1);
+  }
+
+  if (!L1_TOKEN) {
+    console.error("Error: L1_TOKEN environment variable required");
+    console.error("  The L1 ERC-20 (0x-prefixed) this bridge is bound to");
     process.exit(1);
   }
 
@@ -158,13 +168,15 @@ async function main() {
   // ─── Step 2: Deploy CelariTokenBridge ────────────
 
   console.log("Step 2: Deploying CelariTokenBridge...");
-  // Convert L1 portal address (hex) to AztecAddress-compatible field
+  // Convert L1 addresses (hex) to AztecAddress-compatible fields
   const portalFr = Fr.fromHexString(PORTAL_ADDRESS.replace("0x", "").padStart(64, "0"));
+  const l1TokenFr = Fr.fromHexString(L1_TOKEN.replace("0x", "").padStart(64, "0"));
   const bridgeDeploy = Contract.deploy(
     wallet,
     CelariTokenBridgeArtifact,
     [
       bridgedTokenAddress,    // token (BridgedToken on L2)
+      l1TokenFr,              // l1_token (canonical L1 ERC-20 this bridge is bound to)
       portalFr,               // portal (CelariBridgePortal on L1)
     ]
   );

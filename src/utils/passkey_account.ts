@@ -3,13 +3,22 @@
  *
  * Bridges WebAuthn passkeys with Aztec's account abstraction.
  *
- * Flow:
- * 1. User creates passkey -> P256 key pair in secure enclave
- * 2. Public key (x, y) -> deployed as CelariPasskeyAccount contract
- * 3. Each transaction -> WebAuthn assertion -> P256 signature -> auth witness
- * 4. Account contract verifies via ecdsa_secp256r1 in ZK
+ * Flow (as shipped — see offscreen.js for the live implementation):
+ * 1. A software P256 key pair is generated in the offscreen document. The
+ *    WebAuthn passkey is used to derive a KEK (PRF) that encrypts this key
+ *    at rest; the passkey itself does NOT sign transactions.
+ * 2. Public key (x, y) -> deployed as CelariPasskeyAccount contract.
+ * 3. Each transaction -> the software P256 key signs the tx hash -> auth witness.
+ *    (Unlock requires a WebAuthn/biometric prompt to decrypt the key, but the
+ *    signature is NOT a per-tx WebAuthn assertion and is not enclave-bound.)
+ * 4. Account contract verifies a bare ecdsa_secp256r1 signature in ZK.
  *
- * No seed phrases. No private key export. Keys synced via iCloud/Google.
+ * ROADMAP: bind signing to the enclave by verifying the WebAuthn assertion
+ * (clientDataJSON + authenticatorData) inside the circuit, so the passkey signs
+ * each tx. Until then, treat this as a software-key wallet with passkey-gated
+ * at-rest encryption — NOT an enclave-signing wallet.
+ *
+ * No seed phrases. Keys synced via iCloud/Google (as encrypted material).
  */
 
 import type { AuthWitnessProvider } from "@aztec/aztec.js/account";

@@ -320,16 +320,21 @@ async function handleWcRequest(method, params) {
     case "aztec_getChainInfo":
       return { chainId: "aztec:testnet", nodeUrl: wallet?.getNodeUrl?.() || "" };
     case "aztec_sendTx":
-    case "aztec_signTransaction": {
-      if (!activeWallet) throw new Error("No active wallet");
-      // Forward to wallet-sdk handleWalletMethod
-      const result = await handleWalletMethod(method === "aztec_sendTx" ? "sendTx" : "proveTx", params);
-      return result;
-    }
+    case "aztec_signTransaction":
     case "aztec_createAuthWit": {
-      if (!activeWallet) throw new Error("No active wallet");
-      const result = await handleWalletMethod("createAuthWit", params);
-      return result;
+      // SECURITY GATE: WalletConnect session_request must NOT silently sign.
+      // The wcClient.on("session_request") handler responds synchronously with
+      // no per-request user approval and no args shown — i.e. a hostile relay or
+      // paired peer could drain funds / mint authwits. Unlike the inpage-provider
+      // write path (which opens a confirm popup via background's pendingSignRequests),
+      // WC has NO approval plumbing yet, so WRITES are refused until that
+      // per-tx approval flow is implemented. Reads below remain allowed.
+      // (The WC feature is currently inert — PXE_WC_INIT is never dispatched —
+      //  but this guard ensures wiring it up later cannot reintroduce a blind-sign.)
+      throw new Error(
+        "WalletConnect write requests require per-transaction approval, which is not yet implemented. " +
+        "Use the in-extension provider (window.celari) for signing, or implement the WC approval popup before enabling.",
+      );
     }
     case "aztec_simulateTx": {
       if (!activeWallet) throw new Error("No active wallet");
@@ -359,14 +364,16 @@ class BrowserP256AuthWitnessProvider {
     }
     // PKCS8 key imported for ECDSA P-256 signing
 
-    // Import P256 key using browser WebCrypto (extractable for debug)
+    // Import P256 key as NON-EXTRACTABLE: the working signing key can only be
+    // used to sign, never re-exported via WebCrypto. (Was extractable=true "for
+    // debug" — a gratuitous key-exfiltration path.)
     let key;
     try {
       key = await crypto.subtle.importKey(
         "pkcs8",
         pkcs8Bytes,
         { name: "ECDSA", namedCurve: "P-256" },
-        true,
+        false,
         ["sign"],
       );
       // Key imported OK
@@ -2265,6 +2272,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           if (!wallet) throw new Error("PXE not initialized");
 
           const { newKeyX, newKeyY, guardianKeyA, guardianKeyB } = msg.data;
+          // 3rd guardian slot (threshold up to 3-of-3). Unused → 0, which can
+          // never match a non-zero stored guardian hash.
+          const guardianKeyC = msg.data.guardianKeyC || "0x0";
 
           reportProgress("Recovery kontrati hazirlaniyor...");
 
@@ -2283,6 +2293,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
               Fr.fromString(newKeyY),
               Fr.fromString(guardianKeyA),
               Fr.fromString(guardianKeyB),
+              Fr.fromString(guardianKeyC),
             )
             .send({ from: acctWallet.getAddress(), fee: { paymentMethod, estimateGas: true, estimatedGasPadding: 0.1 }, wait: { timeout: 600_000 } });
 

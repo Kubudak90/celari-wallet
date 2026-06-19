@@ -20,6 +20,7 @@ import { createServer, IncomingMessage, ServerResponse } from "http";
 import { readFileSync, writeFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { timingSafeEqual } from "node:crypto";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -36,6 +37,18 @@ import { CelariPasskeyAccountContract } from "../src/utils/passkey_account.js";
 
 const PORT = parseInt(process.env.PORT || "3456");
 const NODE_URL = process.env.AZTEC_NODE_URL || "https://rpc.testnet.aztec-labs.com/";
+// Bind to loopback by default. This server generates account keys and can mint
+// tokens; it must NOT be exposed on a public interface without authentication.
+// To expose it, set HOST=0.0.0.0 AND DEPLOY_API_TOKEN explicitly.
+const HOST = process.env.HOST || "127.0.0.1";
+const DEPLOY_API_TOKEN = process.env.DEPLOY_API_TOKEN || "";
+const IS_LOOPBACK = HOST === "127.0.0.1" || HOST === "localhost" || HOST === "::1";
+
+// WARNING: keys are generated server-side and returned to the caller, so the
+// operator necessarily has custody of every account's private key. The proper
+// fix is client-side keygen (the extension generates the key and sends only the
+// public key + salt; the server deploys and returns only the address). Until
+// then, treat this server as trusted infrastructure and never expose it openly.
 
 // --- Shared Wallet (lazy init) -------------------------------------------
 
@@ -324,6 +337,31 @@ function json(req: IncomingMessage, res: ServerResponse, status: number, data: u
   res.end(JSON.stringify(data));
 }
 
+// Gate for mutating endpoints (deploy / transfer / faucet). On a loopback bind a
+// missing token is allowed (local dev); on any exposed bind a matching
+// `Authorization: Bearer <DEPLOY_API_TOKEN>` is mandatory. Returns true if the
+// request may proceed (and has already sent the error response if not).
+function requireAuth(req: IncomingMessage, res: ServerResponse): boolean {
+  if (!DEPLOY_API_TOKEN) {
+    if (IS_LOOPBACK) return true;
+    json(req, res, 503, {
+      error: "Server misconfigured: DEPLOY_API_TOKEN is required when not bound to localhost",
+    });
+    return false;
+  }
+  const header = req.headers["authorization"];
+  const provided =
+    typeof header === "string" && header.startsWith("Bearer ") ? header.slice(7) : "";
+  const a = Buffer.from(provided);
+  const b = Buffer.from(DEPLOY_API_TOKEN);
+  const ok = a.length === b.length && timingSafeEqual(a, b);
+  if (!ok) {
+    json(req, res, 401, { error: "Unauthorized" });
+    return false;
+  }
+  return true;
+}
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve) => {
     let body = "";
@@ -355,6 +393,7 @@ const server = createServer(async (req, res) => {
 
   // Deploy endpoint
   if (url === "/api/deploy" && req.method === "POST") {
+    if (!requireAuth(req, res)) return;
     if (!walletReady) {
       json(req, res, 503, { error: "Server starting, try again in a few seconds" });
       return;
@@ -422,8 +461,9 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  // Transfer endpoint
+  // Transfer endpoint (mints via admin key — must be authenticated)
   if (url === "/api/transfer" && req.method === "POST") {
+    if (!requireAuth(req, res)) return;
     if (!walletReady) {
       json(req, res, 503, { error: "Server starting" });
       return;
@@ -447,8 +487,9 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  // Faucet endpoint
+  // Faucet endpoint (mints via admin key — must be authenticated)
   if (url === "/api/faucet" && req.method === "POST") {
+    if (!requireAuth(req, res)) return;
     if (!walletReady) {
       json(req, res, 503, { error: "Server starting" });
       return;
@@ -484,8 +525,16 @@ const server = createServer(async (req, res) => {
   json(req, res, 404, { error: "Not found" });
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, HOST, () => {
   console.log(`\nCelari Deploy Server`);
-  console.log(`http://localhost:${PORT}`);
-  console.log(`Node: ${NODE_URL}\n`);
+  console.log(`http://${HOST}:${PORT}`);
+  console.log(`Node: ${NODE_URL}`);
+  if (!IS_LOOPBACK && !DEPLOY_API_TOKEN) {
+    console.warn(
+      "\n⚠️  EXPOSED on a non-loopback interface with NO DEPLOY_API_TOKEN set — mutating endpoints will refuse requests. Set DEPLOY_API_TOKEN.",
+    );
+  } else if (!IS_LOOPBACK) {
+    console.warn("\n⚠️  Exposed on a non-loopback interface; deploy/transfer/faucet require a Bearer token.");
+  }
+  console.log("");
 });

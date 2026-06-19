@@ -48,8 +48,16 @@ const COSE_ALG_ES256 = -7;
  * - On Android: Fingerprint or face unlock
  * - On Windows: Windows Hello prompt
  *
- * The P256 key pair is generated and stored in the device's
- * secure enclave. The private key NEVER leaves the device.
+ * IMPORTANT — what this key is (and is NOT):
+ * The WebAuthn credential created here lives in the platform authenticator
+ * (secure enclave / TPM) and is used ONLY to derive an encryption key (via the
+ * PRF extension) that encrypts the wallet's Aztec signing key at rest. It does
+ * NOT sign Aztec transactions directly. The Aztec account's signing key is a
+ * SEPARATE software-generated P256 key (see offscreen.js); it is held in memory
+ * while unlocked and encrypted at rest with the passkey-derived key. Do not
+ * describe the signing key as "never leaving the secure enclave" — it does not
+ * live there. (Binding signing to the enclave requires verifying the WebAuthn
+ * assertion inside the account circuit; tracked as a roadmap item.)
  *
  * @param username - Display name for the credential
  * @returns PasskeyCredential with public key coordinates

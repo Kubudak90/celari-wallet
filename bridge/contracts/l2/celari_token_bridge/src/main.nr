@@ -38,8 +38,8 @@ pub contract CelariTokenBridge {
 
     #[external("public")]
     #[initializer]
-    fn constructor(token: AztecAddress, portal_address: EthAddress) {
-        self.storage.config.initialize(Config { token, portal: portal_address });
+    fn constructor(token: AztecAddress, l1_token: EthAddress, portal_address: EthAddress) {
+        self.storage.config.initialize(Config { token, l1_token, portal: portal_address });
     }
 
     // --- Getters ---
@@ -62,6 +62,7 @@ pub contract CelariTokenBridge {
     ) {
         let content_hash = compute_deposit_content_hash(l1_token, amount, to, secret);
         let config = self.storage.config.read();
+        assert(l1_token.eq(config.l1_token), "l1_token does not match this bridge");
 
         self.context.consume_l1_to_l2_message(
             content_hash,
@@ -90,6 +91,7 @@ pub contract CelariTokenBridge {
             secret,
         );
         let config = self.storage.config.read();
+        assert(l1_token.eq(config.l1_token), "l1_token does not match this bridge");
 
         self.context.consume_l1_to_l2_message(
             content_hash,
@@ -112,6 +114,7 @@ pub contract CelariTokenBridge {
         authwit_nonce: Field,
     ) {
         let config = self.storage.config.read();
+        assert(l1_token.eq(config.l1_token), "l1_token does not match this bridge");
 
         let content_hash = compute_withdraw_content_hash(
             l1_token,
@@ -141,6 +144,7 @@ pub contract CelariTokenBridge {
     ) {
         let config = self.storage.config.read();
         assert(config.token.eq(token), "Token address mismatch");
+        assert(l1_token.eq(config.l1_token), "l1_token does not match this bridge");
 
         let content_hash = compute_withdraw_content_hash(
             l1_token,

@@ -67,7 +67,13 @@ pub contract CelariRecoverableAccount {
         pending_key_y: PublicMutable<Field, Context>,
         // Block number when recovery was initiated (for time-lock)
         recovery_start_block: PublicMutable<Field, Context>,
-        // Recovery nonce prevents replay attacks
+        // Monotonic recovery counter. NOTE: this does NOT prevent guardian-approval
+        // replay - guardian auth here is "present the static shared secret", so a
+        // captured secret is a reusable bearer credential across recovery attempts.
+        // Real replay protection requires per-guardian SIGNATURES over
+        // (account, recovery_nonce, new_key) verified against stored guardian
+        // PUBLIC keys (roadmap), not shared sha256 preimages. Until then, treat
+        // guardian secrets as long-lived bearer tokens.
         recovery_nonce: PublicMutable<Field, Context>,
         // Whether a recovery is currently in progress
         recovery_active: PublicMutable<bool, Context>,
@@ -195,6 +201,7 @@ pub contract CelariRecoverableAccount {
         new_key_y: Field,
         guardian_key_a: Field,
         guardian_key_b: Field,
+        guardian_key_c: Field,
     ) {
         // Guardians must be configured
         assert(self.storage.guardians_configured.read(), "Guardians not configured");
@@ -206,29 +213,32 @@ pub contract CelariRecoverableAccount {
         assert(new_key_x != 0, "New key X is zero");
         assert(new_key_y != 0, "New key Y is zero");
 
-        // Verify guardian keys: compute hash and check against stored hashes.
-        // Using sha256 for hashing (available in both Noir and client-side JS/Swift).
+        // Hash each provided guardian key. Unused slots may be passed as 0; since
+        // every stored guardian hash is non-zero (enforced in setup_guardians),
+        // a 0 slot can never match. sha256 is available in Noir and client JS/Swift.
         let key_a_bytes: [u8; 32] = guardian_key_a.to_be_bytes();
         let key_b_bytes: [u8; 32] = guardian_key_b.to_be_bytes();
-        let hash_a_bytes: [u8; 32] = sha256::digest(key_a_bytes);
-        let hash_b_bytes: [u8; 32] = sha256::digest(key_b_bytes);
-
-        // Truncate sha256 to Field (take first 31 bytes to fit BN254)
-        let hash_a = bytes31_to_field(hash_a_bytes);
-        let hash_b = bytes31_to_field(hash_b_bytes);
+        let key_c_bytes: [u8; 32] = guardian_key_c.to_be_bytes();
+        let hash_a = bytes31_to_field(sha256::digest(key_a_bytes));
+        let hash_b = bytes31_to_field(sha256::digest(key_b_bytes));
+        let hash_c = bytes31_to_field(sha256::digest(key_c_bytes));
 
         let stored_0 = self.storage.guardian_hash_0.read();
         let stored_1 = self.storage.guardian_hash_1.read();
         let stored_2 = self.storage.guardian_hash_2.read();
 
-        // Each provided key must match one stored hash
-        let valid_a = (hash_a == stored_0) | (hash_a == stored_1) | (hash_a == stored_2);
-        let valid_b = (hash_b == stored_0) | (hash_b == stored_1) | (hash_b == stored_2);
-        assert(valid_a, "Guardian key A invalid");
-        assert(valid_b, "Guardian key B invalid");
+        // Count DISTINCT approving guardians: each stored guardian counts at most
+        // once (matched by ANY provided key), so repeating a single key cannot
+        // inflate the count. This ENFORCES the configured threshold (1..3),
+        // fixing the old hardcoded "exactly 2" that silently downgraded a 3-of-3
+        // policy and let any two secret-holders meet the bar regardless of config.
+        let matched_0 = (hash_a == stored_0) | (hash_b == stored_0) | (hash_c == stored_0);
+        let matched_1 = (hash_a == stored_1) | (hash_b == stored_1) | (hash_c == stored_1);
+        let matched_2 = (hash_a == stored_2) | (hash_b == stored_2) | (hash_c == stored_2);
+        let approvals: u64 = (matched_0 as u64) + (matched_1 as u64) + (matched_2 as u64);
 
-        // Keys must be different (can't use same guardian twice)
-        assert(guardian_key_a != guardian_key_b, "Duplicate guardian key");
+        let threshold = self.storage.threshold.read() as u64;
+        assert(approvals >= threshold, "Guardian threshold not met");
 
         // Store pending key
         self.storage.pending_key_x.write(new_key_x);
@@ -257,8 +267,13 @@ pub contract CelariRecoverableAccount {
     #[external("private")]
     #[noinitcheck]
     fn cancel_recovery() {
-        // If this function executes, the caller passed entrypoint
-        // P256 auth, proving they own the account.
+        // Owner-only. A private function can be the top-level entry of an
+        // attacker-built tx (it does NOT implicitly run is_valid_impl), so we
+        // must check the caller explicitly. When the owner invokes this through
+        // their own account entrypoint, msg_sender is self.address; a direct
+        // attacker call is not. Without this, anyone could grief-cancel a
+        // legitimate recovery and reset the 24h time-lock indefinitely.
+        assert(self.context.maybe_msg_sender().unwrap() == self.address, "Only account owner");
 
         // Enqueue public call to reset recovery state
         CelariRecoverableAccount::at(self.context.this_address())
@@ -353,6 +368,14 @@ pub contract CelariRecoverableAccount {
     #[external("private")]
     #[noinitcheck]
     fn rotate_key(new_pub_key_x: [u8; 32], new_pub_key_y: [u8; 32]) {
+        // Owner-only. rotate_key replaces the account's signing key, so it MUST
+        // be gated. A private function can be called as the top-level entry of an
+        // attacker tx (is_valid_impl does NOT run on such a path), so check the
+        // caller explicitly: the legitimate owner reaches here via their own
+        // account entrypoint (msg_sender == self.address); a third party does not.
+        // Previously unauthenticated - anyone could overwrite the signing key.
+        assert(self.context.maybe_msg_sender().unwrap() == self.address, "Only account owner");
+
         // Safety: sender for tags is unconstrained tagging only
         unsafe { set_sender_for_tags(self.address) };
 

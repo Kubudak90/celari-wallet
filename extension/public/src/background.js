@@ -471,6 +471,37 @@ function _providerBroadcastEvent(event, payload) {
   }
 }
 
+// Best-effort extraction of a target contract address from wallet-sdk RPC params,
+// purely for display in the confirm popup (the full payload is shown regardless).
+function decodeRpcContract(params) {
+  const KEYS = ["contractAddress", "to", "contract", "address", "target"];
+  const seen = new Set();
+  const visit = (v, depth) => {
+    if (v == null || depth > 4) return null;
+    if (typeof v === "string") {
+      return /^0x[0-9a-fA-F]{40,64}$/.test(v) ? v : null;
+    }
+    if (typeof v === "object") {
+      if (seen.has(v)) return null;
+      seen.add(v);
+      for (const k of KEYS) {
+        const got = v[k];
+        if (typeof got === "string" && /^0x[0-9a-fA-F]{40,64}$/.test(got)) return got;
+        if (got && typeof got === "object") {
+          const s = got.toString?.();
+          if (typeof s === "string" && /^0x[0-9a-fA-F]{40,64}$/.test(s)) return s;
+        }
+      }
+      for (const val of Array.isArray(v) ? v : Object.values(v)) {
+        const r = visit(val, depth + 1);
+        if (r) return r;
+      }
+    }
+    return null;
+  };
+  try { return visit(params, 0); } catch { return null; }
+}
+
 // Route one decrypted provider request. `decrypted` = { method, payload, requestId }.
 async function handleProviderMethod(decrypted, session, sessionId) {
   const { method, payload, requestId } = decrypted || {};
@@ -486,13 +517,26 @@ async function handleProviderMethod(decrypted, session, sessionId) {
     const walletMsg = { type: bare, args: params, messageId: requestId };
     if (isWrite) {
       const signId = `prpc_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      // What-you-see-is-what-you-sign: surface the ACTUAL request the wallet will
+      // execute so approval is never blind. Best-effort decode of the contract +
+      // a full serialized payload pane the popup renders verbatim.
+      let summary;
+      try {
+        summary = JSON.stringify(
+          params,
+          (_k, v) => (typeof v === "bigint" ? v.toString() : v),
+          2,
+        );
+      } catch { summary = String(params); }
+      if (summary && summary.length > 4000) summary = summary.slice(0, 4000) + "\n… (truncated)";
+      const decodedContract = decodeRpcContract(params);
       pendingSignRequests.set(signId, {
         kind: "rpc-write",
         walletMsg, session, sessionId, requestId,
         origin: session.origin,
         tabId: session.tabId,
         verificationHash: session.verificationHash,
-        payload: { transaction: { type: "rpc", functionName: rpcMethod, contractAddress: "—" } },
+        payload: { transaction: { type: "rpc", functionName: rpcMethod, contractAddress: decodedContract || "(see payload)", summary } },
       });
       setTimeout(() => pendingSignRequests.delete(signId), 5 * 60_000);
       chrome.windows.create({ url: `popup.html?confirm=${signId}`, type: "popup", width: 380, height: 560, focused: true }).catch(() => {});

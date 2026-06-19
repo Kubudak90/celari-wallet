@@ -3242,6 +3242,14 @@ function renderConfirmTx() {
   const shortContract = contract.length > 20
     ? contract.slice(0, 10) + "..." + contract.slice(-8)
     : contract;
+  // What-you-see-is-what-you-sign: render the full request payload so the user
+  // can never approve a blind transaction whose effects are hidden.
+  const summaryPane = txData?.summary
+    ? `<div class="cel-card" style="width:100%;padding:12px 14px">
+         <div class="cel-mono" style="font-size:10px;color:var(--c-subtle);letter-spacing:0.08em;margin-bottom:6px">PAYLOAD</div>
+         <pre class="cel-mono" style="font-size:9px;color:var(--c-muted);white-space:pre-wrap;word-break:break-all;margin:0;max-height:160px;overflow-y:auto;line-height:1.5">${escapeHtml(txData.summary)}</pre>
+       </div>`
+    : "";
 
   return `
     <div style="padding:24px 16px;display:flex;flex-direction:column;align-items:center;gap:16px">
@@ -3266,6 +3274,8 @@ function renderConfirmTx() {
           <span class="cel-mono" style="font-size:11px;color:var(--c-ink)" title="${contract}">${shortContract}</span>
         </div>
       </div>
+
+      ${summaryPane}
 
       <div style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:color-mix(in srgb,var(--c-down) 6%,transparent);border:1px solid color-mix(in srgb,var(--c-down) 20%,transparent);border-radius:6px;width:100%;box-sizing:border-box">
         <span class="cel-dot" style="background:var(--c-down);margin-top:3px;flex-shrink:0"></span>
