@@ -248,6 +248,8 @@ async function _wsHandleProtocolMessage(message, sender) {
         console.warn("[WalletSDK] Decrypt failed:", e.message);
         return;
       }
+      // Authenticated activity on a live session — safe to push the idle lock back.
+      _noteAuthenticatedDappActivity();
 
       // Route by method + lock state:
       //  - write methods → wssign confirmation popup (self-gates unlock)
@@ -371,6 +373,8 @@ async function _wsHandleProtocolMessage(message, sender) {
         console.warn("[Provider] Decrypt failed:", e.message);
         return;
       }
+      // Authenticated activity on a live session — safe to push the idle lock back.
+      _noteAuthenticatedDappActivity();
       await handleProviderMethod(decrypted, session, sessionId);
       break;
     }
@@ -720,13 +724,39 @@ async function _bgIsLocked() {
 // the countdown so a user actively using the wallet (popup open, dApp
 // interactions, signing) never gets locked out mid-flow.
 const IDLE_LOCK_MINUTES = 15;
+// Absolute ceiling: authenticated dApp traffic may push the idle lock back, but
+// never past this many minutes since the last real USER (popup) activity — so a
+// chatty connected dApp cannot keep the wallet unlocked indefinitely after the
+// user walks away.
+const IDLE_LOCK_ABSOLUTE_MAX_MINUTES = 60;
 const IDLE_LOCK_ALARM = "celari_idle_lock";
+// Wall-clock of the last trusted user/popup activity. Initialized to now so a
+// freshly-started service worker grants a full window.
+let _lastUserActivityMs = Date.now();
 
 async function _scheduleIdleLock() {
   try {
     await chrome.alarms.create(IDLE_LOCK_ALARM, { delayInMinutes: IDLE_LOCK_MINUTES });
   } catch (e) {
     console.warn("[Celari] idle lock schedule failed:", e?.message || e);
+  }
+}
+
+// Trusted USER activity (popup interaction / unlock): resets the idle countdown
+// AND the absolute-deadline anchor.
+function _noteUserActivity() {
+  _lastUserActivityMs = Date.now();
+}
+
+// Authenticated dApp activity (a message that successfully DECRYPTED on a live,
+// origin-matched session) may push the idle lock back — but only within the
+// absolute ceiling from the last user activity, and NEVER from an undecrypted or
+// unauthenticated frame. (Audit residual: a page-controlled MessagePort frame
+// used to reset the lock pre-decrypt, letting a connected tab stay unlocked
+// forever.)
+function _noteAuthenticatedDappActivity() {
+  if (Date.now() - _lastUserActivityMs < IDLE_LOCK_ABSOLUTE_MAX_MINUTES * 60_000) {
+    _scheduleIdleLock();
   }
 }
 
@@ -895,8 +925,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Wallet-SDK v4.2.0 internal protocol (content script → background)
   if (message?.origin === _WS_CS) {
-    // Any dApp interaction counts as activity — push the idle lock back.
-    if (message.type === "secure-message" || message.type === "provider-secure-message") _scheduleIdleLock();
+    // NOTE: the idle-lock countdown is intentionally NOT reset here. An untrusted
+    // page controls the MessagePort and can emit arbitrary/undecryptable frames;
+    // resetting pre-decrypt let a connected tab keep the wallet unlocked forever.
+    // The reset now happens only AFTER a frame decrypts on a live session
+    // (_noteAuthenticatedDappActivity), capped by the absolute user-activity deadline.
     _wsHandleProtocolMessage(message, sender).catch(e => console.warn("[WalletSDK]", e.message));
     return false; // fire-and-forget, no sendResponse needed
   }
@@ -914,6 +947,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Idle lock control — popup uses these to defer locking instead of
     // wiping session immediately on close.
     case "SCHEDULE_IDLE_LOCK":
+      _noteUserActivity();
       _scheduleIdleLock();
       sendResponse({ success: true, lockInMinutes: IDLE_LOCK_MINUTES });
       return;
