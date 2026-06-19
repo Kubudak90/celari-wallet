@@ -405,4 +405,115 @@ contract CelariBridgePortalTest is Test {
             secretHash
         );
     }
+
+    // ─── C2 Exploit Regression: cross-token / pooled-funds drain ─────────────
+    //
+    // Audit C2: the L2 bridge let a caller name an arbitrary `l1_token`+`amount`
+    // in the withdraw message while only burning a single cheap L2 asset, so an
+    // attacker could burn 1 worthless token and withdraw any high-value token
+    // pooled in the portal. The L1 backstop is per-token `lockedBalances`
+    // accounting: the portal can never release more of a token than was actually
+    // deposited *for that token* through the bridge. (The primary, root-cause fix
+    // is on L2 — `assert(l1_token == config.l1_token)` — so a fraudulent
+    // cross-token message can never be rollup-proven in the first place; these
+    // tests pin the L1 defense-in-depth using the mock Outbox that accepts any
+    // message.) Each test below FAILS against the pre-fix portal and PASSES now.
+
+    // The portal must not release tokens it merely holds but that were never
+    // deposited through the bridge (direct transfers, or a fraudulent message
+    // naming a token nobody bridged). This is the heart of the drain.
+    function test_exploit_cannotWithdrawTokenNotDepositedViaBridge() public {
+        // 100 WETH lands in the portal WITHOUT a bridge deposit (e.g. a stray
+        // transfer, or the cross-token attack's target pool). lockedBalances == 0.
+        weth.mint(address(portal), 100 ether);
+        assertEq(weth.balanceOf(address(portal)), 100 ether);
+        assertEq(portal.lockedBalances(address(weth)), 0);
+
+        // Attacker presents a (mock-proven) withdraw message naming WETH.
+        bytes32[] memory path = new bytes32[](0);
+        vm.prank(user);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CelariBridgePortal.InsufficientLockedBalance.selector,
+                address(weth),
+                100 ether,
+                0
+            )
+        );
+        portal.withdraw(address(weth), user, 100 ether, false, 1, 0, path);
+
+        // Pool intact.
+        assertEq(weth.balanceOf(address(portal)), 100 ether);
+    }
+
+    // Per-token isolation: depositing a cheap token must NOT create withdrawable
+    // balance for a different, valuable token. This is the exact cross-token
+    // decoupling the audit flagged.
+    function test_exploit_perTokenAccountingIsolation() public {
+        // Legit (cheap) deposits of TST.
+        vm.startPrank(user);
+        testToken.approve(address(portal), 100 ether);
+        portal.depositToAztecPublic(address(testToken), recipientAztec, 100 ether, secretHash);
+        vm.stopPrank();
+
+        // Valuable WETH is pooled (other users / direct), but NOT via a TST swap.
+        weth.mint(address(portal), 100 ether);
+
+        assertEq(portal.lockedBalances(address(testToken)), 100 ether);
+        assertEq(portal.lockedBalances(address(weth)), 0);
+
+        // Attacker who only ever touched TST cannot pull WETH.
+        bytes32[] memory path = new bytes32[](0);
+        vm.prank(user);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CelariBridgePortal.InsufficientLockedBalance.selector,
+                address(weth),
+                100 ether,
+                0
+            )
+        );
+        portal.withdraw(address(weth), user, 100 ether, false, 1, 0, path);
+    }
+
+    // Total withdrawals of a token can never exceed total deposits of that token
+    // (no double-spend / over-withdraw beyond the locked pool).
+    function test_exploit_cannotOverWithdrawBeyondDeposits() public {
+        vm.startPrank(user);
+        testToken.approve(address(portal), 100 ether);
+        portal.depositToAztecPublic(address(testToken), recipientAztec, 100 ether, secretHash);
+        vm.stopPrank();
+
+        bytes32[] memory path = new bytes32[](0);
+
+        // First withdraw of 60 succeeds, leaving 40 locked.
+        portal.withdraw(address(testToken), user, 60 ether, false, 1, 0, path);
+        assertEq(portal.lockedBalances(address(testToken)), 40 ether);
+
+        // A second withdraw of 50 exceeds the remaining 40 → revert.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CelariBridgePortal.InsufficientLockedBalance.selector,
+                address(testToken),
+                50 ether,
+                40 ether
+            )
+        );
+        portal.withdraw(address(testToken), user, 50 ether, false, 1, 0, path);
+    }
+
+    // Accounting sanity: deposits increment, withdrawals decrement, per token.
+    function test_lockedBalanceTracksDepositsAndWithdrawals() public {
+        assertEq(portal.lockedBalances(address(testToken)), 0);
+
+        vm.startPrank(user);
+        testToken.approve(address(portal), 100 ether);
+        portal.depositToAztecPublic(address(testToken), recipientAztec, 100 ether, secretHash);
+        vm.stopPrank();
+        assertEq(portal.lockedBalances(address(testToken)), 100 ether);
+
+        bytes32[] memory path = new bytes32[](0);
+        portal.withdraw(address(testToken), user, 100 ether, false, 1, 0, path);
+        assertEq(portal.lockedBalances(address(testToken)), 0);
+    }
 }
