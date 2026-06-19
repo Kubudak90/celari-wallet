@@ -226,10 +226,10 @@ async function main() {
   console.log("CelariTokenBridge: ", bridgeAddress.toString());
   console.log("Deployment config saved to:", outputPath);
   console.log();
-  console.log("Next steps:");
-  console.log("  1. Export L2_BRIDGE_ADDRESS=" + bridgeAddress.toString());
-  console.log("  2. Re-deploy or re-initialize L1 portal with this L2 bridge address");
-  console.log("     yarn bridge:deploy:l1");
+  console.log("Next step — initialize the (already-deployed) L1 portal with this L2 bridge:");
+  console.log("  L2_BRIDGE_ADDRESS=" + bridgeAddress.toString() + " \\");
+  console.log("    SEPOLIA_RPC_URL=... PRIVATE_KEY=... npx tsx bridge/scripts/deploy-l1.ts init");
+  console.log("  (PORTAL_ADDRESS is read from bridge/.l1-deployment.json, or pass it explicitly.)");
 }
 
 main().catch((err) => {

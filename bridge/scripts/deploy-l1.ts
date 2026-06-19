@@ -1,19 +1,28 @@
 /**
  * Celari Bridge — Deploy L1 Contracts to Sepolia
  *
- * Deploys CelariBridgePortal and initializes it with:
- * - Aztec Registry address
- * - L2 Bridge contract address
- * - WETH address
- * - Supported tokens
+ * Resolves the L1<->L2 circular dependency (L1 initialize needs the L2 bridge
+ * address; the L2 constructor needs the L1 portal address) by splitting into two
+ * steps:
+ *
+ *   1) deploy : deploy the CelariBridgePortal only (no L2 address needed)
+ *               -> prints PORTAL_ADDRESS, saves bridge/.l1-deployment.json
+ *   2) (deploy L2 with that PORTAL_ADDRESS — yarn bridge:deploy:l2)
+ *   3) init   : initialize the portal with the L2 bridge address + add tokens
  *
  * Usage:
- *   SEPOLIA_RPC_URL=... PRIVATE_KEY=... L2_BRIDGE_ADDRESS=... npx tsx bridge/scripts/deploy-l1.ts
+ *   SEPOLIA_RPC_URL=... PRIVATE_KEY=... npx tsx bridge/scripts/deploy-l1.ts deploy
+ *   ... deploy L2 with PORTAL_ADDRESS ...
+ *   SEPOLIA_RPC_URL=... PRIVATE_KEY=... L2_BRIDGE_ADDRESS=... npx tsx bridge/scripts/deploy-l1.ts init
+ *
+ * (Legacy: with no mode arg AND L2_BRIDGE_ADDRESS already known, runs deploy+init
+ *  in one shot — only valid when there is no circular dependency to break.)
  *
  * Environment variables:
  *   SEPOLIA_RPC_URL     — Sepolia RPC endpoint (Infura/Alchemy)
- *   PRIVATE_KEY         — Deployer wallet private key (0x-prefixed)
- *   L2_BRIDGE_ADDRESS   — L2 CelariTokenBridge address (Aztec, bytes32)
+ *   PRIVATE_KEY         — Deployer wallet private key (0x-prefixed, funded EOA)
+ *   L2_BRIDGE_ADDRESS   — L2 CelariTokenBridge address (init mode)
+ *   PORTAL_ADDRESS      — L1 portal address (init mode; falls back to .l1-deployment.json)
  *   REGISTRY_ADDRESS    — Aztec Registry on Sepolia (optional, uses known address)
  *   WETH_ADDRESS        — WETH on Sepolia (optional, uses known address)
  */
@@ -24,12 +33,10 @@ import {
   http,
   type Address,
   type Hash,
-  encodeDeployData,
-  encodeFunctionData,
 } from "viem";
 import { sepolia } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 
 // ─── Known Addresses ─────────────────────────────────
@@ -48,11 +55,7 @@ const KNOWN_ADDRESSES = {
 // ─── ABI (from compiled artifact) ────────────────────
 
 const PORTAL_ABI = [
-  {
-    type: "constructor",
-    inputs: [],
-    stateMutability: "nonpayable",
-  },
+  { type: "constructor", inputs: [], stateMutability: "nonpayable" },
   {
     type: "function",
     name: "initialize",
@@ -70,6 +73,13 @@ const PORTAL_ABI = [
     inputs: [{ name: "token", type: "address" }],
     outputs: [],
     stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "initialized",
+    inputs: [],
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
   },
 ] as const;
 
@@ -110,12 +120,135 @@ async function waitForReceipt(
   return receipt;
 }
 
+const DEPLOYMENT_PATH = () => join(process.cwd(), "bridge", ".l1-deployment.json");
+
+function saveDeployment(obj: Record<string, unknown>) {
+  writeFileSync(DEPLOYMENT_PATH(), JSON.stringify(obj, null, 2));
+  return DEPLOYMENT_PATH();
+}
+
+function readDeployment(): Record<string, any> | null {
+  try {
+    return JSON.parse(readFileSync(DEPLOYMENT_PATH(), "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+function getClients(rpcUrl: string, privateKey: string) {
+  const account = privateKeyToAccount(privateKey as `0x${string}`);
+  const publicClient = createPublicClient({ chain: sepolia, transport: http(rpcUrl) });
+  const walletClient = createWalletClient({ account, chain: sepolia, transport: http(rpcUrl) });
+  return { account, publicClient, walletClient };
+}
+
+async function ensureFunded(
+  publicClient: ReturnType<typeof createPublicClient>,
+  address: Address
+) {
+  const balance = await publicClient.getBalance({ address });
+  console.log("Deployer balance:", (Number(balance) / 1e18).toFixed(4), "ETH");
+  if (balance < BigInt("10000000000000000")) {
+    console.error("Error: Insufficient balance. Need at least 0.01 ETH for deployment.");
+    console.error("Get Sepolia ETH from: https://sepoliafaucet.com/");
+    process.exit(1);
+  }
+}
+
+// ─── Step 1: deploy the portal (no L2 address required) ──────────────────────
+
+async function deployPortal(clients: ReturnType<typeof getClients>) {
+  const { account, publicClient, walletClient } = clients;
+  console.log("Loading compiled bytecode...");
+  const bytecode = loadBytecode();
+  console.log("Bytecode loaded:", bytecode.length / 2 - 1, "bytes\n");
+
+  console.log("Deploying CelariBridgePortal...");
+  const deployHash = await walletClient.deployContract({ abi: PORTAL_ABI, bytecode, args: [] });
+  const receipt = await waitForReceipt(publicClient, deployHash, "deploy");
+  const portalAddress = receipt.contractAddress;
+  if (!portalAddress) throw new Error("Deploy succeeded but contractAddress is null");
+  console.log("CelariBridgePortal deployed at:", portalAddress, "\n");
+
+  saveDeployment({
+    network: "sepolia",
+    portalAddress,
+    deployer: account.address,
+    deployTxHash: deployHash,
+    deployedAt: new Date().toISOString(),
+    status: "deployed-uninitialized",
+  });
+  return { portalAddress, deployHash };
+}
+
+// ─── Step 3: initialize the deployed portal + add tokens ─────────────────────
+
+async function initPortal(
+  clients: ReturnType<typeof getClients>,
+  portalAddress: Address,
+  l2BridgeAddress: string,
+  registryAddress: Address,
+  wethAddress: Address
+) {
+  const { publicClient, walletClient } = clients;
+  console.log("Initializing portal", portalAddress, "with L2 bridge", l2BridgeAddress);
+
+  const l2BridgeBytes32 = (
+    l2BridgeAddress.startsWith("0x")
+      ? l2BridgeAddress.padEnd(66, "0")
+      : `0x${l2BridgeAddress.padEnd(64, "0")}`
+  ) as `0x${string}`;
+
+  const initHash = await walletClient.writeContract({
+    address: portalAddress,
+    abi: PORTAL_ABI,
+    functionName: "initialize",
+    args: [registryAddress, l2BridgeBytes32, wethAddress],
+  });
+  await waitForReceipt(publicClient, initHash, "initialize");
+
+  console.log("Adding supported tokens...");
+  const addWethHash = await walletClient.writeContract({
+    address: portalAddress,
+    abi: PORTAL_ABI,
+    functionName: "addSupportedToken",
+    args: [wethAddress],
+  });
+  await waitForReceipt(publicClient, addWethHash, "addSupportedToken(WETH)");
+  console.log("  WETH added:", wethAddress);
+
+  const usdcAddress = KNOWN_ADDRESSES.sepoliaUSDC;
+  const addUsdcHash = await walletClient.writeContract({
+    address: portalAddress,
+    abi: PORTAL_ABI,
+    functionName: "addSupportedToken",
+    args: [usdcAddress],
+  });
+  await waitForReceipt(publicClient, addUsdcHash, "addSupportedToken(USDC)");
+  console.log("  USDC added:", usdcAddress);
+
+  const prev = readDeployment() || {};
+  saveDeployment({
+    ...prev,
+    network: "sepolia",
+    portalAddress,
+    registry: registryAddress,
+    l2Bridge: l2BridgeAddress,
+    weth: wethAddress,
+    supportedTokens: [wethAddress, usdcAddress],
+    initTxHash: initHash,
+    initializedAt: new Date().toISOString(),
+    status: "initialized",
+  });
+  return { initHash };
+}
+
 // ─── Main ────────────────────────────────────────────
 
 async function main() {
+  const mode = (process.argv[2] || "").toLowerCase();
   const rpcUrl = process.env.SEPOLIA_RPC_URL;
   const privateKey = process.env.PRIVATE_KEY;
-  const l2BridgeAddress = process.env.L2_BRIDGE_ADDRESS;
 
   if (!rpcUrl) {
     console.error("Error: SEPOLIA_RPC_URL environment variable required");
@@ -126,144 +259,71 @@ async function main() {
     console.error("Error: PRIVATE_KEY environment variable required");
     process.exit(1);
   }
-  if (!l2BridgeAddress) {
-    console.error("Error: L2_BRIDGE_ADDRESS environment variable required");
-    console.error("  Deploy L2 contracts first: yarn bridge:deploy:l2");
-    process.exit(1);
+
+  const registryAddress = (process.env.REGISTRY_ADDRESS as Address) || KNOWN_ADDRESSES.registry;
+  const wethAddress = (process.env.WETH_ADDRESS as Address) || KNOWN_ADDRESSES.weth;
+
+  // ── Validate mode-specific inputs BEFORE any network/funding call ──
+  let initPortalAddress: Address | undefined;
+  let l2BridgeAddress: string | undefined;
+  if (mode === "init") {
+    initPortalAddress = (process.env.PORTAL_ADDRESS as Address) ||
+      (readDeployment()?.portalAddress as Address);
+    l2BridgeAddress = process.env.L2_BRIDGE_ADDRESS;
+    if (!initPortalAddress) {
+      console.error("Error: PORTAL_ADDRESS required (env or bridge/.l1-deployment.json). Run `deploy` first.");
+      process.exit(1);
+    }
+    if (!l2BridgeAddress) {
+      console.error("Error: L2_BRIDGE_ADDRESS required. Deploy L2 first: yarn bridge:deploy:l2");
+      process.exit(1);
+    }
+  } else if (mode !== "deploy") {
+    // Auto/legacy one-shot — only valid when L2 is already known.
+    l2BridgeAddress = process.env.L2_BRIDGE_ADDRESS;
+    if (!l2BridgeAddress) {
+      console.error("L1<->L2 circular dependency — deploy in 3 steps:");
+      console.error("  1) npx tsx bridge/scripts/deploy-l1.ts deploy                       # deploy portal, prints PORTAL_ADDRESS");
+      console.error("  2) PORTAL_ADDRESS=<portal> L1_TOKEN=<erc20> yarn bridge:deploy:l2   # deploy L2 bridge");
+      console.error("  3) L2_BRIDGE_ADDRESS=<l2> npx tsx bridge/scripts/deploy-l1.ts init  # initialize portal");
+      process.exit(1);
+    }
   }
 
-  const registryAddress =
-    (process.env.REGISTRY_ADDRESS as Address) || KNOWN_ADDRESSES.registry;
-  const wethAddress =
-    (process.env.WETH_ADDRESS as Address) || KNOWN_ADDRESSES.weth;
-
-  // Create clients
-  const account = privateKeyToAccount(privateKey as `0x${string}`);
-  const publicClient = createPublicClient({
-    chain: sepolia,
-    transport: http(rpcUrl),
-  });
-  const walletClient = createWalletClient({
-    account,
-    chain: sepolia,
-    transport: http(rpcUrl),
-  });
+  const clients = getClients(rpcUrl, privateKey);
 
   console.log("╔═══════════════════════════════════════════╗");
   console.log("║   Celari Bridge — L1 Deployment (Sepolia) ║");
-  console.log("╚═══════════════════════════════════════════╝");
-  console.log();
-  console.log("Deployer:", account.address);
+  console.log("╚═══════════════════════════════════════════╝\n");
+  console.log("Deployer:", clients.account.address);
+  console.log("Mode:", mode || "(auto)");
   console.log("Registry:", registryAddress);
-  console.log("L2 Bridge:", l2BridgeAddress);
-  console.log("WETH:", wethAddress);
+  console.log("WETH:", wethAddress, "\n");
+  await ensureFunded(clients.publicClient, clients.account.address);
   console.log();
 
-  // Check balance
-  const balance = await publicClient.getBalance({ address: account.address });
-  console.log("Deployer balance:", (Number(balance) / 1e18).toFixed(4), "ETH");
-  if (balance < BigInt("10000000000000000")) {
-    // 0.01 ETH
-    console.error("Error: Insufficient balance. Need at least 0.01 ETH for deployment.");
-    console.error("Get Sepolia ETH from: https://sepoliafaucet.com/");
-    process.exit(1);
+  if (mode === "deploy") {
+    const { portalAddress } = await deployPortal(clients);
+    console.log("Next steps (resolves the L1<->L2 circular dependency):");
+    console.log("  1) PORTAL_ADDRESS=" + portalAddress + " L1_TOKEN=<erc20> yarn bridge:deploy:l2");
+    console.log("  2) L2_BRIDGE_ADDRESS=<from L2 deploy> npx tsx bridge/scripts/deploy-l1.ts init");
+    return;
   }
 
-  // Load compiled bytecode
-  console.log("Loading compiled bytecode...");
-  const bytecode = loadBytecode();
-  console.log("Bytecode loaded:", bytecode.length / 2 - 1, "bytes");
-  console.log();
-
-  // ─── Step 1: Deploy CelariBridgePortal ───────────
-
-  console.log("Step 1: Deploying CelariBridgePortal...");
-  const deployHash = await walletClient.deployContract({
-    abi: PORTAL_ABI,
-    bytecode,
-    args: [],
-  });
-  const deployReceipt = await waitForReceipt(publicClient, deployHash, "deploy");
-  const portalAddress = deployReceipt.contractAddress;
-  if (!portalAddress) {
-    throw new Error("Deploy succeeded but contractAddress is null");
+  if (mode === "init") {
+    await initPortal(clients, initPortalAddress!, l2BridgeAddress!, registryAddress, wethAddress);
+    console.log("\nPortal initialized:", initPortalAddress);
+    return;
   }
-  console.log("CelariBridgePortal deployed at:", portalAddress);
-  console.log();
 
-  // ─── Step 2: Initialize ──────────────────────────
+  // Auto/legacy one-shot (l2BridgeAddress validated above).
+  const { portalAddress } = await deployPortal(clients);
+  await initPortal(clients, portalAddress, l2BridgeAddress!, registryAddress, wethAddress);
 
-  console.log("Step 2: Initializing portal...");
-  const l2BridgeBytes32 = l2BridgeAddress.startsWith("0x")
-    ? (l2BridgeAddress.padEnd(66, "0") as `0x${string}`)
-    : (`0x${l2BridgeAddress.padEnd(64, "0")}` as `0x${string}`);
-
-  const initHash = await walletClient.writeContract({
-    address: portalAddress,
-    abi: PORTAL_ABI,
-    functionName: "initialize",
-    args: [registryAddress, l2BridgeBytes32 as `0x${string}`, wethAddress],
-  });
-  await waitForReceipt(publicClient, initHash, "initialize");
-  console.log();
-
-  // ─── Step 3: Add supported tokens ───────────────
-
-  console.log("Step 3: Adding supported tokens...");
-
-  // Add WETH
-  const addWethHash = await walletClient.writeContract({
-    address: portalAddress,
-    abi: PORTAL_ABI,
-    functionName: "addSupportedToken",
-    args: [wethAddress],
-  });
-  await waitForReceipt(publicClient, addWethHash, "addSupportedToken(WETH)");
-  console.log("  WETH added:", wethAddress);
-
-  // Add USDC if on Sepolia
-  const usdcAddress = KNOWN_ADDRESSES.sepoliaUSDC;
-  const addUsdcHash = await walletClient.writeContract({
-    address: portalAddress,
-    abi: PORTAL_ABI,
-    functionName: "addSupportedToken",
-    args: [usdcAddress],
-  });
-  await waitForReceipt(publicClient, addUsdcHash, "addSupportedToken(USDC)");
-  console.log("  USDC added:", usdcAddress);
-  console.log();
-
-  // ─── Save deployment info ────────────────────────
-
-  const deployInfo = {
-    network: "sepolia",
-    portalAddress,
-    registry: registryAddress,
-    l2Bridge: l2BridgeAddress,
-    weth: wethAddress,
-    supportedTokens: [wethAddress, usdcAddress],
-    deployer: account.address,
-    deployTxHash: deployHash,
-    initTxHash: initHash,
-    deployedAt: new Date().toISOString(),
-    status: "deployed",
-  };
-
-  const fs = await import("fs");
-  const path = await import("path");
-  const outputPath = path.join(process.cwd(), "bridge", ".l1-deployment.json");
-  fs.writeFileSync(outputPath, JSON.stringify(deployInfo, null, 2));
-
-  console.log("╔═══════════════════════════════════════════╗");
+  console.log("\n╔═══════════════════════════════════════════╗");
   console.log("║           Deployment Complete!            ║");
   console.log("╚═══════════════════════════════════════════╝");
-  console.log();
   console.log("CelariBridgePortal:", portalAddress);
-  console.log("Deployment info saved to:", outputPath);
-  console.log();
-  console.log("Next steps:");
-  console.log("  1. Export PORTAL_ADDRESS=" + portalAddress);
-  console.log("  2. Deploy L2 contracts: yarn bridge:deploy:l2");
 }
 
 main().catch((err) => {
