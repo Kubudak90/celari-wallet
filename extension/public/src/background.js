@@ -12,6 +12,7 @@
 import { sanitizeRpcError } from "./lib/sanitize.js";
 import { WS_WRITE_METHODS, classifySecureMessage } from "./lib/ws-lock-gate.js";
 import { selectActiveAddress } from "./lib/provider-accounts.js";
+import { clearSigningKeys } from "./lib/signing-key-store.js";
 import { PROVIDER_METHODS } from "./lib/provider-protocol.js";
 import { isAllowedRpc, parseProviderRpc } from "./lib/provider-rpc.js";
 import {
@@ -737,6 +738,9 @@ async function _runIdleLock() {
   console.log(`[Celari] Idle lock fired after ${IDLE_LOCK_MINUTES}min — wiping session signing material`);
   try {
     await chrome.storage.session.remove(["celari_secret", "celari_private_key", "celari_keys"]);
+    // Wipe the non-extractable signing key from the IndexedDB store too, so it
+    // does not survive an idle lock.
+    await clearSigningKeys().catch(() => {});
     await chrome.storage.local.set({ celari_locked: true });
   } catch (e) {
     console.warn("[Celari] idle lock wipe failed:", e?.message || e);

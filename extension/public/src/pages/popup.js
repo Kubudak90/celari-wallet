@@ -26,6 +26,7 @@ import { createLogBuffer } from "../lib/log-buffer.js";
 import { verificationFingerprint } from "../lib/fingerprint.js";
 import { isPanelContext } from "../lib/panel-context.js";
 import { hashToEmojiArray, hashToEmoji } from "../lib/emoji-verification.js";
+import { clearSigningKeys } from "../lib/signing-key-store.js";
 
 // ─── Security: HTML Escaping ──────────────────────────
 
@@ -268,6 +269,9 @@ function lockExtension({ reason } = {}) {
   // path returns WALLET_LOCKED until the next unlock decrypts again.
   try {
     chrome.storage.session.remove(["celari_secret", "celari_private_key"]);
+    // Also wipe the non-extractable signing key from the IndexedDB store so it
+    // does not linger past lock (it cannot be exported, but should not persist).
+    clearSigningKeys().catch(() => {});
   } catch (e) {
     console.warn("[Celari popup] session wipe failed:", e?.message || e);
   }
@@ -3066,6 +3070,7 @@ function bindSettings() {
     if (!confirm("Are you sure you want to reset the wallet? All data will be deleted.")) return;
     await chrome.storage.local.remove(["celari_accounts", "celari_deploy_info", "celari_custom_tokens", "celari_custom_networks", "celari_custom_nft_contracts"]);
     await chrome.storage.session.remove(["celari_keys", "celari_secret", "celari_private_key"]);
+    await clearSigningKeys().catch(() => {});
     store.accounts = [];
     store.tokens = [];
     store.customTokens = [];
