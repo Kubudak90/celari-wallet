@@ -24,6 +24,13 @@ import { Contract } from "@aztec/aztec.js/contracts";
 import { jsonStringify } from "@aztec/foundation/json-rpc";
 import { WalletSchema, AccountManager } from "@aztec/aztec.js/wallet";
 import { installPasskeyWalletDbShim } from "./lib/passkey-walletdb-shim.js";
+import {
+  importNonExtractableSigningKey,
+  pkcs8BytesFromBase64,
+  signP256,
+  loadSigningKey,
+  storeSigningKey,
+} from "./lib/signing-key-store.js";
 import { deriveKeys } from "@aztec/stdlib/keys";
 
 // Contract artifacts (compiled Noir → JSON)
@@ -349,100 +356,35 @@ async function handleWcRequest(method, params) {
 // --- Browser P256 Auth Witness Provider ---
 
 class BrowserP256AuthWitnessProvider {
-  constructor(privateKeyBase64) {
-    this._pkcs8Base64 = privateKeyBase64;
+  // Address-based: the NON-EXTRACTABLE signing CryptoKey is loaded on demand from
+  // IndexedDB (populated at unlock/deploy by the signing-key-store). No raw PKCS8
+  // bytes are ever held here, and the key cannot be re-exported — so a compromise
+  // of this context can sign while unlocked but cannot exfiltrate the key.
+  constructor(address) {
+    this._address = address ? address.toString() : null;
+    this._key = null;
+  }
+
+  async _getKey() {
+    if (this._key) return this._key;
+    if (!this._address) throw new Error("[AuthWit] no account address for signing-key lookup");
+    const key = await loadSigningKey(this._address);
+    if (!key) {
+      throw new Error("[AuthWit] signing key not available (wallet locked or not unlocked on this device)");
+    }
+    this._key = key;
+    return key;
   }
 
   async createAuthWit(messageHash) {
-    console.log(`[AuthWit] createAuthWit called`);
-
-    // Decode base64 → PKCS8 Uint8Array
-    const binaryStr = atob(this._pkcs8Base64);
-    const pkcs8Bytes = new Uint8Array(binaryStr.length);
-    for (let i = 0; i < binaryStr.length; i++) {
-      pkcs8Bytes[i] = binaryStr.charCodeAt(i);
-    }
-    // PKCS8 key imported for ECDSA P-256 signing
-
-    // Import P256 key as NON-EXTRACTABLE: the working signing key can only be
-    // used to sign, never re-exported via WebCrypto. (Was extractable=true "for
-    // debug" — a gratuitous key-exfiltration path.)
-    let key;
-    try {
-      key = await crypto.subtle.importKey(
-        "pkcs8",
-        pkcs8Bytes,
-        { name: "ECDSA", namedCurve: "P-256" },
-        false,
-        ["sign"],
-      );
-      // Key imported OK
-    } catch (e) {
-      console.error(`[AuthWit] Key import FAILED: ${e.message}`);
-      throw e;
-    }
-
-    // Sign: WebCrypto SHA-256 hashes internally, matching Noir contract's sha256(outer_hash)
-    const hashBytes = messageHash.toBuffer();
-    // Sign the message hash with ECDSA P-256
-
-    let sigRaw;
-    try {
-      sigRaw = new Uint8Array(
-        await crypto.subtle.sign(
-          { name: "ECDSA", hash: "SHA-256" },
-          key,
-          hashBytes,
-        ),
-      );
-      // Signature obtained (64 bytes: r || s)
-    } catch (e) {
-      console.error(`[AuthWit] Signing FAILED: ${e.message}`);
-      throw e;
-    }
-
-    // Low-S normalization: Noir's verify_ecdsa_p256 requires s ≤ n/2.
-    // WebCrypto doesn't normalize, so ~50% of signatures have high-S → circuit rejects.
-    // P-256 order n = FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
-    const P256_N = [
-      0xFF,0xFF,0xFF,0xFF,0x00,0x00,0x00,0x00,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
-      0xBC,0xE6,0xFA,0xAD,0xA7,0x17,0x9E,0x84,0xF3,0xB9,0xCA,0xC2,0xFC,0x63,0x25,0x51,
-    ];
-    const P256_HALF_N = [
-      0x7F,0xFF,0xFF,0xFF,0x80,0x00,0x00,0x00,0x7F,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
-      0xDE,0x73,0x7D,0x56,0xD3,0x8B,0xCF,0x42,0x79,0xDC,0xE5,0x61,0x7E,0x31,0x92,0xA8,
-    ];
-
-    // Compare s (bytes 32-63) against half_n
-    const sBuf = sigRaw.slice(32, 64);
-    let sIsHigh = false;
-    for (let i = 0; i < 32; i++) {
-      if (sBuf[i] > P256_HALF_N[i]) { sIsHigh = true; break; }
-      if (sBuf[i] < P256_HALF_N[i]) { break; }
-    }
-
-    if (sIsHigh) {
-      // s' = n - s  (big-endian subtraction)
-      const newS = new Uint8Array(32);
-      let borrow = 0;
-      for (let i = 31; i >= 0; i--) {
-        const diff = P256_N[i] - sBuf[i] - borrow;
-        newS[i] = diff < 0 ? diff + 256 : diff;
-        borrow = diff < 0 ? 1 : 0;
-      }
-      sigRaw.set(newS, 32);
-      console.log(`[AuthWit] Low-S normalized`);
-    } else {
-      // s is already low-S
-    }
-
-    // Pack 64-byte P256 signature (r || s) into AuthWitness fields as Fr elements
+    const key = await this._getKey();
+    // signP256 hashes the message with SHA-256 internally (matches the Noir
+    // contract's sha256(outer_hash)) and returns a low-s normalized 64-byte r||s.
+    const sigRaw = await signP256(key, messageHash.toBuffer());
     const witnessFields = [];
     for (let i = 0; i < 64; i++) {
       witnessFields.push(new Fr(sigRaw[i]));
     }
-    // 64 Fr fields packed into AuthWitness
-
     return new AuthWitness(messageHash, witnessFields);
   }
 }
@@ -450,11 +392,13 @@ class BrowserP256AuthWitnessProvider {
 // --- Browser Celari Account Contract ---
 
 class BrowserCelariPasskeyAccountContract extends DefaultAccountContract {
-  constructor(pubKeyX, pubKeyY, privateKeyBase64) {
+  // The 3rd arg (legacy privateKeyBase64) is accepted for call-site compatibility
+  // but no longer used: signing keys live in the IndexedDB signing-key-store and
+  // the provider loads them by account address (see getAuthWitnessProvider).
+  constructor(pubKeyX, pubKeyY, _legacyPrivateKeyBase64) {
     super();
     this._pubKeyX = pubKeyX;
     this._pubKeyY = pubKeyY;
-    this._privateKeyBase64 = privateKeyBase64;
   }
 
   async getContractArtifact() {
@@ -472,8 +416,10 @@ class BrowserCelariPasskeyAccountContract extends DefaultAccountContract {
     };
   }
 
-  getAuthWitnessProvider(_address) {
-    return new BrowserP256AuthWitnessProvider(this._privateKeyBase64);
+  getAuthWitnessProvider(address) {
+    // `address` is the account's address; the provider loads the non-extractable
+    // signing key for it from IndexedDB on demand.
+    return new BrowserP256AuthWitnessProvider(address);
   }
 }
 
@@ -788,6 +734,20 @@ async function registerAccount(data) {
 
   const address = manager.address.toString();
   const accountAddr = AztecAddress.fromString(address);
+
+  // If a raw PKCS8 key was supplied (deploy / import paths), persist it as a
+  // NON-EXTRACTABLE CryptoKey in the signing-key-store keyed by this address, then
+  // drop the plaintext. On the unlock path the popup has already populated the
+  // store, so privateKeyPkcs8 is absent and the provider loads it from IndexedDB.
+  if (privateKeyPkcs8) {
+    try {
+      const key = await importNonExtractableSigningKey(pkcs8BytesFromBase64(privateKeyPkcs8));
+      await storeSigningKey(address, key);
+    } catch (e) {
+      console.error(`[PXE] Failed to persist signing key to store: ${e.message}`);
+      throw e;
+    }
+  }
 
   // Register the account contract with the PXE (critical for re-registration after restart).
   try {
@@ -1282,6 +1242,14 @@ async function deployAccountClientSide(data) {
   }
 
   const address = manager.address;
+
+  // Persist the freshly-generated signing key as a NON-EXTRACTABLE CryptoKey so
+  // the deploy tx below (and all later txs) can be signed via the store, without
+  // the plaintext PKCS8 ever sitting in chrome.storage.session.
+  if (privateKeyPkcs8) {
+    const key = await importNonExtractableSigningKey(pkcs8BytesFromBase64(privateKeyPkcs8));
+    await storeSigningKey(address.toString(), key);
+  }
 
   // Step 1b: Register account + contract with PXE (v4.0.4 requirement)
   console.log("[PXE] Deploy Step 1b: registerAccount + registerContract...");
