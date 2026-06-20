@@ -20,6 +20,10 @@ celari-ext-key.pem
 .env
 .env.*
 
+# Deploy secrets / outputs (the deployer file holds a raw account secret key)
+bridge/.l2-deployer.json
+*.l2-deployer.json
+
 # Build artifacts
 extension/dist/
 contracts/*/target/
