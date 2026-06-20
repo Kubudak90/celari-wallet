@@ -32,7 +32,7 @@ import { SchnorrAccountContract } from "@aztec/accounts/schnorr";
 import { NO_FROM } from "@aztec/aztec.js/account";
 import { FeeJuicePaymentMethodWithClaim } from "@aztec/aztec.js/fee";
 import { GasSettings } from "@aztec/stdlib/gas";
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, chmodSync } from "fs";
 import { join } from "path";
 // @ts-ignore — plain ESM helper, no types
 import { requestQuetzalDrip } from "../../extension/public/src/lib/quetzal-faucet.js";
@@ -91,13 +91,18 @@ async function main() {
   const address = manager.address;
   console.log(`Deployer account ${generated ? "(fresh Schnorr)" : "(reused)"}:`, address.toString());
   // Persist the deployer keys immediately so a fresh account is never lost.
-  writeFileSync(join(ROOT, "bridge", ".l2-deployer.json"), JSON.stringify({
+  // This file holds RAW secret material → owner-only (0o600). mode on
+  // writeFileSync only applies on create, so chmod afterwards to also fix an
+  // existing (re-run) file.
+  const deployerPath = join(ROOT, "bridge", ".l2-deployer.json");
+  writeFileSync(deployerPath, JSON.stringify({
     address: address.toString(),
     secretKey: DEPLOYER_SECRET_KEY,
     signingKey: signingKey.toString(),
     salt: salt.toString(),
     createdAt: new Date().toISOString(),
-  }, null, 2));
+  }, null, 2), { mode: 0o600 });
+  chmodSync(deployerPath, 0o600);
   console.log("  (secret saved to bridge/.l2-deployer.json)\n");
 
   // ── Claim Fee Juice from the Quetzal faucet for this address ──
