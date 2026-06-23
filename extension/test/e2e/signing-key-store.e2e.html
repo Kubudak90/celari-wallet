@@ -17,7 +17,10 @@
     // Verifies the C1 signing-key-store in a REAL browser: native WebCrypto +
     // native IndexedDB (the layer the Node unit test had to mock). Exercises the
     // exact cross-context contract: import non-extractable -> persist to IDB ->
-    // load back (as the offscreen provider does) -> sign -> verify.
+    // load back (as the offscreen provider does) -> sign -> verify, PLUS the
+    // cross-context address-key invariant (popup stores at account.address,
+    // offscreen loads at address.toString()) and survival across a full reload
+    // (≈ service-worker / offscreen restart — driven two-phase by Playwright).
     import {
       importNonExtractableSigningKey, pkcs8BytesFromBase64, signP256,
       storeSigningKey, loadSigningKey, clearSigningKeys,
@@ -36,63 +39,167 @@
       const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", kp.privateKey));
       return { kp, pkcs8, b64: btoa(String.fromCharCode(...pkcs8)) };
     }
+    const fixedMsg = () => { const m = new Uint8Array(32); for (let i=0;i<32;i++) m[i]=(i*9+1)&0xff; return m; };
+    async function verifySig(pub, sig, msg) {
+      return crypto.subtle.verify({ name:"ECDSA", hash:"SHA-256" }, pub, sig, msg);
+    }
+    function deleteDb() {
+      return new Promise((res) => {
+        let done = false; const finish = () => { if (!done) { done = true; res(); } };
+        const r = indexedDB.deleteDatabase("celari-signing-keys");
+        r.onsuccess = finish; r.onerror = finish; r.onblocked = () => {};
+        setTimeout(finish, 2000); // fallback: never hang the suite
+      });
+    }
 
-    await clearSigningKeys();
-    const ADDR = "0x" + "ab".repeat(16);
+    function publish() {
+      const failed = results.filter(r => !r.pass);
+      window.__e2eResults = { total: results.length, failed: failed.length, results };
+      document.getElementById("summary").innerHTML =
+        failed.length === 0
+          ? `<span class="pass">ALL ${results.length} PASS</span>`
+          : `<span class="fail">${failed.length}/${results.length} FAILED</span>`;
+      document.getElementById("out").innerHTML = results.map(r =>
+        `<li class="${r.pass?'pass':'fail'}">${r.pass?'✓':'✗'} ${r.name}${r.err?(' — '+r.err):''}</li>`).join("");
+    }
 
-    await check("import is non-extractable (export rejected)", async () => {
-      const { pkcs8 } = await genPkcs8();
-      const key = await importNonExtractableSigningKey(pkcs8);
-      if (key.extractable !== false) throw new Error("extractable !== false");
-      let threw = false;
-      try { await crypto.subtle.exportKey("pkcs8", key); } catch { threw = true; }
-      if (!threw) throw new Error("exportKey did NOT throw");
-    });
+    // Addresses differing only by hex casing — keyFor() must collapse them to one entry.
+    const ADDR    = "0x" + "ab".repeat(16);
+    const ADDR_UC = "0x" + "AB".repeat(16);
+    const PERSIST_ADDR = "0x" + "cd".repeat(16);
 
-    let pub; // for cross-step verification
-    await check("IDB round-trip: store -> load returns a usable CryptoKey", async () => {
-      const { kp, pkcs8 } = await genPkcs8();
-      pub = kp.publicKey;
-      const key = await importNonExtractableSigningKey(pkcs8);
-      await storeSigningKey(ADDR, key);
-      const loaded = await loadSigningKey(ADDR);
-      if (!loaded) throw new Error("loadSigningKey returned null");
-      if (loaded.type !== "private") throw new Error("loaded key is not a private CryptoKey");
-      if (loaded.extractable !== false) throw new Error("loaded key became extractable");
-      window.__loadedKey = loaded;
-    });
+    const phase = new URLSearchParams(location.search).get("phase");
 
-    await check("sign with LOADED key verifies against the public key + is low-s", async () => {
-      const loaded = await loadSigningKey(ADDR);
-      const msg = new Uint8Array(32); for (let i=0;i<32;i++) msg[i] = (i*9+1)&0xff;
-      const sig = await signP256(loaded, msg);
-      if (sig.length !== 64) throw new Error("sig length != 64");
-      const valid = await crypto.subtle.verify({ name:"ECDSA", hash:"SHA-256" }, pub, sig, msg);
-      if (!valid) throw new Error("signature failed verification");
-      if (!isLowS(sig)) throw new Error("signature is not low-s");
-    });
-
-    await check("pkcs8BytesFromBase64 round-trips in-browser (atob path)", async () => {
-      const { pkcs8, b64 } = await genPkcs8();
-      const back = pkcs8BytesFromBase64(b64);
-      if (back.length !== pkcs8.length) throw new Error("length mismatch");
-      for (let i=0;i<pkcs8.length;i++) if (back[i]!==pkcs8[i]) throw new Error("byte mismatch at "+i);
-    });
-
-    await check("clearSigningKeys wipes the store (lock behavior)", async () => {
+    if (phase === "seed") {
+      // Phase 1 (Playwright): store a key, stash its PUBLIC jwk in localStorage,
+      // then the harness is reloaded fresh in phase=verify to prove IDB survived.
       await clearSigningKeys();
-      const after = await loadSigningKey(ADDR);
-      if (after !== null) throw new Error("key still present after clear");
-    });
+      await check("seed: store key survives to verify phase", async () => {
+        const { kp, pkcs8 } = await genPkcs8();
+        const jwk = await crypto.subtle.exportKey("jwk", kp.publicKey);
+        localStorage.setItem("__e2e_pub", JSON.stringify(jwk));
+        await storeSigningKey(PERSIST_ADDR, await importNonExtractableSigningKey(pkcs8));
+      });
+      publish();
+    } else if (phase === "verify") {
+      // Phase 2: a fresh page load — IndexedDB must still hold the key.
+      await check("verify: IDB-persisted key survives a full reload (≈ SW/offscreen restart) and still signs", async () => {
+        const loaded = await loadSigningKey(PERSIST_ADDR);
+        if (!loaded) throw new Error("key gone after reload");
+        const msg = fixedMsg();
+        const sig = await signP256(loaded, msg);
+        const jwk = JSON.parse(localStorage.getItem("__e2e_pub"));
+        const pub = await crypto.subtle.importKey("jwk", jwk, { name:"ECDSA", namedCurve:"P-256" }, false, ["verify"]);
+        if (!(await verifySig(pub, sig, msg))) throw new Error("post-reload signature failed verification");
+      });
+      await clearSigningKeys();
+      localStorage.removeItem("__e2e_pub");
+      publish();
+    } else {
+      // Default: full self-contained suite.
+      await clearSigningKeys();
 
-    const failed = results.filter(r => !r.pass);
-    window.__e2eResults = { total: results.length, failed: failed.length, results };
-    document.getElementById("summary").innerHTML =
-      failed.length === 0
-        ? `<span class="pass">ALL ${results.length} PASS</span>`
-        : `<span class="fail">${failed.length}/${results.length} FAILED</span>`;
-    document.getElementById("out").innerHTML = results.map(r =>
-      `<li class="${r.pass?'pass':'fail'}">${r.pass?'✓':'✗'} ${r.name}${r.err?(' — '+r.err):''}</li>`).join("");
+      await check("import is non-extractable (export rejected)", async () => {
+        const { pkcs8 } = await genPkcs8();
+        const key = await importNonExtractableSigningKey(pkcs8);
+        if (key.extractable !== false) throw new Error("extractable !== false");
+        let threw = false;
+        try { await crypto.subtle.exportKey("pkcs8", key); } catch { threw = true; }
+        if (!threw) throw new Error("exportKey did NOT throw");
+      });
+
+      let pub; // for cross-step verification
+      await check("IDB round-trip: store -> load returns a usable CryptoKey", async () => {
+        const { kp, pkcs8 } = await genPkcs8();
+        pub = kp.publicKey;
+        const key = await importNonExtractableSigningKey(pkcs8);
+        await storeSigningKey(ADDR, key);
+        const loaded = await loadSigningKey(ADDR);
+        if (!loaded) throw new Error("loadSigningKey returned null");
+        if (loaded.type !== "private") throw new Error("loaded key is not a private CryptoKey");
+        if (loaded.extractable !== false) throw new Error("loaded key became extractable");
+        window.__loadedKey = loaded;
+      });
+
+      await check("sign with LOADED key verifies against the public key + is low-s", async () => {
+        const loaded = await loadSigningKey(ADDR);
+        const msg = fixedMsg();
+        const sig = await signP256(loaded, msg);
+        if (sig.length !== 64) throw new Error("sig length != 64");
+        if (!(await verifySig(pub, sig, msg))) throw new Error("signature failed verification");
+        if (!isLowS(sig)) throw new Error("signature is not low-s");
+      });
+
+      // ── Cross-context address-key invariant (the core C1 risk) ──
+      await check("cross-context: key stored under mixed-CASE address loads under lowercase (and vice-versa)", async () => {
+        await clearSigningKeys();
+        const { kp, pkcs8 } = await genPkcs8();
+        // popup stores at one casing; offscreen provider loads at another.
+        await storeSigningKey(ADDR_UC, await importNonExtractableSigningKey(pkcs8));
+        const loaded = await loadSigningKey(ADDR);            // lowercase lookup
+        if (!loaded) throw new Error("mixed-case store / lowercase load MISSED");
+        const msg = fixedMsg();
+        if (!(await verifySig(kp.publicKey, await signP256(loaded, msg), msg))) throw new Error("sig failed after case-normalized lookup");
+      });
+
+      await check("cross-context: address-like object (toString) keys the same entry as its string form", async () => {
+        await clearSigningKeys();
+        const { kp, pkcs8 } = await genPkcs8();
+        const addrObj = { toString: () => ADDR_UC };           // mimics an AztecAddress
+        await storeSigningKey(addrObj, await importNonExtractableSigningKey(pkcs8));
+        const loaded = await loadSigningKey(ADDR);             // plain lowercase string
+        if (!loaded) throw new Error("object store / string load MISSED");
+        const msg = fixedMsg();
+        if (!(await verifySig(kp.publicKey, await signP256(loaded, msg), msg))) throw new Error("sig failed across object/string key forms");
+      });
+
+      await check("pkcs8BytesFromBase64 round-trips in-browser (atob path)", async () => {
+        const { pkcs8, b64 } = await genPkcs8();
+        const back = pkcs8BytesFromBase64(b64);
+        if (back.length !== pkcs8.length) throw new Error("length mismatch");
+        for (let i=0;i<pkcs8.length;i++) if (back[i]!==pkcs8[i]) throw new Error("byte mismatch at "+i);
+      });
+
+      await check("clearSigningKeys wipes the store (lock behavior)", async () => {
+        await clearSigningKeys();
+        const after = await loadSigningKey(ADDR);
+        if (after !== null) throw new Error("key still present after clear");
+      });
+
+      // ── IDB robustness: the "object store not found" class (PXE_REGISTER_ACCOUNT) ──
+      await check("self-heals a DB that exists WITHOUT the object store (fixes 'object store not found')", async () => {
+        await deleteDb();
+        // Corrupt state: a v1 DB with NO object store (a bare open elsewhere).
+        await new Promise((res, rej) => {
+          const r = indexedDB.open("celari-signing-keys", 1);
+          r.onupgradeneeded = () => {};            // deliberately DO NOT create the store
+          r.onsuccess = () => { r.result.close(); res(); };
+          r.onerror = () => rej(r.error);
+        });
+        // storeSigningKey must self-heal (bump version + add store), not throw.
+        const { kp, pkcs8 } = await genPkcs8();
+        await storeSigningKey(ADDR, await importNonExtractableSigningKey(pkcs8));
+        const loaded = await loadSigningKey(ADDR);
+        if (!loaded) throw new Error("self-heal failed: key not stored");
+        const msg = fixedMsg();
+        if (!(await verifySig(kp.publicKey, await signP256(loaded, msg), msg))) throw new Error("sig failed after self-heal");
+      });
+
+      await check("concurrent store/load burst doesn't race on DB creation", async () => {
+        await deleteDb();
+        const a = "0x" + "11".repeat(16), b = "0x" + "22".repeat(16);
+        const k1 = await importNonExtractableSigningKey((await genPkcs8()).pkcs8);
+        const k2 = await importNonExtractableSigningKey((await genPkcs8()).pkcs8);
+        const out = await Promise.allSettled([
+          storeSigningKey(a, k1), loadSigningKey(b), storeSigningKey(b, k2), loadSigningKey(a),
+        ]);
+        const rejected = out.filter(r => r.status === "rejected");
+        if (rejected.length) throw new Error("burst rejected: " + rejected.map(r => r.reason?.message || r.reason).join("; "));
+        if (!(await loadSigningKey(a))) throw new Error("key a missing after burst");
+      });
+
+      publish();
+    }
   </script>
 </body>
 </html>

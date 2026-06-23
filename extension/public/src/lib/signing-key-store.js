@@ -87,16 +87,65 @@ function resolveIdb(idb) {
   return typeof indexedDB !== "undefined" ? indexedDB : null;
 }
 
-function openDb(idb) {
+/**
+ * Canonicalize an address into a stable IndexedDB key. Every caller must key the
+ * SAME entry or signing silently breaks (the core C1 cross-context invariant):
+ *   - popup unlock:           storeSigningKey(account.address, …)        [string]
+ *   - offscreen deploy/import: storeSigningKey(address.toString(), …)    [string]
+ *   - auth-witness provider:   loadSigningKey(this._address)             [string]
+ * Lowercasing + String() coercion makes the lookup robust to casing drift and to
+ * a string-vs-AztecAddress-object mismatch, regardless of which path stored it.
+ * Aztec addresses are already lowercase 0x-hex, so this is a no-op for existing
+ * entries (backward-compatible) and a guardrail against future drift.
+ */
+function keyFor(address) {
+  return String(address ?? "").trim().toLowerCase();
+}
+
+// One shared connection per idb instance. Concurrent store/load/clear calls must
+// NOT each open the DB independently: a 2nd open at the same version can resolve
+// before the 1st connection committed the object store, so its transaction throws
+// "One of the specified object stores was not found" (observed during the
+// offscreen's busy PXE init). Caching the open promise serializes creation so all
+// callers await one connection. Also self-heals a DB that exists WITHOUT the store
+// (e.g. a bare `open()` with no store-creating onupgradeneeded ran elsewhere) by
+// bumping the version to add it — closing the "object store not found" class.
+const _dbCache = new Map();
+
+function _rawOpen(idb, version) {
   return new Promise((resolve, reject) => {
-    const req = idb.open(DB_NAME, DB_VERSION);
+    const req = version === undefined ? idb.open(DB_NAME) : idb.open(DB_NAME, version);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
     };
-    req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
   });
+}
+
+async function _openDbOnce(idb) {
+  // Open at the CURRENT version (no explicit version → never a VersionError if a
+  // prior self-heal bumped it). A fresh DB is created at v1 with the store.
+  let db = await _rawOpen(idb);
+  if (!db.objectStoreNames.contains(STORE)) {
+    const nextVersion = db.version + 1;
+    db.close();
+    db = await _rawOpen(idb, nextVersion);
+  }
+  // If another connection upgrades/deletes the DB (or this one closes), drop the
+  // cached connection so the next call reopens cleanly.
+  db.onversionchange = () => { try { db.close(); } catch {} _dbCache.delete(idb); };
+  db.onclose = () => { _dbCache.delete(idb); };
+  return db;
+}
+
+function openDb(idb) {
+  let p = _dbCache.get(idb);
+  if (p) return p;
+  p = _openDbOnce(idb).catch((e) => { _dbCache.delete(idb); throw e; });
+  _dbCache.set(idb, p);
+  return p;
 }
 
 function runTx(db, mode, fn) {
@@ -114,11 +163,7 @@ export async function storeSigningKey(address, cryptoKey, idbFactory) {
   const idb = resolveIdb(idbFactory);
   if (!idb) throw new Error("IndexedDB unavailable for signing-key store");
   const db = await openDb(idb);
-  try {
-    await runTx(db, "readwrite", (s) => s.put(cryptoKey, address));
-  } finally {
-    db.close();
-  }
+  await runTx(db, "readwrite", (s) => s.put(cryptoKey, keyFor(address)));
 }
 
 /** Load the CryptoKey for `address`, or null if absent. */
@@ -126,11 +171,7 @@ export async function loadSigningKey(address, idbFactory) {
   const idb = resolveIdb(idbFactory);
   if (!idb) return null;
   const db = await openDb(idb);
-  try {
-    return (await runTx(db, "readonly", (s) => s.get(address))) ?? null;
-  } finally {
-    db.close();
-  }
+  return (await runTx(db, "readonly", (s) => s.get(keyFor(address)))) ?? null;
 }
 
 /** Wipe all signing keys (called on lock). */
@@ -138,9 +179,5 @@ export async function clearSigningKeys(idbFactory) {
   const idb = resolveIdb(idbFactory);
   if (!idb) return;
   const db = await openDb(idb);
-  try {
-    await runTx(db, "readwrite", (s) => s.clear());
-  } finally {
-    db.close();
-  }
+  await runTx(db, "readwrite", (s) => s.clear());
 }
