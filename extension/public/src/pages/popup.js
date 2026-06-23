@@ -1472,16 +1472,17 @@ async function handleCreatePasskey() {
     await chrome.storage.local.set({ celari_accounts: store.accounts });
     chrome.runtime.sendMessage({ type: "SAVE_ACCOUNT", account });
 
-    // 6. Persist secret + the deploy-window keys cache (celari_keys, used by the
-    //    Deploy banner retry to keep the same secret/salt → same address). The
-    //    P256 signing key is persisted as a NON-EXTRACTABLE CryptoKey via the
-    //    PXE_REGISTER_ACCOUNT call below (offscreen → IndexedDB); it is NOT written
-    //    to chrome.storage.session as plaintext (audit C1).
+    // 6. Persist secret + the deploy-window keys cache (celari_keys: pubkeys +
+    //    credentialId only, used by the Deploy banner retry to keep the same
+    //    secret/salt → same address). The P256 signing key is NEVER written to
+    //    chrome.storage.session as plaintext (audit C1): it lives only as a
+    //    NON-EXTRACTABLE CryptoKey in IndexedDB, populated by the
+    //    PXE_REGISTER_ACCOUNT call below on create and by popup unlock (PRF) —
+    //    both verified to key it by account address. Deploy/sign load it from IDB.
     await chrome.storage.session.set({
       celari_keys: {
         publicKeyX: keys.pubKeyX,
         publicKeyY: keys.pubKeyY,
-        privateKeyPkcs8: keys.privateKeyPkcs8,
         credentialId: credential.id,
       },
       celari_secret: computed.secretKey,
@@ -1575,8 +1576,10 @@ function applyDeployInfo(info) {
   if (info.secretKey) {
     chrome.storage.session.set({ celari_secret: info.secretKey });
   }
-  // Register account with client-side PXE (offscreen document)
-  if (info.secretKey && info.salt && info.publicKeyX && info.publicKeyY && info.privateKeyPkcs8) {
+  // Re-register account with client-side PXE (offscreen). No plaintext PKCS8: the
+  // signing key is already a non-extractable CryptoKey in IndexedDB (populated at
+  // create/unlock), so the offscreen loads it by address — audit C1.
+  if (info.secretKey && info.salt && info.publicKeyX && info.publicKeyY) {
     chrome.runtime.sendMessage({
       type: "PXE_REGISTER_ACCOUNT",
       data: {
@@ -1584,7 +1587,6 @@ function applyDeployInfo(info) {
         publicKeyY: info.publicKeyY,
         secretKey: info.secretKey,
         salt: info.salt,
-        privateKeyPkcs8: info.privateKeyPkcs8,
       },
     }, (res) => {
       if (res?.success) {
@@ -2043,10 +2045,13 @@ function bindDashboard() {
       // 3. Deploy with the SAME secret/salt used at address computation → deployed
       //    address matches the one already shown on the dashboard. If a Fee Juice
       //    claim was pasted, include it — offscreen uses FeeJuicePaymentMethodWithClaim.
+      // No privateKeyPkcs8: the signing key is already a non-extractable CryptoKey
+      // in IndexedDB (PXE_REGISTER_ACCOUNT on create / popup unlock). The offscreen
+      // deploy signs the deploy tx via getAuthWitnessProvider → loadSigningKey(addr),
+      // so the plaintext key never needs to leave IDB (audit C1).
       const deployData = {
         publicKeyX: savedKeys.publicKeyX,
         publicKeyY: savedKeys.publicKeyY,
-        privateKeyPkcs8: savedKeys.privateKeyPkcs8,
         secretKey: savedSecret,
         salt: account.salt,
       };
@@ -2077,7 +2082,6 @@ function bindDashboard() {
         publicKeyY: savedKeys.publicKeyY,
         secretKey: savedSecret,
         salt: account.salt,
-        privateKeyPkcs8: savedKeys.privateKeyPkcs8,
         network: store.network,
         nodeUrl: store.nodeUrl,
         txHash: deployResult.txHash,
