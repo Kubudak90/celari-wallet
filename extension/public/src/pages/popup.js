@@ -26,13 +26,14 @@ import { createLogBuffer } from "../lib/log-buffer.js";
 import { verificationFingerprint } from "../lib/fingerprint.js";
 import { isPanelContext } from "../lib/panel-context.js";
 import { hashToEmojiArray, hashToEmoji } from "../lib/emoji-verification.js";
+import { qrSvg } from "../lib/qr.js";
 import { clearSigningKeys, importNonExtractableSigningKey, pkcs8BytesFromBase64, storeSigningKey } from "../lib/signing-key-store.js";
 
 // ─── Security: HTML Escaping ──────────────────────────
 
 function escapeHtml(str) {
   if (typeof str !== "string") return String(str ?? "");
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/`/g, "&#96;");
 }
 
 // Floating "open in side panel" button — mounted on <body> (survives #root
@@ -2428,7 +2429,7 @@ function renderReceive() {
       <div class="cel-card" style="padding:20px;text-align:center">
         <div style="display:flex;justify-content:center;margin-bottom:14px">${celariLockup(20)}</div>
         <div style="width:170px;height:170px;margin:0 auto;background:#fff;border-radius:10px;padding:12px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;position:relative">
-          ${renderSimpleQR(address)}
+          ${qrSvg(address)}
         </div>
       </div>
 
@@ -3115,34 +3116,6 @@ function renderSubHeader(title, backScreen) {
       <button id="btn-back" style="width:30px;height:30px;border-radius:999px;border:1px solid var(--c-hairline-2);background:none;color:var(--c-ink);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">${svgIcon("back", 15)}</button>
       <div class="cel-serif" style="font-size:17px;font-weight:500">${escapeHtml(title)}</div>
     </div>`;
-}
-
-function renderSimpleQR(data) {
-  const size = 200;
-  const cells = 15;
-  const cellSize = size / cells;
-  let rects = "";
-
-  let hash = 0;
-  for (let i = 0; i < data.length; i++) {
-    hash = ((hash << 5) - hash + data.charCodeAt(i)) | 0;
-  }
-
-  for (let y = 0; y < cells; y++) {
-    for (let x = 0; x < cells; x++) {
-      const isCornerOuter = (x < 3 && y < 3) || (x >= cells - 3 && y < 3) || (x < 3 && y >= cells - 3);
-      const isCornerInner = (x === 1 && y === 1) || (x === cells - 2 && y === 1) || (x === 1 && y === cells - 2);
-      const isCornerBorder = isCornerOuter && !isCornerInner;
-      const seed = (hash * (y * cells + x + 1)) >>> 0;
-      const isData = !isCornerOuter && ((seed % 3) < 1);
-
-      if (isCornerBorder || isCornerInner || isData) {
-        rects += `<rect x="${x * cellSize}" y="${y * cellSize}" width="${cellSize - 1}" height="${cellSize - 1}" fill="#1C1616" rx="0"/>`;
-      }
-    }
-  }
-
-  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${rects}</svg>`;
 }
 
 // ─── Toast Notifications ──────────────────────────────

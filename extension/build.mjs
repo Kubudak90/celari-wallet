@@ -101,9 +101,13 @@ try {
   // to capture and (b) remove the `console[level]` read used to preserve the
   // original method, leaving `orig` === undefined so every console call becomes
   // `(void 0)(...)` → TypeError on init → the popup never renders. So no drop here.
+  // bundle:true so popup's lib/* imports AND the qrcode-generator dependency
+  // (used by lib/qr.js for the scannable receive QR) inline into one file. The
+  // COEP module-SW caveat above is service-worker-only; popup is a normal page
+  // script, so bundling is safe. Still NO drop:["console"] here (Logs viewer).
   await build({
     entryPoints: [{ in: resolve(__dirname, "public/src/pages/popup.js"), out: "src/pages/popup" }],
-    bundle: false,
+    bundle: true,
     minify: !isDev,
     sourcemap: isDev,
     outdir,

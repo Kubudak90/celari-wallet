@@ -42,7 +42,8 @@
     "@aztec/stdlib": "4.3.0",
     "@aztec/wallet-sdk": "4.3.0",
     "@aztec/wallets": "4.3.0",
-    "@walletconnect/sign-client": "^2.17.0"
+    "@walletconnect/sign-client": "^2.17.0",
+    "qrcode-generator": "^2.0.4"
   },
   "devDependencies": {
     "@jest/globals": "^29.7.0",
