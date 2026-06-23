@@ -53,10 +53,24 @@ function getRecoveryArtifact() {
 }
 
 // Bridge contracts (compiled Noir → JSON) for L2 withdraw (exit) execution.
+// loadContractArtifact() is DEFERRED until a bridge op is actually invoked: the
+// static import inlines the JSON, but calling loadContractArtifact at module load
+// crashed offscreen init (and thus all PXE readiness) whenever a bridge artifact's
+// public bytecode wasn't AVM-transpiled — which it isn't until the contract is
+// recompiled with `aztec compile`. The bridge L2 isn't deployed yet, so there is
+// no reason to load it at init; defer so the core wallet works regardless.
 import CelariTokenBridgeArtifactJson from "../../../bridge/contracts/l2/celari_token_bridge/target/celari_token_bridge-CelariTokenBridge.json" with { type: "json" };
 import BridgedTokenArtifactJson from "../../../bridge/contracts/l2/bridged_token/target/bridged_token-BridgedToken.json" with { type: "json" };
-const CelariTokenBridgeArtifact = loadContractArtifact(CelariTokenBridgeArtifactJson);
-const BridgedTokenArtifact = loadContractArtifact(BridgedTokenArtifactJson);
+let _celariTokenBridgeArtifact = null;
+function getCelariTokenBridgeArtifact() {
+  if (!_celariTokenBridgeArtifact) _celariTokenBridgeArtifact = loadContractArtifact(CelariTokenBridgeArtifactJson);
+  return _celariTokenBridgeArtifact;
+}
+let _bridgedTokenArtifact = null;
+function getBridgedTokenArtifact() {
+  if (!_bridgedTokenArtifact) _bridgedTokenArtifact = loadContractArtifact(BridgedTokenArtifactJson);
+  return _bridgedTokenArtifact;
+}
 
 import { BRIDGE } from "./lib/bridge-config.js";
 import { FEE_JUICE_ADDRESS } from "./lib/default-tokens.js";
@@ -935,11 +949,11 @@ async function executeBridgeExit(data) {
   const tokenAddr  = AztecAddress.fromString(BRIDGE.BRIDGED_TOKEN_ADDRESS);
 
   reportProgress("Köprü kontratları hazırlanıyor...");
-  await _ensureContractRegistered(bridgeAddr, CelariTokenBridgeArtifact);
-  await _ensureContractRegistered(tokenAddr, BridgedTokenArtifact);
+  await _ensureContractRegistered(bridgeAddr, getCelariTokenBridgeArtifact());
+  await _ensureContractRegistered(tokenAddr, getBridgedTokenArtifact());
 
   reportProgress("Bakiye kontrol ediliyor...");
-  const token = await Contract.at(tokenAddr, BridgedTokenArtifact, acctWallet);
+  const token = await Contract.at(tokenAddr, getBridgedTokenArtifact(), acctWallet);
   let priv = 0n, pub = 0n;
   // NOTE: BridgedToken (MVP) implements only public balances — it has no
   // balance_of_private method, so private stays 0 and selectExitMode picks "public".
@@ -968,7 +982,7 @@ async function executeBridgeExit(data) {
 
   // Params match the website's L1 claim (withdraw(..., withCaller=true)):
   // l1Token=ETH(0x0), callerOnL1=recipient, nonce=0. Content-hash is enforced on-chain.
-  const bridge = await Contract.at(bridgeAddr, CelariTokenBridgeArtifact, acctWallet);
+  const bridge = await Contract.at(bridgeAddr, getCelariTokenBridgeArtifact(), acctWallet);
   const l1Token    = EthAddress.fromString(BRIDGE.L1_ETH_TOKEN);
   const recipEth   = EthAddress.fromString(recipient);
   const callerOnL1 = EthAddress.fromString(recipient);
@@ -1091,7 +1105,10 @@ async function getBalances(data) {
       let specialArtifact = null;
       let canonicalInstance = null;
       if (lcAddr === BRIDGE.BRIDGED_TOKEN_ADDRESS.toLowerCase()) {
-        specialArtifact = BridgedTokenArtifact;
+        // Defer + guard: a not-yet-transpiled bridged-token artifact must not
+        // break the whole balance refresh; fall through to generic handling.
+        try { specialArtifact = getBridgedTokenArtifact(); }
+        catch (e) { console.warn("[PXE] BridgedToken artifact unavailable (untranspiled until recompiled):", e.message); }
       } else if (lcAddr === FEE_JUICE_ADDRESS.toLowerCase()) {
         const fj = await getFeeJuice();
         specialArtifact = fj.artifact;
