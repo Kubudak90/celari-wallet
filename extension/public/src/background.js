@@ -173,7 +173,8 @@ async function _wsHandleProtocolMessage(message, sender) {
       _wsParkPending(requestId, { tabId, origin, appId, chainInfo, createdAt: Date.now() });
 
       const approvedSites = await _wsGetConnectedSites();
-      if (isSiteApproved(approvedSites, origin)) {
+      const activeAddr = await _providerActiveAddress();
+      if (isSiteApproved(approvedSites, origin, activeAddr)) {
         // Previously approved → reveal the wallet immediately (no popup).
         setTimeout(() => _wsDropPending(requestId), 30_000);
         chrome.tabs.sendMessage(tabId, {
@@ -322,7 +323,8 @@ async function _wsHandleProtocolMessage(message, sender) {
       _wsParkPending(requestId, { tabId, origin, appId: "celari-provider", kind: "provider", createdAt: Date.now() });
 
       const approvedForProvider = await _wsGetConnectedSites();
-      if (isSiteApproved(approvedForProvider, origin)) {
+      const activeAddrProvider = await _providerActiveAddress();
+      if (isSiteApproved(approvedForProvider, origin, activeAddrProvider)) {
         setTimeout(() => _wsDropPending(requestId), 30_000);
         chrome.tabs.sendMessage(tabId, {
           origin: _WS_BG,
@@ -1055,9 +1057,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             sessionId: message.requestId, content: _wsWalletInfo(),
           }).catch(() => {});
         }
-        // Remember this origin so future connections are auto-approved (no popup).
+        // Remember this origin + the account that approved it so future
+        // connections are auto-approved (no popup) ONLY under the same account.
         const sites = await _wsGetConnectedSites();
-        await _wsSaveConnectedSites(addSite(sites, { origin: d.origin, appId: d.appId }));
+        const approvingAccount = await _providerActiveAddress();
+        await _wsSaveConnectedSites(addSite(sites, { origin: d.origin, appId: d.appId, account: approvingAccount }));
         sendResponse({ success: true });
       }).catch(() => sendResponse({ success: false, error: "Approve failed" }));
       return true;

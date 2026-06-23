@@ -44,7 +44,11 @@ describe("connected-sites", () => {
   describe("addSite", () => {
     it("adds a new origin with metadata", () => {
       const out = addSite([], { origin: "https://bridge.human.tech/app", appId: "bridge" }, 123);
-      expect(out).toEqual([{ origin: "https://bridge.human.tech", appId: "bridge", name: "", addedAt: 123 }]);
+      expect(out).toEqual([{ origin: "https://bridge.human.tech", account: "", appId: "bridge", name: "", addedAt: 123 }]);
+    });
+    it("records (lowercased) the approving account", () => {
+      const out = addSite([], { origin: "https://x.com", account: "0xABCdef" }, 1);
+      expect(out[0].account).toBe("0xabcdef");
     });
     it("is idempotent for an already-approved origin", () => {
       const sites = [{ origin: "https://x.com", appId: "", name: "", addedAt: 1 }];
@@ -68,6 +72,34 @@ describe("connected-sites", () => {
     it("returns the list unchanged when origin is absent", () => {
       const sites = [{ origin: "https://a.com" }];
       expect(removeSite(sites, "https://z.com")).toEqual(sites);
+    });
+  });
+
+  describe("account scoping (rotation safety)", () => {
+    const sites = [{ origin: "https://dapp.io", account: "0xaaa", appId: "", name: "", addedAt: 1 }];
+
+    it("auto-approves only under the account that granted it", () => {
+      expect(isSiteApproved(sites, "https://dapp.io", "0xAAA")).toBe(true);   // same account (case-insensitive)
+      expect(isSiteApproved(sites, "https://dapp.io", "0xbbb")).toBe(false);  // rotated account → re-approve
+    });
+
+    it("matches origin-only when no account is supplied", () => {
+      expect(isSiteApproved(sites, "https://dapp.io")).toBe(true);
+    });
+
+    it("treats legacy (account-less) entries as not approved for a specific account", () => {
+      const legacy = [{ origin: "https://dapp.io" }];
+      expect(isSiteApproved(legacy, "https://dapp.io", "0xaaa")).toBe(false); // forces one-time re-approval
+      expect(isSiteApproved(legacy, "https://dapp.io")).toBe(true);            // but still origin-matches account-agnostically
+    });
+
+    it("addSite records the same origin under different accounts as distinct grants", () => {
+      let list = addSite([], { origin: "https://dapp.io", account: "0xaaa" }, 1);
+      list = addSite(list, { origin: "https://dapp.io", account: "0xaaa" }, 2); // idempotent for same (origin,account)
+      expect(list).toHaveLength(1);
+      list = addSite(list, { origin: "https://dapp.io", account: "0xbbb" }, 3); // different account → new grant
+      expect(list).toHaveLength(2);
+      expect(list.map((s) => s.account).sort()).toEqual(["0xaaa", "0xbbb"]);
     });
   });
 });
