@@ -59,33 +59,26 @@ export function installPasskeyWalletDbShim(wallet, accountWallets) {
     return orig(address);
   };
 
-  // Option C — auth-witness fix. The base EmbeddedWallet's gas-estimation
-  // (simulateViaEntrypoint) builds a STUB account via
-  // accountContracts.createStubAccount(completeAddress, type) (embedded_wallet.ts:263).
-  // For our synthetic "ecdsasecp256r1" type that yields the ECDSA stub, whose
-  // auth-witness provider returns an EMPTY witness — but the CelariPasskey
-  // entrypoint circuit reads a 64-byte witness via get_auth_witness_oracle, so
-  // ANY authenticated tx (dApp orders, transfers) fails with
-  // "Foreign call return value does not match expected size. Expected 64 but got 0".
-  // Fix: for our own (passkey) addresses, return the REAL account (resolved via the
-  // already-installed getAccountFromAddress override) which supplies the real P256
-  // auth witness. Non-Celari addresses fall through to the original stub.
-  const ac = wallet.accountContracts;
-  if (ac && typeof ac.createStubAccount === "function") {
-    const origCreateStub = ac.createStubAccount.bind(ac);
-    ac.createStubAccount = async function (completeAddress, type) {
-      const addr =
-        completeAddress && completeAddress.address && typeof completeAddress.address.toString === "function"
-          ? completeAddress.address.toString()
-          : completeAddress && typeof completeAddress.toString === "function"
-            ? completeAddress.toString()
-            : null;
-      if (addr && accountWallets.has(addr)) {
-        return await wallet.getAccountFromAddress(completeAddress.address);
-      }
-      return origCreateStub(completeAddress, type);
-    };
-  }
+  // IMPORTANT: do NOT override accountContracts.createStubAccount.
+  //
+  // The base EmbeddedWallet.sendTx gas-estimate (simulateViaEntrypoint) must use
+  // the UPSTREAM PERMISSIVE stub (SimulatedEcdsaAccount: its entrypoint asserts
+  // is_valid()==true and verify_private_authwit returns IS_VALID unconditionally
+  // — it never reads the auth-witness oracle). That permissiveness is what lets
+  // EmbeddedWallet.sendTx's offchain-effect AUTO-CAPTURE (embedded_wallet.ts:147-165)
+  // run AFTER the estimate and create the real inner auth witnesses (e.g. a DEX
+  // orderbook's Token.transfer_private_to_public), which the REAL send then
+  // verifies with the real P256 witness.
+  //
+  // A previous "Option C" substituted the REAL account here to fix an
+  // "Expected 64 but got 0" seen in a (confounded) guardian-setup test. That made
+  // the estimate run the real passkey entrypoint + real verify_private_authwit,
+  // which DEMAND auth witnesses before auto-capture has created them →
+  // "Unknown auth witness for message hash" on any real dApp authwit tx. Reverted.
+  //
+  // The synthetic "ecdsasecp256r1" type from the retrieveAccount shim above is all
+  // that's needed: it routes resolution (getStubAccountContractArtifact /
+  // createStubAccount) to the permissive SimulatedEcdsaAccount stub.
 
   return wallet;
 }
